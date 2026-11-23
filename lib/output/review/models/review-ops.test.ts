@@ -65,6 +65,15 @@ test('a round posted without its scene and line keeps the place its topic had, s
   assert.deepEqual(again.decisions.map((d) => [d.id, d.about]), [[1, { scene: 'hook', line: 'open' }], [2, { scene: 'hook', line: 'open' }]]);
 });
 
+const takeRange = (to: number): NewDecision['candidates'][number] => ({ key: 'a', label: 'take 1', library: { item: 'rec', from: 31, to }, meta: {} });
+
+test('a take choice re-posted keeps the verdict on a library range only while the range is the same', () => {
+  const put = (to: number): ReviewOp => ({ op: 'decision.put', decision: { topic: 'take-open', question: 'Which take?', choose: 'one', candidates: [takeRange(to), { key: 'b', label: 'take 2', meta: {} }] } });
+  const picked = applied(apply(applied(apply(emptyReviewFile(), 'agent', put(36))).file, 'reviewer', { op: 'decision.verdict', id: 1, candidate: 'a', verdict: 'pick' })).file;
+  assert.equal(applied(apply(picked, 'agent', put(36))).file.decisions[0].candidates[0].verdict, 'pick');
+  assert.equal(applied(apply(picked, 'agent', put(37))).file.decisions[0].candidates[0].verdict, undefined);
+});
+
 test('only the agent hands the plan over, and only the reviewer takes back a scene\'s sign-off, leaving the others', () => {
   assert.throws(() => apply(withNote, 'reviewer', { op: 'plan.handover' }), ReviewOpRefused);
   const handedOver = applied(apply(withNote, 'agent', { op: 'plan.handover' })).file;

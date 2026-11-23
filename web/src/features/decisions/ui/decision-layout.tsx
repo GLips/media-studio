@@ -1,7 +1,7 @@
 import { Box } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import type { ReactNode } from 'react';
-import type { ReviewDecision } from '#lib/output/review/models/review-threads.ts';
+import { reviewCandidateIsTimed, type ReviewDecision } from '#lib/output/review/models/review-threads.ts';
 import { ReviewThreadSplit } from '#web/features/review/index.ts';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { DecisionAbout } from './decision-about.tsx';
@@ -26,7 +26,7 @@ const styles = stylex.create({
 });
 
 /** Whether any candidate plays: only then is there a transport. */
-const isTimed = (decision: ReviewDecision) => decision.candidates.some((c) => c.media && c.media.kind !== 'still');
+const isTimed = (decision: ReviewDecision) => decision.candidates.some(reviewCandidateIsTimed);
 
 /**
  * The screen's body: the pass's queue down the left; then what the decision is for over its candidates (surveyed or

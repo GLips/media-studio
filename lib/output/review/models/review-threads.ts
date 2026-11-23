@@ -105,17 +105,28 @@ export type ReviewPlanAnchor = {
   on: 'plan'; scene?: string; section?: string; field: ReviewPlanField; line?: string; text?: string; was?: string;
 };
 
+/**
+ * A stretch of a library item, in item seconds: played from the library with sound and picture, never copied into
+ * the project, so a project refers to footage by item and range.
+ */
+export type ReviewLibraryRange = { item: string; from: number; to: number };
+
 export type ReviewCandidate = {
   /** 'a', 'b', … */
   key: string;
   label: string;
   /** Project-relative; `hash` is its bytes' when posted, so a file changed since shows as stale. */
   media?: { path: string; kind: ReviewMediaKind | 'audio'; hash: string };
+  library?: ReviewLibraryRange;
+  /** The words of a text candidate; of a library range, what's said in it. */
   text?: string;
   /** Model, seed, cost, voice, prompt: shown as is. */
   meta: Readonly<Record<string, string | number>>;
   verdict?: 'pick' | 'reject';
 };
+
+/** Whether a candidate plays over time (a video, audio or a library range), so it's heard on the clock. */
+export const reviewCandidateIsTimed = ({ media, library }: ReviewCandidate) => library !== undefined || (media !== undefined && media.kind !== 'still');
 
 /** A scene of the storyboard, by id, and optionally one of its lines. */
 export type ReviewDecisionAbout = { scene: string; line?: string };

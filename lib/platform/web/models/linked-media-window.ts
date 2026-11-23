@@ -3,14 +3,18 @@
 // follower does each pass given the frame it last presented. Here in lib rather than beside it so the rules run
 // under the studio's Node tests; the web app has no test runner of its own.
 
-/** Leader frames `[from, end)` a follower shows over. */
-export type LinkedMediaSpan = { from: number; end: number };
+/**
+ * Leader frames `[from, end)` a follower shows over. With `holdAfter`, it shows its last picture past `end` rather
+ * than hiding: a stretch of a longer file played on a longer clock, as a take choice's shorter candidate holds.
+ */
+export type LinkedMediaSpan = { from: number; end: number; holdAfter?: boolean };
 
 /**
  * `away`: hidden and paused. `preroll`: hidden, parked on its picture for `from` so entering shows it at once.
- * `inside`: kept on the leader's frame, shown once its picture lands.
+ * `inside`: kept on the leader's frame, shown once its picture lands. `held`: past a `holdAfter` span, paused on its
+ * picture for `end - 1` and shown.
  */
-export type LinkedMediaPhase = 'away' | 'preroll' | 'inside';
+export type LinkedMediaPhase = 'away' | 'preroll' | 'inside' | 'held';
 
 /** How many frames before `from` a follower seeks to its first picture: enough for a decoder to land a seek. */
 export const LINKED_MEDIA_PREROLL_FRAMES = 10;
@@ -30,6 +34,7 @@ const LINKED_MEDIA_SEEK_PATIENCE_FRAMES = 30;
 /** Where `frame` stands against `span`; a null span is the leader's whole length. */
 export function linkedMediaPhaseAt(span: LinkedMediaSpan | null, frame: number): LinkedMediaPhase {
   if (!span || (frame >= span.from && frame < span.end)) return 'inside';
+  if (frame >= span.end && span.holdAfter) return 'held';
   return frame < span.from && frame >= span.from - LINKED_MEDIA_PREROLL_FRAMES ? 'preroll' : 'away';
 }
 

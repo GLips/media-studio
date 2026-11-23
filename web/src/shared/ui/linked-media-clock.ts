@@ -15,6 +15,12 @@ export type LinkedMediaFollower = {
   frameOf: (leaderFrame: number) => number;
   /** Leader frames it shows over; null for all of them. */
   span: LinkedMediaSpan | null;
+  /**
+   * Its frames don't sit on its `fps` grid: variable-rate footage (a screen recording presents a frame only when the
+   * screen changes), or a file whose rate the page doesn't know. A frame it reports can't be matched to the frame a
+   * seek asked for, so its picture is judged by its `currentTime` once a seek has landed.
+   */
+  offGrid?: boolean;
 };
 
 export type LinkedMediaClock = {
@@ -85,6 +91,11 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
     const hear = () => {
       record.frameCallback = element.requestVideoFrameCallback((_now, metadata) => {
         if (record.generation !== generation) return;
+        if (record.follower.offGrid) {
+          aim(record, frameNow());
+          hear();
+          return;
+        }
         record.presented = linkedMediaFrameAt(metadata.mediaTime, fps);
         if (!record.ready && record.requested !== null) {
           record.ready = linkedMediaSeekLanded(record.requested, record.presented, !element.paused);
@@ -97,7 +108,12 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
   };
 
   const aim = (record: LinkedFollowerRecord, frame: number) => {
-    const { element, fps, frameOf, span } = record.follower;
+    const { element, fps, frameOf, span, offGrid } = record.follower;
+    if (offGrid) {
+      // Mid-seek, its time is already the target's while its picture is still the old one.
+      record.ready = !element.seeking;
+      record.presented = element.seeking ? null : linkedMediaFrameAt(element.currentTime, fps);
+    }
     const phase = linkedMediaPhaseAt(span, frame);
     // A leader landing its own seek stands still, so the follower waits paused on that frame. Played on, it would run
     // frames ahead of the stalled leader and stay hidden for most of a second while the slow rate caught it up.
@@ -107,13 +123,16 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
     // would never be heard landing. `loadedmetadata` aims it again.
     if (phase === 'away' || element.readyState < HTMLMediaElement.HAVE_METADATA) return showLinkedFollower(record, false);
     // Pre-rolled to its first picture, so the entering frame is already decoded when the leader reaches `from`.
-    const target = Math.max(0, frameOf(phase === 'preroll' && span ? span.from : frame));
+    let at = frame;
+    if (span && phase === 'preroll') at = span.from;
+    if (span && phase === 'held') at = span.end - 1;
+    const target = Math.max(0, frameOf(at));
     const move = linkedMediaFollowerMove(record, target, forward);
     if (move.seekTo !== null) {
       restartLinkedFollower(record, move.seekTo);
       element.currentTime = linkedMediaTimeOf(move.seekTo, fps);
     }
-    showLinkedFollower(record, phase === 'inside' && move.shown);
+    showLinkedFollower(record, phase !== 'preroll' && move.shown);
     if (forward && leader) {
       const rate = leader.playbackRate * move.rate;
       if (element.playbackRate !== rate) element.playbackRate = rate;
@@ -152,9 +171,11 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
       restartLinkedFollower(record, null);
       // `emptied` is a change of source: whatever it presented belongs to the old file.
       const onEmptied = () => restartLinkedFollower(record, null);
+      // Also a landed seek: an off-grid follower parked on a still screen may present no new frame to hear.
       const onMetadata = () => aim(record, frameNow());
       element.addEventListener('emptied', onEmptied);
       element.addEventListener('loadedmetadata', onMetadata);
+      element.addEventListener('seeked', onMetadata);
       followers.add(record);
       aim(record, frameNow());
       return () => {
@@ -162,8 +183,11 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
         element.cancelVideoFrameCallback(record.frameCallback);
         element.removeEventListener('emptied', onEmptied);
         element.removeEventListener('loadedmetadata', onMetadata);
+        element.removeEventListener('seeked', onMetadata);
         element.pause();
         element.style.opacity = '';
+        // A catch-up rate left on it would set the pace were it to lead next.
+        element.playbackRate = 1;
       };
     },
     onTick(listener) {
@@ -187,7 +211,7 @@ export function createLinkedMediaClock({ frameNow, steer }: LinkedMediaClockOpti
         const check = () => {
           const frame = frameNow();
           const followersShow = [...followers].every(({ follower, shown }) => shown
-            || follower.element.readyState < HTMLMediaElement.HAVE_METADATA || linkedMediaPhaseAt(follower.span, frame) !== 'inside');
+            || follower.element.readyState < HTMLMediaElement.HAVE_METADATA || ['away', 'preroll'].includes(linkedMediaPhaseAt(follower.span, frame)));
           const landed = leader !== null && !leader.seeking && leader.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && followersShow;
           if (landed || ++waited > LINKED_MEDIA_SETTLE_FRAMES) resolve();
           else requestAnimationFrame(check);
@@ -206,19 +230,20 @@ export function useLinkedMediaTick(clock: Pick<LinkedMediaClock, 'onTick'>, list
 
 /**
  * Mounts `element` (from a ref callback held in state) as a follower of `clock` over `span`. `frameOf` may change
- * each render; a new span or fps re-mounts it.
+ * each render; a new span, fps or grid re-mounts it.
  */
 export function useLinkedMediaFollower(
   clock: Pick<LinkedMediaClock, 'addFollower'>,
   element: HTMLVideoElement | null,
-  { fps, span, frameOf }: Omit<LinkedMediaFollower, 'element'>,
+  { fps, span, frameOf, offGrid }: Omit<LinkedMediaFollower, 'element'>,
 ): void {
   const mapped = useEffectEvent(frameOf);
   const from = span?.from;
   const end = span?.end;
+  const holdAfter = span?.holdAfter;
   useEffect(() => {
     if (!element) return undefined;
-    const followed = from === undefined || end === undefined ? null : { from, end };
-    return clock.addFollower({ element, fps, span: followed, frameOf: (frame) => mapped(frame) });
-  }, [clock, element, fps, from, end]);
+    const followed = from === undefined || end === undefined ? null : { from, end, ...(holdAfter && { holdAfter }) };
+    return clock.addFollower({ element, fps, span: followed, frameOf: (frame) => mapped(frame), ...(offGrid && { offGrid }) });
+  }, [clock, element, fps, from, end, holdAfter, offGrid]);
 }

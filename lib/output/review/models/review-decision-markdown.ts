@@ -2,6 +2,7 @@
 // agent: the question and the scene and line it's for, each candidate with its file (from the repo root, so it can be
 // Read from anywhere) and meta, the reviewer's verdicts and, once signed off, the picks.
 import type { ReviewCandidate, ReviewDecision } from './review-threads.ts';
+import { formatReviewClockRange } from './review-timeline-geometry.ts';
 
 export function formatReviewDecisionsMarkdown(project: string, decisions: readonly ReviewDecision[]): string {
   return decisions.map((d) => formatReviewDecision(project, d)).join('\n\n');
@@ -24,7 +25,9 @@ function aboutOf({ about }: ReviewDecision): string {
 }
 
 function formatReviewCandidate(project: string, candidate: ReviewCandidate): string {
-  const what = candidate.media ? `work/projects/${project}/${candidate.media.path} \`${candidate.media.hash}\`` : `"${candidate.text ?? ''}"`;
+  const { media, library } = candidate;
+  const range = library && `library ${library.item} ${formatReviewClockRange(library.from, library.to)}${candidate.text ? `: "${candidate.text}"` : ''}`;
+  const what = media ? `work/projects/${project}/${media.path} \`${media.hash}\`` : range ?? `"${candidate.text ?? ''}"`;
   const meta = Object.entries(candidate.meta).map(([k, v]) => `${k} ${v}`);
   return [`- ${candidate.key} ${candidate.label} — ${what}`, ...meta, ...(candidate.verdict ? [`**${candidate.verdict}**`] : [])].join(' · ');
 }

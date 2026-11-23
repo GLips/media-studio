@@ -3,6 +3,7 @@ import * as stylex from '@stylexjs/stylex';
 import { useHotkey } from '@tanstack/react-hotkeys';
 import { useMemo, useRef, useState } from 'react';
 import type { PlacedReviewThread } from '#lib/output/review/models/review-placement.ts';
+import { reviewCandidateIsTimed } from '#lib/output/review/models/review-threads.ts';
 import { ReviewThreadPanel, ReviewThreadScopeProvider, useReviewDraft, type ReviewThreadScope } from '#web/features/review/index.ts';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { focusNoteFieldAtEnd } from '#web/shared/ui/textarea.tsx';
@@ -32,7 +33,7 @@ export function DecisionThread() {
   const threads = useMemo(() => view.threads.map((t): PlacedReviewThread => ({ ...t, placement: { shifted: false } })), [view.threads]);
   const candidate = decision.candidates.find((c) => c.key === focused);
   // A note on something that plays is pinned to the time it was heard at; a still or text candidate has no time.
-  const timed = candidate?.media?.kind === 'audio' || candidate?.media?.kind === 'video';
+  const timed = candidate !== undefined && reviewCandidateIsTimed(candidate);
   const scope: ReviewThreadScope = {
     project, subject: { on: 'decision', decision: decision.id, ...(focused !== null && { candidate: focused }) }, threads, ops, draft, media: null,
     ...(timed && { timeNow: playback.timeNow }),

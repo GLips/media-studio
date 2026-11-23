@@ -60,3 +60,20 @@ export function applyLibraryFlagOp(file: LibraryFlagsFile, op: LibraryFlagOp, { 
   const changed: LibraryFlag = { ...rest, ...(note && { note }), rev };
   return Result.succeed({ file: { ...file, revision: rev, flags: file.flags.map((f) => (f === flag ? changed : f)) }, flag: changed });
 }
+
+/** Whose flags a reader steps through: everyone's, or one author's. */
+export type LibraryFlagFilter = 'all' | ReviewAuthor;
+
+/** The flags `filter` keeps, in the order they're stepped through: by start, then as set. */
+export const libraryFlagsInOrder = (flags: readonly LibraryFlag[], filter: LibraryFlagFilter): LibraryFlag[] =>
+  flags.filter((f) => filter === 'all' || f.by === filter).toSorted((a, b) => a.start - b.start || a.id - b.id);
+
+/**
+ * The flag a step lands on from flag `from` (or from `seconds` when no flag is on show): the next in order, or with
+ * `direction` -1 the one before. Undefined past either end.
+ */
+export function libraryFlagBeside(ordered: readonly LibraryFlag[], from: { flag?: number; seconds: number }, direction: -1 | 1): LibraryFlag | undefined {
+  const at = from.flag === undefined ? -1 : ordered.findIndex((f) => f.id === from.flag);
+  if (at >= 0) return ordered[at + direction];
+  return direction > 0 ? ordered.find((f) => f.start > from.seconds + 1e-3) : ordered.findLast((f) => f.start < from.seconds - 1e-3);
+}

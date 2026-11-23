@@ -1,8 +1,10 @@
 import { Box, Center, Image, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import type { ReviewCandidate } from '#lib/output/review/models/review-threads.ts';
+import { LibraryRangeMedia } from '#web/features/library/index.ts';
 import { projectFileUrl } from '#web/shared/media-urls.ts';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
+import { DECISION_CLOCK_FPS } from './decision-playback.ts';
 import { useDecisionScreen } from './decision-screen-context.tsx';
 import { DecisionWaveform } from './decision-waveform.tsx';
 
@@ -17,10 +19,20 @@ const styles = stylex.create({
 
 type DecisionCandidateMediaProps = { readonly candidate: ReviewCandidate; readonly missing: boolean };
 
-/** What a candidate is, at its own shape: a picture, a video, a waveform for audio, or its words at reading size. */
+/**
+ * What a candidate is, at its own shape: a picture, a video, a waveform for audio, its words at reading size, or a
+ * library range played from the library.
+ */
 export function DecisionCandidateMedia({ candidate, missing }: DecisionCandidateMediaProps) {
   const { project, playback } = useDecisionScreen();
-  const { media } = candidate;
+  const { media, library } = candidate;
+  if (library) {
+    const words = <Text component="span" size="lg" {...stylex.props(styles.text)}>{candidate.text}</Text>;
+    return (
+      <LibraryRangeMedia range={library} clock={playback.followerClock(candidate.key)} fps={DECISION_CLOCK_FPS}
+        attachSound={(sound) => playback.attachMedia(candidate.key, sound)}>{words}</LibraryRangeMedia>
+    );
+  }
   if (!media) return <Text component="span" size="lg" {...stylex.props(styles.text)}>{candidate.text}</Text>;
   if (missing) return <Center {...stylex.props(styles.fill)}><Text component="span" size="sm" {...stylex.props(styles.gone)}>∅</Text></Center>;
   // Unpinned, so a candidate re-made in place plays its new bytes and is marked changed rather than refused.

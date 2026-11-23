@@ -19,7 +19,8 @@ import { REVIEW_FALLBACK_FPS } from '../models/review-context.ts';
 import type { NewAnchor, NewDecision } from '../models/review-ops.ts';
 import { placeReviewThread, reviewVideoAnchorAt, type PlacedReviewThread, type ReviewPlacement, type ReviewPlacementTarget } from '../models/review-placement.ts';
 import { reviewPlanFieldText, reviewPlanNotePlacementOf, reviewPlanSignoffs, type ReviewPlanFieldChange } from '../models/review-plan.ts';
-import type { ReviewCandidate, ReviewDecision, ReviewDecisionAbout, ReviewEntryCommit, ReviewPlanAnchor, ReviewPlanField, ReviewSignoff, ReviewThread, ReviewThreadState } from '../models/review-threads.ts';
+import type { ReviewCandidate, ReviewDecision, ReviewDecisionAbout, ReviewLibraryRange, ReviewEntryCommit, ReviewPlanAnchor, ReviewPlanField, ReviewSignoff, ReviewThread, ReviewThreadState } from '../models/review-threads.ts';
+import { formatReviewClockRange } from '../models/review-timeline-geometry.ts';
 import { projectFolderNamed, projectMediaTypeOf, projectPathOf, resolveProjectMedia } from './project-media.ts';
 import { readReviewArtifact, reviewPlacementTargetOf, reviewStillSizeOf } from './review-artifact.ts';
 import { readReviewSplices } from './review-splices.ts';
@@ -197,12 +198,19 @@ export async function reviewDecisionAboutOf(project: string, place: { scene?: st
   return { scene, ...(line !== undefined && { line }) };
 }
 
-/** A candidate as `--candidate` or a `--spec` file gives it: a file in the project or a text, a label, its meta. */
-export type ReviewCandidateSpec = { path?: string; text?: string; label?: string; meta?: ReviewCandidate['meta'] };
+/**
+ * A candidate as `--candidate` or a `--spec` file gives it: a file in the project, a text, or a library range
+ * (resolved by the caller: its item's id, and what's said in it as `text`), a label, its meta.
+ */
+export type ReviewCandidateSpec = { path?: string; text?: string; library?: ReviewLibraryRange; label?: string; meta?: ReviewCandidate['meta'] };
 
 /** The candidate keyed `key`, its file checked to be project media and hashed so a later change shows. */
 export function reviewCandidateOf(project: string, key: string, spec: ReviewCandidateSpec): NewDecision['candidates'][number] {
   const meta = spec.meta ?? {};
+  if (spec.library) {
+    const { library, text } = spec;
+    return { key, label: spec.label ?? `${library.item} ${formatReviewClockRange(library.from, library.to)}`, library, ...(text && { text }), meta };
+  }
   if (spec.text !== undefined) return { key, label: spec.label ?? spec.text.slice(0, 40), text: spec.text, meta };
   if (spec.path === undefined) throw new Error(`candidate ${key} needs a file or a text`);
   const dir = projectFolderNamed(project);

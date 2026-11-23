@@ -35,13 +35,16 @@ export function transcriptCutBefore({ duration, words, pauses }: FootageTranscri
 // Quiet this long between two words ends a line of the transcript as read.
 const LINE_PAUSE = 0.5;
 
+/** A line of a transcript as read: its span, its words' text, and which of the transcript's words it holds. */
+export type TranscriptLine = { start: number; end: number; text: string; firstWord: number; wordCount: number };
+
 /** The transcript as lines to read: its words run together until a pause of LINE_PAUSE, each line with its span. */
-export function transcriptLines({ words }: FootageTranscript): { start: number; end: number; text: string }[] {
-  const lines: { start: number; end: number; text: string }[] = [];
-  for (const word of words) {
+export function transcriptLines({ words }: Pick<FootageTranscript, 'words'>): TranscriptLine[] {
+  const lines: TranscriptLine[] = [];
+  words.forEach((word, i) => {
     const line = lines.at(-1);
-    if (line && word.start - line.end < LINE_PAUSE) Object.assign(line, { end: word.end, text: `${line.text} ${word.text}` });
-    else lines.push({ start: word.start, end: word.end, text: word.text });
-  }
+    if (line && word.start - line.end < LINE_PAUSE) Object.assign(line, { end: word.end, text: `${line.text} ${word.text}`, wordCount: line.wordCount + 1 });
+    else lines.push({ start: word.start, end: word.end, text: word.text, firstWord: i, wordCount: 1 });
+  });
   return lines;
 }

@@ -15,18 +15,18 @@ export type LibrarySearchHit =
   | { item: string; on: 'flag'; flag: number; start: number; end: number; text: string };
 
 // Whisper writes punctuation and capitals a speaker never chose; search compares the words alone.
-const searchToken = (word: string) => word.toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, '');
+export const librarySearchToken = (word: string) => word.toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, '');
 
 /**
  * Every place in `items` that says `query` (its words in order, ignoring case and punctuation), and every flag whose
  * note says it (its words in order, as the transcript is matched), in the order of `items`, each item's in time order.
  */
 export function searchLibrary(items: readonly LibrarySearchItem[], query: string): Result.Result<LibrarySearchHit[], LibraryRequestRefused> {
-  const wanted = query.split(/\s+/).map(searchToken).filter(Boolean);
+  const wanted = query.split(/\s+/).map(librarySearchToken).filter(Boolean);
   if (!wanted.length) return Result.fail(new LibraryRequestRefused({ reason: 'search for at least one word' }));
   return Result.succeed(items.flatMap(({ item, transcript, flags }) => {
     const spoken = transcript && item.speech ? transcriptHits(item, item.tracks[item.speech], transcript, wanted) : [];
-    const flagged = flags.filter((f) => f.note && holdsTokens(f.note.split(/\s+/).map(searchToken).filter(Boolean), wanted))
+    const flagged = flags.filter((f) => f.note && holdsTokens(f.note.split(/\s+/).map(librarySearchToken).filter(Boolean), wanted))
       .map((f): LibrarySearchHit => ({ item: item.id, on: 'flag', flag: f.id, start: f.start, end: f.end, text: f.note ?? '' }));
     return [...spoken, ...flagged].toSorted((a, b) => a.start - b.start);
   }));
@@ -36,7 +36,7 @@ const tokensAt = (tokens: readonly string[], i: number, wanted: readonly string[
 const holdsTokens = (tokens: readonly string[], wanted: readonly string[]) => tokens.some((_, i) => tokensAt(tokens, i, wanted));
 
 function transcriptHits(item: LibraryItem, track: LibraryItem['tracks'][string], transcript: FootageTranscript, wanted: readonly string[]): LibrarySearchHit[] {
-  const tokens = transcript.words.map((w) => searchToken(w.text)), lines = transcriptLines(transcript), hits: LibrarySearchHit[] = [];
+  const tokens = transcript.words.map((w) => librarySearchToken(w.text)), lines = transcriptLines(transcript), hits: LibrarySearchHit[] = [];
   for (let i = 0; i + wanted.length <= tokens.length; i++) {
     if (!tokensAt(tokens, i, wanted)) continue;
     const first = transcript.words[i], last = transcript.words[i + wanted.length - 1];

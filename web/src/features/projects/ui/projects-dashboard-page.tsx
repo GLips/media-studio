@@ -4,6 +4,7 @@ import { Ellipsis } from 'lucide-react';
 import { Fragment, useRef } from 'react';
 import { reviewPlanMayAwaitYou, reviewRowAwaitsYou, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
 import { useProjectsPlanSignoffs, type ProjectPlanSignoffs } from '#web/features/storyboard/index.ts';
+import { AnchorLink } from '#web/shared/ui/anchor-link.tsx';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
@@ -20,6 +21,7 @@ const styles = stylex.create({
   more: { color: colors.dim },
   rule: { height: '1px', backgroundColor: colors.line, marginBlock: spacing.gap },
   empty: { padding: spacing.inset, color: colors.dim },
+  link: { color: colors.dim },
 });
 
 /** A project's awaiting rows shown before the rest fold into `+N`, so one busy project can't fill the first screen. */
@@ -51,7 +53,12 @@ export function ProjectsDashboardPage() {
   const awaiting = awaitingByProject(summaries, plans);
   const projects = [...summaries.filter(projectHasRender), ...summaries.filter((summary) => !projectHasRender(summary))];
   return (
-    <StudioShell start={<Text size="sm">studio</Text>}>
+    <StudioShell start={(
+      <>
+        <Text size="sm">studio</Text>
+        <AnchorLink to="/library" size="sm" underline="hover" {...stylex.props(styles.link)}>library</AnchorLink>
+      </>
+    )}>
       <FadeScroll>
         <Stack ref={listRef} gap={0} {...stylex.props(projectListStyles.list, stylex.defaultMarker())}>
           {summaries.length === 0 && <Text size="sm" {...stylex.props(styles.empty)}><Code>studio new</Code></Text>}

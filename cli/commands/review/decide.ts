@@ -2,17 +2,18 @@
 // stills, music beds, voices, lines of text), which they survey, pick from and sign off in the studio app.
 import { defineCommand, type ArgsDef } from 'citty';
 import { refuseUnknownCommandFlags } from '../../command-flags.ts';
+import type { ReviewCandidateSpec } from '#lib/output/review/engine/review-handoff.ts';
 import { studioProjectArg } from '../../project-arg.ts';
 
 const reviewDecideArgs = {
   project: studioProjectArg,
   topic: { type: 'positional', required: false, description: 'A short name for the choice, music-bed say; posting on an open topic again replaces its candidates' },
   question: { type: 'string', valueHint: 'Which bed under the VO?', description: 'What the reviewer is choosing' },
-  candidate: { type: 'string', valueHint: 'out/decisions/music-bed/warm.wav=Warm', description: 'A candidate, once per candidate: a file in the project (a video, image or audio file; put new ones in out/decisions/<topic>/), or text:<the text>, each optionally =<label>' },
+  candidate: { type: 'string', valueHint: 'out/decisions/music-bed/warm.wav=Warm', description: 'A candidate, once per candidate: a file in the project (a video, image or audio file; put new ones in out/decisions/<topic>/), text:<the text>, or library:<item>@<from>-<to> for a range of a library item (item time, seconds or m:ss, as `studio library search` prints it), each optionally =<label>' },
   many: { type: 'boolean', description: 'The reviewer may pick several, not one' },
   scene: { type: 'string', valueHint: 'hook', description: "The storyboard scene it's for: the reviewer walks open decisions in story order, each beside its scene" },
   line: { type: 'string', valueHint: 'intro', description: "The line it's for (a take, a read), its text shown beside the candidates; its scene is found when --scene is left out" },
-  spec: { type: 'string', valueHint: 'decision.json', description: 'The whole decision as JSON, a file or - for stdin: { topic, question, choose?: "one"|"many", scene?, line?, candidates: [{ path? | text?, label?, meta?: { model, seed, cost… } }] }, in place of the other flags' },
+  spec: { type: 'string', valueHint: 'decision.json', description: 'The whole decision as JSON, a file or - for stdin: { topic, question, choose?: "one"|"many", scene?, line?, candidates: [{ path? | text? | library?: { item, from, to }, label?, meta?: { model, seed, cost… } }] }, in place of the other flags' },
 } as const satisfies ArgsDef;
 
 /** Every value given to a flag repeated on the command line: citty keeps only the last. */
@@ -23,14 +24,59 @@ function repeatedFlagValues(rawArgs: readonly string[], flag: string): string[] 
   });
 }
 
-/** `<path or text:…>[=label]`, the label after the last `=`. */
-function candidateFlagOf(value: string) {
-  const split = value.lastIndexOf('=');
-  const [what, label] = split > 0 ? [value.slice(0, split), value.slice(split + 1)] : [value, undefined];
-  return { ...(what.startsWith('text:') ? { text: what.slice('text:'.length) } : { path: what }), ...(label && { label }) };
+/** A library range as given: the item by its id or a part of it, the times in seconds or m:ss. */
+type DecisionLibraryRangeSpec = { item: string; from: number | string; to: number | string };
+
+/** A candidate as given: a file or a text as `reviewCandidateOf` takes it, or a library range still to be checked. */
+type DecisionCandidateSpec = Omit<ReviewCandidateSpec, 'library'> | (Pick<ReviewCandidateSpec, 'label' | 'meta'> & { library: DecisionLibraryRangeSpec });
+
+/** `library:<item>@<from>-<to>`, its times left as written. */
+function libraryCandidateFlagOf(what: string): DecisionLibraryRangeSpec {
+  const at = what.lastIndexOf('@'), times = what.slice(at + 1).split('-');
+  const [from, to] = times;
+  if (at <= 0 || times.length !== 2 || from === undefined || to === undefined) throw new Error(`a library candidate is library:<item>@<from>-<to>, not ${what}`);
+  return { item: what.slice(0, at), from, to };
 }
 
-type DecisionSpec = { topic: string; question: string; choose?: 'one' | 'many'; scene?: string; line?: string; candidates: { path?: string; text?: string; label?: string; meta?: Record<string, string | number> }[] };
+/** `<path, text:… or library:…>[=label]`, the label after the last `=`. */
+function candidateFlagOf(value: string): DecisionCandidateSpec {
+  const split = value.lastIndexOf('=');
+  const [what, label] = split > 0 ? [value.slice(0, split), value.slice(split + 1)] : [value, undefined];
+  const labelled = label ? { label } : {};
+  if (what.startsWith('text:')) return { text: what.slice('text:'.length), ...labelled };
+  if (what.startsWith('library:')) return { library: libraryCandidateFlagOf(what.slice('library:'.length)), ...labelled };
+  return { path: what, ...labelled };
+}
+
+type DecisionSpec = { topic: string; question: string; choose?: 'one' | 'many'; scene?: string; line?: string; candidates: DecisionCandidateSpec[] };
+
+/**
+ * Each library range checked against its item, which is named by its full id, with what's said in it as its text:
+ * the reviewer reads it beside the picture, and a re-post with the same words keeps its verdict.
+ */
+async function resolveLibraryCandidates(candidates: readonly DecisionCandidateSpec[]): Promise<ReviewCandidateSpec[]> {
+  // The library's services load only for a decision that has a range.
+  const plain = candidates.flatMap((c) => ('library' in c ? [] : [c]));
+  if (plain.length === candidates.length) return plain;
+  const [{ Effect }, { runStudioEffect }, { libraryLayer }, { readLibraryRangeEffect }, { libraryClockSecondsOf }] = await Promise.all([
+    import('effect'),
+    import('#lib/platform/process/engine/studio-effect-runtime.ts'),
+    import('#lib/footage/library/engine/library-layer.ts'),
+    import('#lib/footage/library/engine/library-app.ts'),
+    import('#lib/footage/library/models/library-range.ts'),
+  ]);
+  const seconds = (time: number | string) => (typeof time === 'number' ? Effect.succeed(time) : Effect.fromResult(libraryClockSecondsOf(time)));
+  return runStudioEffect(Effect.forEach(candidates, (candidate) => Effect.gen(function* () {
+    if (!('library' in candidate)) return candidate;
+    const { library, ...rest } = candidate;
+    const range = yield* readLibraryRangeEffect(library.item, yield* seconds(library.from), yield* seconds(library.to));
+    const resolved: ReviewCandidateSpec = { ...rest, library: { item: range.item, from: range.from, to: range.to }, ...(range.said && { text: range.said }) };
+    return resolved;
+  })), libraryLayer);
+}
+
+/** A range's time as a spec may give it: seconds, or text as the flag takes it. */
+const isDecisionTime = (time: unknown): time is number | string => typeof time === 'number' || typeof time === 'string';
 
 /** A --spec file, held to the shape its flag names: it's written by hand or by another tool. */
 function decisionSpecOf(text: string, from: string): DecisionSpec {
@@ -43,6 +89,11 @@ function decisionSpecOf(text: string, from: string): DecisionSpec {
   for (const key of ['scene', 'line'] as const) {
     if (spec[key] !== undefined && typeof spec[key] !== 'string') throw new Error(`${from}: ${key} is a storyboard id`);
   }
+  for (const candidate of spec.candidates) {
+    if (!('library' in candidate)) continue;
+    const { item, from: start, to } = candidate.library;
+    if (typeof item !== 'string' || !isDecisionTime(start) || !isDecisionTime(to)) throw new Error(`${from}: a library candidate is { library: { item, from, to } }, times in seconds or m:ss`);
+  }
   return {
     topic: spec.topic, question: spec.question, candidates: spec.candidates,
     ...(spec.choose && { choose: spec.choose }), ...(spec.scene !== undefined && { scene: spec.scene }), ...(spec.line !== undefined && { line: spec.line }),
@@ -53,7 +104,7 @@ export const reviewDecideCommand = defineCommand({
   meta: {
     name: 'decide',
     description: "Post a choice between two or more candidates for the reviewer to pick from and sign off.",
-    about: "Candidates are keyed a, b, c… in order. Each file is checked to be media in the project and recorded by its hash, so one changed later shows as stale; text candidates are shown as written. The reviewer surveys them in the studio app at /projects/<p>/decisions/<topic>, walking every open decision in the project in one pass, in story order by --scene and --line (those without come last; a topic posted again without them keeps its place), compares any two on one transport, picks or rejects each, comments on any, and signs off; watch wakes on each verdict and on the sign-off, and decisions prints them. Posting an open topic again replaces its candidates, keeping verdicts on those that come back unchanged. Prints the decision's id.",
+    about: "Candidates are keyed a, b, c… in order. Each file is checked to be media in the project and recorded by its hash, so one changed later shows as stale; text candidates are shown as written; a library range (library:<item>@<from>-<to>) is checked against its item and played from the library with sound and picture, never copied, with what's said in it beside it. The reviewer surveys them in the studio app at /projects/<p>/decisions/<topic>, walking every open decision in the project in one pass, in story order by --scene and --line (those without come last; a topic posted again without them keeps its place), compares any two on one transport, picks or rejects each, comments on any, and signs off; watch wakes on each verdict and on the sign-off, and decisions prints them. Posting an open topic again replaces its candidates, keeping verdicts on those that come back unchanged. Prints the decision's id.",
   },
   args: reviewDecideArgs,
   async run({ args, rawArgs }) {
@@ -80,7 +131,8 @@ export const reviewDecideCommand = defineCommand({
     const { applyReviewOps } = await import('#lib/output/review/engine/review-file.ts');
     const { reviewCandidateOf, reviewDecisionAboutOf } = await import('#lib/output/review/engine/review-handoff.ts');
     const dir = resolveStudioProject(args.project), project = basename(dir);
-    const candidates = spec.candidates.map((c, i) => reviewCandidateOf(project, String.fromCharCode(97 + i), c));
+    const resolved = await resolveLibraryCandidates(spec.candidates);
+    const candidates = resolved.map((c, i) => reviewCandidateOf(project, String.fromCharCode(97 + i), c));
     const about = spec.scene === undefined && spec.line === undefined ? undefined : await reviewDecisionAboutOf(project, spec);
     const decision = { topic: spec.topic, question: spec.question, choose: spec.choose ?? 'one', ...(about && { about }), candidates };
     const applied = applyReviewOps(dir, [{ op: 'decision.put', decision }], 'agent');

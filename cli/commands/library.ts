@@ -200,13 +200,9 @@ const flagCommand = defineCommand({
     const { LibraryStore } = await import('#lib/footage/library/engine/library-store.ts');
     const { LibraryRequestRefused } = await import('#lib/footage/library/models/library-errors.ts');
     const { LibraryFlagAuthor } = await import('#lib/footage/library/models/library-flags.ts');
+    const { libraryClockSecondsOf } = await import('#lib/footage/library/models/library-range.ts');
     const refused = (reason: string) => new LibraryRequestRefused({ reason });
-    /** Seconds as `12.5`, `1:02.5` or `1:02:03`. */
-    const clockSeconds = (text: string) => {
-      const parts = text.trim().split(':');
-      if (parts.length > 3 || parts.some((p) => p === '' || Number.isNaN(Number(p)))) return Effect.fail(refused(`"${text}" isn't a time: give seconds (72.5) or m:ss (1:12.5)`));
-      return Effect.succeed(parts.reduce((total, part) => total * 60 + Number(part), 0));
-    };
+    const clockSeconds = (text: string) => Effect.fromResult(libraryClockSecondsOf(text));
     const { printStudioJson } = await import('#lib/platform/process/engine/studio-effect-runtime.ts');
     await runLibraryProgram(Effect.gen(function* () {
       const store = yield* LibraryStore;
