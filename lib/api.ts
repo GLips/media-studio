@@ -29,6 +29,7 @@ export { REEL_SHUTTER, shutterOpensAt, shutterTravel, smearSigma } from '#lib/pi
 export { motionAttrs, motionEchoAttrs, pieceMotionAttrs, unmeasuredAttrs, useMotionTag, type MotionTag } from '#lib/picture/measurement/studio/motion-tag.ts';
 export { ClickRipple, ClipToBox, Cursor, CursorPath, Glass, Highlight, Spotlight, Tag, TakeCursor, Text, Wash, cursorAt, offscreen, type CursorKey } from '#lib/picture/kit/studio/overlays.tsx';
 export { hashRandom, randomSeedFromKey, seededRandom } from '#lib/picture/motion/models/random.ts';
+export { SEEDED_SCATTER_ATTEMPTS, seededScatter, type SeededScatterArea, type SeededScatterItem, type SeededScatterOptions } from '#lib/picture/motion/models/scatter.ts';
 // The reel pieces: the high-energy register of music-led videos (skills/video-motion/references/reel-pieces.md).
 // Each model is re-exported by name: the helpers it exports only for its own drawing stay out of the barrel.
 export { BounceBall, FieldSwell, type BounceCallout } from '#lib/picture/reel/studio/bounce.tsx';
