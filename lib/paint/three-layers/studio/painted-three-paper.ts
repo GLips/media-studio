@@ -154,10 +154,9 @@ export type PaintedThreePaperLights = { readonly key: DirectionalLight; readonly
 const PAINTED_THREE_PAPER_SHADOW_MAP = 2048;
 
 /**
- * Lights for paper under `light`, normalised to its prints (paintedThreePaperLightStrengths), `shares` the fill's
- * and sky's (PAINTED_THREE_PAPER_LIGHT_SHARES when left out; zeros for a key-only view). The key's shadow camera is
- * fitted once round `around` (world units), which must hold every pose, so it doesn't pump between shutter ends; its
- * normal bias is `paper`, the sheets' thickness in world units.
+ * Lights for paper under `light`, normalised to its prints, `shares` the fill's and sky's (zeros for a key-only
+ * view). The key's shadow camera fits `around` (world units) once, holding every pose so it doesn't pump. Its normal
+ * bias is `paper`, the sheets' thickness, or a shadow texel if wider: under a texel, lit paper shades itself in stripes.
  */
 export function createPaintedThreePaperLights(
   light: PaintLight, { around, paper, shares = PAINTED_THREE_PAPER_LIGHT_SHARES }: { around: { centre: Vector3; radius: number }; paper: number; shares?: PaintedThreePaperLightShares },
@@ -171,7 +170,7 @@ export function createPaintedThreePaperLights(
   const key = aim(new DirectionalLight(0xffffff, strengths.key), toward.x, toward.y, toward.z);
   key.castShadow = true;
   key.shadow.mapSize.set(PAINTED_THREE_PAPER_SHADOW_MAP, PAINTED_THREE_PAPER_SHADOW_MAP);
-  key.shadow.normalBias = paper;
+  key.shadow.normalBias = Math.max(paper, (2 * radius) / PAINTED_THREE_PAPER_SHADOW_MAP);
   // The shadow camera sits 2 radii out, so `near` lies on the near side of everything it may need to shade.
   Object.assign(key.shadow.camera, { left: -radius, right: radius, top: radius, bottom: -radius, near: radius, far: 3 * radius });
   key.shadow.camera.updateProjectionMatrix();

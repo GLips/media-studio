@@ -75,3 +75,15 @@ test('a scaled sheet stands smaller about its hinge, and a sheet on it shrinks w
   assert.ok(Math.abs(doorSide - 20) < 1e-9);
   assert.throws(() => paintedThreePopUpRig({ ...POP_UP, sheets: [{ ...house, scale: 0 }] }), /scaled by 0/);
 });
+
+test("a pop-up's reach holds its furthest sheet, however many stand nearer in", () => {
+  const house = POP_UP.sheets[1], one = paperReach([house]), many = paperReach(Array.from({ length: 50 }, (_, i) => ({ ...house, id: `house-${i}` })));
+  assert.equal(many, one);
+  // Every corner of the risen house lies inside it.
+  const pose = paintedThreePopUpRig({ ...POP_UP, sheets: [house] }).poseAt(paintMoment(1)), middle = new Vector3(200, -150, 0).applyMatrix4(rootOf(pose, 'base'));
+  for (const [x, y] of [[0, 0], [100, 0]]) assert.ok(new Vector3(x, -y, 0).applyMatrix4(rootOf(pose, 'house')).distanceTo(middle) <= one);
+});
+
+function paperReach(sheets: PaintedThreePopUp['sheets']) {
+  return paintedThreePopUpRig({ ...POP_UP, sheets }).reach;
+}

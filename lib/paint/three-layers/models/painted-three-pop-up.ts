@@ -68,7 +68,7 @@ export type PaintedThreePopUpRig = {
   readonly folding: ReadonlyMap<string, PaintedThreeSheetFolding>;
   /** Sheet space into the pop-up's space at `moment`, by sheet id, then face id. */
   readonly poseAt: (moment: PaintMoment) => ReadonlyMap<string, ReadonlyMap<string, Matrix4>>;
-  /** A sphere about the base's centre holding the pop-up at any pose and turn, print px: what a shadow camera is fitted to. */
+  /** A sphere about the base's centre holding the pop-up at any pose and turn, print px: what a shadow camera is fitted to. The furthest sheet sets it, so many sheets don't widen it. */
   readonly reach: number;
 };
 
@@ -120,11 +120,19 @@ export function paintedThreePopUpRig(popUp: PaintedThreePopUp): PaintedThreePopU
   const tipped = new Matrix4().makeRotationX(-pitch), centred = new Matrix4().makeTranslation(-base.widthPx / 2, base.heightPx / 2, 0);
   const baseMatrixAt = (moment: PaintMoment) => tipped.clone().multiply(new Matrix4().makeRotationZ(presentationValueAt(popUp.turn ?? 0, moment))).multiply(centred);
   const baseFolding = folding.get(PAINTED_THREE_POP_UP_BASE)!, { x0, y0, x1, y1 } = baseFolding.faces.get(PAINTED_THREE_SHEET_ROOT)!.box, cx = base.widthPx / 2, cy = base.heightPx / 2;
-  // The base's root's farthest corner from its centre, its other faces, then every face of every sheet stacked: no pose reaches past their sum.
+  // The base's root's farthest corner from its centre, then its other faces: no pose of the base reaches past their sum.
   const rootReach = Math.hypot(Math.max(Math.abs(x0 - cx), Math.abs(x1 - cx)), Math.max(Math.abs(y0 - cy), Math.abs(y1 - cy)));
-  // A sheet's scale compounds through the sheets it stands on, so the largest product bounds every sheet's.
-  const grownOf = (sheet: PaintedThreePopUpSheet): number => (sheet.scale ?? 1) * (sheet.on ? grownOf(byId.get(sheet.on.sheet)!) : 1);
-  const reach = rootReach + sheetSpan(baseFolding) - Math.hypot(x1 - x0, y1 - y0) + sheets.reduce((sum, sheet) => sum + grownOf(sheet) * sheetSpan(folding.get(sheet.id)!), 0);
+  const baseReach = rootReach + sheetSpan(baseFolding) - Math.hypot(x1 - x0, y1 - y0);
+  // A sheet stands at a point on its parent no further out than the parent reaches (its spot, on the base's root), and
+  // no point of it lies further from there than its faces' span, grown by its scale and every scale it stands on.
+  const reachOf = new Map<string, number>([[PAINTED_THREE_POP_UP_BASE, baseReach]]), grownOf = new Map<string, number>([[PAINTED_THREE_POP_UP_BASE, 1]]);
+  for (const id of order) {
+    const sheet = byId.get(id)!, parent = parentOf(sheet), grown = grownOf.get(parent)! * (sheet.scale ?? 1);
+    const spot = parent === PAINTED_THREE_POP_UP_BASE && (sheet.on?.face ?? PAINTED_THREE_SHEET_ROOT) === PAINTED_THREE_SHEET_ROOT ? Math.hypot(sheet.at.x - cx, sheet.at.y - cy) : reachOf.get(parent)!;
+    grownOf.set(id, grown);
+    reachOf.set(id, spot + grown * sheetSpan(folding.get(id)!));
+  }
+  const reach = Math.max(...reachOf.values());
   return {
     order: [PAINTED_THREE_POP_UP_BASE, ...order],
     folding,
