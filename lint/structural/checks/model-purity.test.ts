@@ -4,7 +4,7 @@ import { runCheckOnFiles } from '../spec-tree.ts';
 
 test('a model reaching render, I/O or browser code is caught through any chain; erased types and math are not', () => {
   const findings = runCheckOnFiles('model-purity', {
-    'package.json': JSON.stringify({ imports: { '#studio': './lib/api.ts', '#lib/*': './lib/*' } }),
+    'package.json': JSON.stringify({ imports: { '#studio': './lib/api.ts', '#lib/*': './lib/*', '#library/*': './work/library/items/*' } }),
     'lib/api.ts': "export const Scene = 'render';\nexport type Clock = number;\n",
     // Legal neighbour: a pure helper, three's math by name, an erased type from the render barrel and a DOM type.
     'lib/picture/motion/models/ease.ts': [
@@ -37,6 +37,11 @@ test('a model reaching render, I/O or browser code is caught through any chain; 
     ].join('\n'),
     // A project's storyboard is a model too.
     'work/projects/p/storyboard.ts': "import { Scene } from '../../../lib/api.ts';\nexport const t = Scene;\n",
+    // Legal: a project's shared model reading a library item's metadata, for its storyboard.
+    'work/projects/q/project.ts': "export default { capability: 'silent', shared: ['take.ts'] };\n",
+    'work/projects/q/take.ts': "import item from '#library/take/item.json' with { type: 'json' };\nexport const take = item;\n",
+    'work/projects/q/storyboard.ts': "import { take } from './take.ts';\nexport const t = take;\n",
+    'work/library/items/take/item.json': '{ "id": "take" }\n',
     // So is a painting source, which `studio paint check` loads in plain Node.
     'work/projects/p/scenes/pond/pond.painting.ts': "import { Scene } from '#studio';\nexport default () => Scene;\n",
   });

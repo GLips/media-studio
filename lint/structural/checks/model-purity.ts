@@ -35,9 +35,9 @@ const IMPURE_GLOBALS = new Set([
 /** The global object's names, a member of which (`globalThis.fetch`) is the global itself. */
 const GLOBAL_OBJECTS = new Set(['globalThis', 'self']);
 
-/** Positions a model may pass through: pure until shown otherwise, and scanned in turn. */
+/** Positions a model may pass through: pure until shown otherwise, and scanned in turn. A library item's JSON is data. */
 const isScannable = (position: StudioPosition) =>
-  position.kind === 'models' ||
+  position.kind === 'models' || position.kind === 'library-item' ||
   (position.kind === 'project' && ['model', 'painting-source', 'storyboard', 'shared', 'unclassified', 'media', 'sfx', 'brand'].includes(position.role));
 
 const isModel = (position: StudioPosition) =>

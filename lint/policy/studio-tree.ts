@@ -61,6 +61,11 @@ export type StudioPosition =
   | { kind: 'brand-kit'; kit: string }
   /** A private stamp-paint style's source, `work/styles/<style>/` (docs/private-styles.md); a project names the ones it uses. */
   | { kind: 'style'; style: string }
+  /**
+   * A footage library item's committed metadata, `work/library/items/<item>/<file>.json`: data a project imports by
+   * the item's id (`#library/<item>/item.json`), pure as a model needs.
+   */
+  | { kind: 'library-item'; item: string }
   | ({ kind: 'project'; project: string } & ProjectRole)
   /** The checks themselves. Their fixtures name every violation on purpose. */
   | { kind: 'lint' }
@@ -202,6 +207,8 @@ export function classifyStudioPath(path: string, shared: DeclaredShared): Studio
     if (second === 'brands' && inside.length === 1 && inside[0] === 'brand.ts') return { kind: 'brand-kit', kit: name };
     if (second === 'styles' && inside.length && inside[0] !== 'brushes') return { kind: 'style', style: name };
     if (second === 'projects' && inside.length) return { kind: 'project', project: name, ...projectRole(inside, shared[name] ?? []) };
+    // parts is work/library/items/<item>/<file>.
+    if (second === 'library' && parts[2] === 'items' && parts.length === 5 && parts[4].endsWith('.json')) return { kind: 'library-item', item: parts[3] };
   }
   return { kind: 'undeclared' };
 }
