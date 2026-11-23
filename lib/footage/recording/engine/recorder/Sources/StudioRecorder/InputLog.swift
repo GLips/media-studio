@@ -58,8 +58,9 @@ final class InputLog {
     switch type {
     case .keyDown, .keyUp:
       line["type"] = type == .keyDown ? "keyDown" : "keyUp"
-      line["keyCode"] = event.getIntegerValueField(.keyboardEventKeycode)
-      if let key = NSEvent(cgEvent: event)?.charactersIgnoringModifiers, !key.isEmpty { line["key"] = key }
+      let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+      line["keyCode"] = keyCode
+      if let key = namedKeys[keyCode] ?? NSEvent(cgEvent: event)?.charactersIgnoringModifiers, !key.isEmpty { line["key"] = key }
       if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { line["repeat"] = true }
     case .flagsChanged:
       line["type"] = "modifiers"
@@ -100,3 +101,10 @@ private func buttonName(_ type: CGEventType, _ event: CGEvent) -> String {
   default: "button\(event.getIntegerValueField(.mouseEventButtonNumber))"
   }
 }
+
+/// Keys whose characters are control codes or nothing, by their names on the keyboard.
+private let namedKeys: [Int64: String] = [
+  36: "return", 48: "tab", 49: "space", 51: "delete", 53: "escape", 76: "enter", 117: "forwardDelete", 115: "home",
+  119: "end", 116: "pageUp", 121: "pageDown", 123: "left", 124: "right", 125: "down", 126: "up", 122: "f1", 120: "f2",
+  99: "f3", 118: "f4", 96: "f5", 97: "f6", 98: "f7", 100: "f8", 101: "f9", 109: "f10", 103: "f11", 111: "f12",
+]

@@ -86,7 +86,7 @@ final class Recording {
     if let screen {
       let geometry = screen.geometry
       tracks["screen"] = compact([
-        "file": "screen.mp4", "startSeconds": seconds(screen.writer.firstPTS), "frames": screen.writer.appended,
+        "file": "screen.mp4", "startSeconds": seconds(screen.writer.firstPTS),
         "writerDroppedFrames": screen.writer.notReady,
         "display": [
           "name": geometry.name, "boundsPoints": geometry.boundsPoints, "scale": geometry.scale,
@@ -97,14 +97,14 @@ final class Recording {
     if let camera, let cameraConfig = config.camera {
       tracks["camera"] = compact([
         "file": "camera.mp4", "startSeconds": seconds(camera.writer.firstPTS), "device": camera.deviceName,
-        "sourceFormat": camera.sourceFormat, "latencySeconds": cameraConfig.latencyMs / 1000, "frames": camera.writer.appended,
+        "sourceFormat": camera.sourceFormat, "latencySeconds": cameraConfig.latencyMs / 1000,
         "captureDroppedFrames": camera.droppedByCapture, "writerDroppedFrames": camera.writer.notReady,
       ])
     }
     if let mic, let micConfig = config.mic {
       tracks["mic"] = compact([
         "file": "mic.m4a", "startSeconds": seconds(mic.writer.firstPTS), "device": mic.deviceName, "channel": mic.channel,
-        "sampleRate": mic.sampleRate, "latencySeconds": micConfig.latencyMs / 1000, "samples": mic.frames,
+        "sampleRate": mic.sampleRate, "latencySeconds": micConfig.latencyMs / 1000,
         "hostDriftSeconds": mic.driftSeconds,
       ])
     }
