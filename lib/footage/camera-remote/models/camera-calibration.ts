@@ -32,7 +32,8 @@ export const DEFAULT_CALIBRATION_TARGETS: CalibrationTargets = { skinLuma: 120, 
 
 /** Close enough to stop: within this fraction of the luma target and this much warmth. */
 const LUMA_TOLERANCE = 0.08;
-const WARMTH_TOLERANCE = 0.015;
+// Frame to frame, a monitor-lit face's warmth wanders about 0.01 with what's on screen.
+const WARMTH_TOLERANCE = 0.02;
 // Encoded luma rises about 2^(1/2.2) per stop, so a ratio's stops are its log2 times 2.2.
 const ENCODING_GAMMA = 2.2;
 const MAX_STOPS_PER_STEP = 2;
@@ -69,6 +70,13 @@ export function readSkin(frame: RgbFrame, face: FaceBox): SkinReading {
   g /= count;
   b /= count;
   return { luma: 0.2126 * r + 0.7152 * g + 0.0722 * b, warmth: (r - b) / (r + g + b) };
+}
+
+/** The skin's reading across several frames, averaged: one frame of a monitor-lit face swings with the screen. */
+export function readSkinAcross(frames: readonly RgbFrame[], face: FaceBox): SkinReading {
+  const readings = frames.map((frame) => readSkin(frame, face));
+  const mean = (pick: (reading: SkinReading) => number) => readings.reduce((sum, reading) => sum + pick(reading), 0) / readings.length;
+  return { luma: mean((reading) => reading.luma), warmth: mean((reading) => reading.warmth) };
 }
 
 export type CalibrationStep =

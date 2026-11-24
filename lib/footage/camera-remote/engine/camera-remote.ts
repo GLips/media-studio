@@ -3,17 +3,16 @@
 // length only (camera-wifi-session.ts); the HDMI picture needs no network.
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { Duration, Effect, FileSystem, Layer, Schema } from 'effect';
-import { FetchHttpClient } from 'effect/http';
+import { Duration, Effect, FileSystem, Schema } from 'effect';
 import { studioFfmpegLayer } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
-import { nextCalibrationStep, readSkin, type CalibratedSettings, type CalibrationStep, type SkinReading } from '../models/camera-calibration.ts';
+import { nextCalibrationStep, readSkinAcross, type CalibratedSettings, type CalibrationStep, type SkinReading } from '../models/camera-calibration.ts';
 import { CameraRemoteConfigText, cameraRemoteSettings, type CameraRemoteSettings } from '../models/camera-remote-config.ts';
 import { withCameraWifi } from './camera-wifi-session.ts';
 import { detectFace, grabCameraHdmiFrame } from './camera-hdmi-frame.ts';
 import { availableCameraValues, readCameraExposure, setCameraValue, setCameraWhiteBalance } from './sony-camera-remote.ts';
 
-/** The services `studio camera` runs on, beneath Node's: ffmpeg for the HDMI picture, HTTP for the camera's API. */
-export const cameraRemoteLayer = Layer.mergeAll(studioFfmpegLayer, FetchHttpClient.layer);
+/** The services `studio camera` runs on beneath Node's: ffmpeg, for the HDMI picture. */
+export const cameraRemoteLayer = studioFfmpegLayer;
 
 export const CAMERA_REMOTE_CONFIG_PATH = join(homedir(), 'Library', 'Application Support', 'StudioCamera', 'config.json');
 
@@ -78,7 +77,7 @@ export type CameraCalibration = {
 
 const MAX_CALIBRATION_STEPS = 6;
 // The camera applies a change at once, but the capture card's picture trails it by a few frames.
-const SETTLE_AFTER_CHANGE = Duration.millis(1500);
+const SETTLE_AFTER_CHANGE = Duration.millis(2500);
 
 /**
  * Moves ISO and white balance until the face in the HDMI picture reads at the config's targets, a step at a time,
@@ -92,11 +91,13 @@ export const calibrateCamera = Effect.fn('CameraRemote.calibrate')(function* (co
     const exposure = yield* readCameraExposure();
     // A camera on a preset or auto white balance starts calibration from a neutral middle.
     let settings: CalibratedSettings = { whiteBalanceKelvin: exposure.whiteBalanceKelvin ?? 4400, iso: Number(exposure.iso) || 800 };
-    let { png, frame } = yield* grabCameraHdmiFrame(config.hdmiDevice, dir);
+    const first = yield* grabCameraHdmiFrame(config.hdmiDevice, dir);
+    const { png } = first;
+    let { frames } = first;
     const face = yield* detectFace(png);
     if (face === undefined) return yield* new NoFaceInPicture({ frame: png });
     for (let step = 1; ; step++) {
-      const reading = readSkin(frame, face);
+      const reading = readSkinAcross(frames, face);
       const next = nextCalibrationStep(reading, settings, config.calibration, isoLadder);
       yield* Effect.log(`step ${step}: skin luma ${reading.luma.toFixed(0)}, warmth ${reading.warmth.toFixed(3)} at ${settings.whiteBalanceKelvin}K ISO ${settings.iso} → ${next.kind}`);
       if (next.kind !== 'adjust') return { outcome: next.kind, settings, reading, steps: step } satisfies CameraCalibration;
@@ -105,7 +106,7 @@ export const calibrateCamera = Effect.fn('CameraRemote.calibrate')(function* (co
       if (next.settings.iso !== settings.iso) yield* setCameraValue('IsoSpeedRate', String(next.settings.iso));
       settings = next.settings;
       yield* Effect.sleep(SETTLE_AFTER_CHANGE);
-      ({ png, frame } = yield* grabCameraHdmiFrame(config.hdmiDevice, dir));
+      frames = (yield* grabCameraHdmiFrame(config.hdmiDevice, dir)).frames;
     }
   }));
 }, Effect.scoped);

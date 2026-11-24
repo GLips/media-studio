@@ -14,8 +14,7 @@
         "diagnostics": true,
         // Effect 4.1 tags its platform modules unstable. The studio pins one exact Effect version in package.json, so
         // their changes arrive only with a deliberate bump: Node's file system, paths, terminal and child processes,
-        // which runStudioEffect provides beneath every program, the sink the library's media server streams files into,
-        // and the HTTP client `studio camera` talks to the camera's API through.
+        // which runStudioEffect provides beneath every program, and the sink the library's media server streams files into.
         "allowedUnstableApis": [
           "effect/FileSystem",
           "effect/Path",
@@ -23,10 +22,6 @@
           "effect/Stdio",
           "effect/Terminal",
           "effect/process",
-          "effect/http/HttpClient",
-          "effect/http/HttpClientRequest",
-          "effect/http/HttpClientResponse",
-          "effect/http/FetchHttpClient",
           "@effect/platform-node/NodeServices",
           "@effect/platform-node-shared/NodeSink"
         ],

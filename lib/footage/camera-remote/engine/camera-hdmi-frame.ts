@@ -15,6 +15,8 @@ import type { FaceBox, RgbFrame } from '../models/camera-calibration.ts';
 const READ_SIZE = { width: 640, height: 360 } as const;
 // The capture card's first frames after opening can be black or stale; these are skipped.
 const SETTLE_FRAMES = 15;
+/** How many frames calibration averages a reading over, about a third of a second. */
+const READ_FRAMES = 8;
 
 /** The face detector couldn't be built or run. */
 export class FaceDetectorFailed extends Schema.TaggedError<FaceDetectorFailed>()('FaceDetectorFailed', { reason: Schema.String }) {
@@ -24,8 +26,8 @@ export class FaceDetectorFailed extends Schema.TaggedError<FaceDetectorFailed>()
 }
 
 /**
- * Grabs one HDMI frame from `device` into `dir`: `frame.png` at full size for a person to look at, and the read-size
- * RGB frame calibration measures.
+ * Grabs HDMI frames from `device` into `dir`: `frame.png`, one at full size for a person (or the face detector) to
+ * look at, and the read-size RGB frames calibration measures.
  */
 export const grabCameraHdmiFrame = Effect.fn('CameraHdmi.grab')(function* (device: string, dir: string) {
   const ffmpeg = yield* StudioFfmpeg;
@@ -36,10 +38,15 @@ export const grabCameraHdmiFrame = Effect.fn('CameraHdmi.grab')(function* (devic
     '-loglevel', 'error', '-y', '-f', 'avfoundation', '-pixel_format', 'uyvy422', '-i', `${device}:none`,
     '-filter_complex', `[0:v]select=gte(n\\,${SETTLE_FRAMES}),split[full][small];[small]scale=${READ_SIZE.width}:${READ_SIZE.height}[read]`,
     '-map', '[full]', '-frames:v', '1', png,
-    '-map', '[read]', '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', raw,
+    '-map', '[read]', '-frames:v', String(READ_FRAMES), '-f', 'rawvideo', '-pix_fmt', 'rgb24', raw,
   ]);
-  const frame: RgbFrame = { ...READ_SIZE, pixels: yield* fs.readFile(raw) };
-  return { png, frame };
+  const bytes = yield* fs.readFile(raw);
+  const frameBytes = READ_SIZE.width * READ_SIZE.height * 3;
+  const frames: RgbFrame[] = Array.from({ length: Math.floor(bytes.length / frameBytes) }, (_, index) => ({
+    ...READ_SIZE,
+    pixels: bytes.subarray(index * frameBytes, (index + 1) * frameBytes),
+  }));
+  return { png, frames };
 });
 
 const FaceBoxReply = Schema.fromJsonString(Schema.Struct({
