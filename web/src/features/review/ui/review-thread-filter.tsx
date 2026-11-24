@@ -12,10 +12,10 @@ import type { ReviewThreadActions } from './use-review-thread-panel.ts';
 
 const styles = stylex.create({
   row: {
-    minHeight: spacing.row, flexShrink: 0, paddingInlineStart: spacing.inset, paddingInlineEnd: spacing.tight,
+    minHeight: spacing.bar, flexShrink: 0, paddingInlineStart: spacing.inset, paddingInlineEnd: spacing.tight,
     borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: colors.line,
   },
-  title: { color: colors.cream, fontWeight: 600, paddingInlineEnd: spacing.tight, whiteSpace: 'nowrap' },
+  title: { color: colors.cream, fontWeight: 600, whiteSpace: 'nowrap' },
   chip: {
     display: 'inline-flex', alignItems: 'center', gap: spacing.tight, paddingInline: spacing.tight, borderRadius: radius.control,
     whiteSpace: 'nowrap', color: { default: colors.dim, ':hover': colors.cream }, backgroundColor: { default: 'transparent', ':hover': colors.raised },
@@ -31,6 +31,8 @@ const styles = stylex.create({
   keep: { color: colors.cream },
   cream: { color: colors.cream },
   end: { marginInlineStart: 'auto' },
+  // Between the filters and what acts on them: the counts read as one set, Clear as another.
+  rule: { width: '1px', height: spacing.row, backgroundColor: colors.line },
 });
 
 /** How many of the panel's threads stand in each state; the filter row shows those that aren't zero. */
@@ -124,17 +126,23 @@ export function ReviewThreadFilter({ head, counts, filter, onFilter, actions, ch
           </UnstyledButton>
         </HotkeyTooltip>
       )}
-      {/* Beside the resolved count, so `resolved` is said once: an Undo row in the list takes a slip back. */}
+      {/* "Clear resolved" in full, though the filter beside it says resolved: "Clear" alone could be any of the counts.
+          An Undo row in the list takes a slip back. */}
       {counts.resolved > 0 && (
-        <HotkeyTooltip name="Clear the resolved notes">
-          <UnstyledButton onClick={actions.clearResolved} {...stylex.props(styles.chip)}><Text component="span" size="sm" inherit>Clear</Text></UnstyledButton>
-        </HotkeyTooltip>
+        <>
+          <Box {...stylex.props(styles.rule)} />
+          <HotkeyTooltip name="Delete the resolved notes">
+            <UnstyledButton onClick={actions.clearResolved} {...stylex.props(styles.chip)}><Text component="span" size="sm" inherit>Clear resolved</Text></UnstyledButton>
+          </HotkeyTooltip>
+        </>
       )}
-      <Box {...stylex.props(styles.end)} />
-      {counts.addressed > 0 && <IconButton name="Resolve all addressed" onClick={() => actions.resolveAddressed()}><CheckCheck size={14} /></IconButton>}
-      {actions.copy && (
-        <IconButton name="Copy notes" onClick={() => void actions.copy?.()} active={actions.copied}>{actions.copied ? <Check size={14} /> : <Copy size={14} />}</IconButton>
-      )}
+      {/* The thread's own actions, held together at the row's end, wrapping as one when the counts fill the line. */}
+      <Group gap={0} wrap="nowrap" {...stylex.props(styles.end)}>
+        {counts.addressed > 0 && <IconButton name="Resolve all addressed" onClick={() => actions.resolveAddressed()}><CheckCheck size={14} /></IconButton>}
+        {actions.copy && (
+          <IconButton name="Copy notes" onClick={() => void actions.copy?.()} active={actions.copied}>{actions.copied ? <Check size={14} /> : <Copy size={14} />}</IconButton>
+        )}
+      </Group>
     </Group>
   );
 }

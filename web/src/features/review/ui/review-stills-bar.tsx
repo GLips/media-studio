@@ -1,6 +1,6 @@
 import { Box, Group } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import { Grid3x3, LayoutGrid, Scan } from 'lucide-react';
+import { LayoutGrid, Scan, SquareDashed } from 'lucide-react';
 import { nextReviewGuideSet, reviewGuidePlatformOf, type ReviewGuideSet } from '#lib/output/review/models/review-guides.ts';
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
@@ -64,7 +64,7 @@ export function ReviewStillsBar({ position, grid, clear, frame, stage }: ReviewS
       {!grid && (
         <>
           {position && <Box {...stylex.props(styles.rule)} />}
-          <IconButton name="Guides" active={guides !== null} onClick={() => setGuides(nextReviewGuideSet)}><Grid3x3 size={14} /></IconButton>
+          <IconButton name="Guides" active={guides !== null} onClick={() => setGuides(nextReviewGuideSet)}><SquareDashed size={14} /></IconButton>
           {guides && <Readout bright>{reviewGuideSetLabel(guides, frame)}</Readout>}
           <IconButton name="Fit / 1:1" active={search.z === 1} onClick={() => setSearch({ z: search.z === 1 ? undefined : 1 })}><Scan size={14} /></IconButton>
           {zoom && <Readout bright={search.z === 1}>{zoom}</Readout>}

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { reviewSectionedGridStep, reviewStillAspectSectionsOf } from './review-still-aspects.ts';
+import { reviewSectionedGridStep, reviewStillAspectSectionsOf, reviewStillRatioName } from './review-still-aspects.ts';
 
 const sizes: Record<string, { w: number; h: number }> = {
   story: { w: 1080, h: 1920 }, og: { w: 1200, h: 630 }, square: { w: 1080, h: 1080 }, og2x: { w: 2400, h: 1260 }, portrait: { w: 1080, h: 1350 },
@@ -23,4 +23,8 @@ test('a row up or down crosses into the next section, keeping the column where t
   assert.equal(reviewSectionedGridStep(6, { along: 0, rows: -1 }, [5, 2], 4), 4);
   assert.equal(reviewSectionedGridStep(6, { along: 0, rows: 1 }, [5, 2], 4), 6);
   assert.equal(reviewSectionedGridStep(4, { along: 1, rows: 0 }, [5, 2], 4), 5);
+});
+
+test('a section goes by the name its ratio is cut to, or its width to one', () => {
+  assert.deepEqual([1.9, 1200 / 630, 1280 / 720, 1080 / 1350, 1080 / 1920, 1000 / 700].map(reviewStillRatioName), ['1.91:1', '1.91:1', '16:9', '4:5', '9:16', '1.43:1']);
 });

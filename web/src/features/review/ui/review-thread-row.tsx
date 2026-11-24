@@ -8,7 +8,7 @@ import { formatReviewPlanNoteWhere } from '#lib/output/review/models/review-plan
 import { type PlacedReviewThread, type ReviewRefusedSlice, type ReviewSplices, reviewCueNameOf, reviewThreadFrameOf } from '#lib/output/review/models/review-placement.ts';
 import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
 import {
-  REVIEW_THREAD_TONES, reviewThreadTone, type ReviewEntry, type ReviewThread, type ReviewThreadTone,
+  REVIEW_THREAD_TONES, reviewThreadTone, type ReviewEntry, type ReviewThread, type ReviewThreadKind, type ReviewThreadTone,
 } from '#lib/output/review/models/review-threads.ts';
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
@@ -44,7 +44,9 @@ const styles = stylex.create({
   resolved: { color: colors.dim },
   keep: { color: colors.cream },
   scene: { color: colors.dim, whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0 },
-  actions: { marginInlineStart: 'auto', flexShrink: 0 },
+  // The number closes the line, dim: it's for quoting a note, not for reading it.
+  number: { marginInlineStart: 'auto', flexShrink: 0 },
+  actions: { flexShrink: 0 },
   body: { paddingInlineStart: spacing.inset },
   // A gap after the label line; the replies stand a step further in, under a quiet rule, so the request reads apart
   // from both.
@@ -88,6 +90,9 @@ const REPLY_GLYPHS: Readonly<Record<NonNullable<ReviewEntry['transition']> | 'as
   reopened: { glyph: REVIEW_THREAD_TONES.open.glyph, style: 'open', word: 'reopened' },
   asks: { ...REVIEW_THREAD_TONES.asks, style: 'asks' },
 };
+
+/** A note's kind as its head says it, in plain words beside its icon. */
+const REVIEW_THREAD_KIND_WORDS: Readonly<Record<ReviewThreadKind, string>> = { fix: 'Fix', question: 'Question', keep: 'Keep' };
 
 /**
  * `0:04.12`, `0:07.00–0:08.10`, or for a note off the timeline what it's on. A decision's note says nothing: its
@@ -167,6 +172,8 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
   const scene = frame === undefined || !place ? undefined : reviewSceneAtFrame(place.scenes, frame);
   // On a file's thread, a note on the whole project says so where a time would be.
   const where = place && thread.anchor.on === 'project' ? 'whole project' : reviewThreadWhereOf(thread, place);
+  // A moment reads in the transport's mono figures; a place in words.
+  const timed = 'frame' in thread.placement || thread.anchor.on === 'decision';
   const writtenOn = thread.anchor.on === 'video' || thread.anchor.on === 'still' ? thread.anchor.writtenOn : undefined;
   const carried = writtenOn && place && writtenOn.hash !== place.renderHash ? writtenOn : undefined;
   const carriedName = carried && place && reviewCarriedRenderNameOf(carried, place);
@@ -214,21 +221,20 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
         <Tooltip label={word} openDelay={400} withinPortal>
           <Text component="span" size="sm" {...stylex.props(styles.glyph, styles[style])}>{glyph}</Text>
         </Tooltip>
-        <Tooltip label={thread.kind} openDelay={400} withinPortal>
-          <Text component="span" size="sm" {...stylex.props(styles.kind)}>
-            <ReviewThreadKindIcon kind={thread.kind} />
-            {thread.kind !== 'fix' && thread.kind}
-          </Text>
-        </Tooltip>
-        <Readout>#{thread.id}</Readout>
-        {where && <Readout>{where}</Readout>}
-        {scene && <Text component="span" size="sm" {...stylex.props(styles.scene)}>{scene.id}</Text>}
+        <Text component="span" size="sm" {...stylex.props(styles.kind)}>
+          <ReviewThreadKindIcon kind={thread.kind} />
+          {REVIEW_THREAD_KIND_WORDS[thread.kind]}
+        </Text>
+        {where && <Text component="span" size="sm" {...stylex.props(styles.scene)}>·</Text>}
+        {where && (timed ? <Readout>{where}</Readout> : <Text component="span" size="sm" {...stylex.props(styles.scene)}>{where}</Text>)}
+        {scene && <Text component="span" size="sm" {...stylex.props(styles.scene)}>· {scene.id}</Text>}
         {thread.anchor.on === 'video' && thread.anchor.cue && <Text component="span" size="sm" {...stylex.props(styles.scene)}>♪ {reviewCueNameOf(thread.anchor.cue)}</Text>}
         {carried && (
           <Tooltip label={`written on ${carried.path}`} openDelay={400} withinPortal>
             <Readout>{carriedName}</Readout>
           </Tooltip>
         )}
+        <Box component="span" {...stylex.props(styles.number)}><Readout>#{thread.id}</Readout></Box>
         {(hot || look.selected) && (
           <Group gap={0} wrap="nowrap" {...stylex.props(styles.actions)} onClick={(event) => event.stopPropagation()}>
             <IconButton name="Reply" onClick={() => actions.startInline(thread.id, 'reply')}><CornerUpLeft size={14} /></IconButton>

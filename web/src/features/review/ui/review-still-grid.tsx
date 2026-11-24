@@ -5,7 +5,7 @@ import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { reviewStillShortNames } from './review-still-short-names.ts';
-import { reviewSectionedGridStep, reviewStillAspectSectionsOf, type ReviewStillOrientation } from './review-still-aspects.ts';
+import { reviewSectionedGridStep, reviewStillAspectSectionsOf, reviewStillRatioName, type ReviewStillOrientation } from './review-still-aspects.ts';
 import { useReviewStillPixels, type ReviewStillSibling } from './review-still-siblings.ts';
 import { ReviewStillTile } from './review-still-tile.tsx';
 import { ReviewThreadDots } from './review-thread-dots.tsx';
@@ -38,7 +38,10 @@ function reviewGridNameParts(name: string): { head: string; tail: string } {
 /** How many columns a section lays out at its width now: the arrows' up and down move by that many. */
 const reviewGridColumnsOf = (grid: HTMLElement | null) => (grid ? getComputedStyle(grid).gridTemplateColumns.split(' ').length : 1);
 
-/** A section's heading: `Wide · 1200 × 630 · 4 stills`, its shape, its size when every still shares one, its count. */
+/**
+ * A section's heading: `Wide · 1200 × 630 · 4 stills`, its orientation, its size when every still shares one, its
+ * count; `Wide · 16:9 · 1280 × 720` when another section is wide too.
+ */
 const REVIEW_STILL_ORIENTATION_TITLES: Readonly<Record<ReviewStillOrientation, string>> = { wide: 'Wide', square: 'Square', tall: 'Tall' };
 
 type ReviewStillGridProps = {
@@ -61,6 +64,8 @@ export function ReviewStillGrid({ stills, openPath, clear, onOpen }: ReviewStill
   const { groups, unread } = reviewStillAspectSectionsOf(stills, (s) => sizeByPath.get(s.path));
   const sections = [...groups, ...(unread.length ? [{ word: null, size: null, items: unread }] : [])];
   const shown = sections.flatMap((g) => g.items);
+  const orientations = groups.map((g) => g.word);
+  const sharedOrientations = new Set(orientations.filter((word, i) => orientations.indexOf(word) !== i));
   // Held by path, not place: a still moves into its aspect's section once it decodes.
   const [cursor, setCursor] = useState(openPath);
   const at = Math.max(0, shown.findIndex((s) => s.path === cursor));
@@ -82,6 +87,7 @@ export function ReviewStillGrid({ stills, openPath, clear, onOpen }: ReviewStill
             {section.word !== null && (
               <Group gap="tight" wrap="nowrap" {...stylex.props(styles.subhead)}>
                 <Text component="span" size="sm" {...stylex.props(styles.shape)}>{REVIEW_STILL_ORIENTATION_TITLES[section.word]}</Text>
+                {sharedOrientations.has(section.word) && <Readout>· {reviewStillRatioName(section.aspect)}</Readout>}
                 {section.size && <Readout>· {section.size.w} × {section.size.h}</Readout>}
                 <Text component="span" size="sm">· {section.items.length} {section.items.length === 1 ? 'still' : 'stills'}</Text>
               </Group>
