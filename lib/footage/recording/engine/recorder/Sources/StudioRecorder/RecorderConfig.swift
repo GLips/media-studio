@@ -19,7 +19,9 @@ struct RecorderConfig: Codable {
     hotkey: "ctrl+opt+cmd+r",
     recordingsDir: "~/Movies/Studio Recordings",
     screen: ScreenConfig(display: "LG UltraFine", fps: 30, bitrateMbps: 16, showsCursor: true),
-    camera: CameraConfig(device: "Cam Link", width: 3840, height: 2160, fps: 30, bitrateMbps: 30, latencyMsByDevice: ["Cam Link": 160]),
+    // The Cam Link sends only 8-bit 4:2:0 at 4K, so quality is bitrate: 80 Mbps HEVC leaves room to grade the flat
+    // picture profile without blocking in the shadows.
+    camera: CameraConfig(device: "Cam Link", width: 3840, height: 2160, fps: 30, bitrateMbps: 80, latencyMsByDevice: ["Cam Link": 160]),
     mic: MicConfig(device: "Scarlett Solo", channelByDevice: ["Scarlett": 1], bitrateKbps: 192, latencyMsByDevice: [:])
   )
 
