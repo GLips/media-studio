@@ -1,6 +1,6 @@
 // studio library: the one store of footage any project draws on (lib/footage/library/). Each verb builds an Effect
 // program and runs it with the library's layer; its stdout is the payload, its progress Effect.log lines on stderr.
-import { defineCommand } from 'citty';
+import { defineCommand, type ArgsDef } from 'citty';
 import type { Effect } from 'effect';
 import type { LibraryStore } from '#lib/footage/library/engine/library-store.ts';
 import type { LibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
@@ -8,7 +8,7 @@ import type { RecorderDeviceLatencies } from '#lib/footage/library/engine/librar
 import type { FootageTranscriber } from '#lib/footage/transcript/engine/footage-transcriber.ts';
 import type { StudioFfmpeg } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
 import type { NodeServices } from '@effect/platform-node';
-import { refuseOptionsBeforeSubcommand } from '../command-flags.ts';
+import { refuseOptionsBeforeSubcommand, refuseUnknownCommandFlags } from '../command-flags.ts';
 
 type LibraryServices = LibraryStore | LibraryMediaFolder | RecorderDeviceLatencies | FootageTranscriber | StudioFfmpeg | NodeServices.NodeServices;
 
@@ -334,14 +334,21 @@ const lookCommand = defineCommand({
   },
 });
 
+const libraryOpenArgs = {
+  item: libraryItemArg,
+  port: { type: 'string', description: "Port of the studio app: the main checkout's 4317, or one fixed per worktree, by default" },
+  open: { type: 'boolean', default: true, description: 'Open it in the browser (--no-open to just serve)' },
+} as const satisfies ArgsDef;
+
 const openCommand = defineCommand({
   meta: {
     name: 'open',
     description: "Open an item's page in the studio app, to watch, read and flag it.",
     about: 'Starts the studio app in the background if it isn\'t running (`studio app --help`) and returns; in a worktree it serves the app here until Ctrl-C. Studio Recorder opens a recent take this way. Reads committed metadata, so the page opens with the media offline; it says so where it would play.',
   },
-  args: { item: libraryItemArg, port: { type: 'string', description: "Port of the studio app: the main checkout's 4317, or one fixed per worktree, by default" } },
-  async run({ args }) {
+  args: libraryOpenArgs,
+  async run({ args, rawArgs }) {
+    refuseUnknownCommandFlags(rawArgs.filter((arg) => arg !== '--no-open'), libraryOpenArgs);
     const { Effect } = await import('effect');
     const { LibraryStore } = await import('#lib/footage/library/engine/library-store.ts');
     const { describeStudioAppPlace, openStudioAppPageInBrowser, reachStudioApp } = await import('#lib/platform/web/engine/studio-app-open.ts');
@@ -351,7 +358,7 @@ const openCommand = defineCommand({
     }));
     const app = await reachStudioApp(args.port === undefined ? {} : { port: Number(args.port) });
     const url = `${app.url}/library/${encodeURIComponent(id)}`;
-    openStudioAppPageInBrowser(url);
+    if (args.open) openStudioAppPageInBrowser(url);
     process.stderr.write(`${id} on ${url}, ${describeStudioAppPlace(app)}\n`);
     if (app.servingHere) await new Promise(() => {});
   },

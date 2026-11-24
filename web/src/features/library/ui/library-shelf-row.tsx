@@ -36,19 +36,26 @@ const styles = stylex.create({
   },
   // Two lines beside a 54px poster.
   item: { height: '64px' },
+  // A poster over its lines, as tall as they make it.
+  tile: { display: 'flex', flexDirection: 'column', gap: spacing.tight, height: 'auto', padding: spacing.tight },
   flex: { display: 'flex', alignItems: 'center', gap: spacing.inset, paddingInline: spacing.gap },
 });
+
+const LIBRARY_SHELF_LAYOUTS = { columns: [libraryShelfColumns.grid, styles.item], line: styles.flex, tile: styles.tile } as const;
 
 type LibraryShelfRowProps = {
   readonly item: string;
   /** Where the item opens: a moment, a flag. */
   readonly at?: { t: number; flag?: number };
-  /** On the shelf's columns (an item), or a free line (a search hit). */
-  readonly layout: 'columns' | 'line';
+  /** On the shelf's columns (an item in the list), a free line (a search hit), or a grid's tile (an item). */
+  readonly layout: 'columns' | 'line' | 'tile';
   readonly children: ReactNode;
 };
 
-/** The shelf's one row, an item (64px, two lines) or a hit in it (40px): lit on hover or keyboard focus; it opens the item. */
+/**
+ * The shelf's one row, an item (64px, two lines, or a grid's tile) or a hit in it (40px): lit on hover or keyboard
+ * focus; it opens the item.
+ */
 export function LibraryShelfRow({ item, at, layout, children }: LibraryShelfRowProps) {
   return (
     <AnchorLink
@@ -57,7 +64,7 @@ export function LibraryShelfRow({ item, at, layout, children }: LibraryShelfRowP
       search={at ? { t: at.t, flag: at.flag } : {}}
       underline="never"
       {...{ [LIBRARY_SHELF_ROW_ATTRIBUTE]: '' }}
-      {...stylex.props(styles.row, layout === 'columns' ? [libraryShelfColumns.grid, styles.item] : styles.flex)}
+      {...stylex.props(styles.row, LIBRARY_SHELF_LAYOUTS[layout])}
     >
       {children}
     </AnchorLink>

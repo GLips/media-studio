@@ -24,15 +24,15 @@ export const LIBRARY_MEDIA_PATH = '/library-media';
 const LIBRARY_FRAMES_PATH = '/library-frames';
 const LIBRARY_POSTERS_PATH = '/library-posters';
 
-/** A poster's width: twice the shelf's 96px poster, for a 2x screen. */
-const LIBRARY_POSTER_WIDTH = 192;
+/** A poster's width: the shelf grid's widest tile, about 320px, on a 2x screen; the list's 96px poster scales it down. */
+const LIBRARY_POSTER_WIDTH = 640;
 /**
  * The decoder grid a poster is cut on. Coarse, since a poster needs no exact frame, but fine enough that the seek's
  * lead decodes only a few frames before it.
  */
 const LIBRARY_POSTER_FPS = 4;
-/** Posters kept in memory, about 10 KB each: more than a shelf shows. */
-const LIBRARY_POSTER_CAPACITY = 512;
+/** Posters kept in memory, about 50 KB each: more than a shelf shows. */
+const LIBRARY_POSTER_CAPACITY = 256;
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.wav': 'audio/wav', '.ogg': 'audio/ogg',

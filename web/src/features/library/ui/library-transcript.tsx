@@ -16,7 +16,7 @@ import { LIBRARY_CLOCK_FPS, useLibraryPlaybackState } from './library-item-playb
 const TIME = 'var(--library-time, 0)';
 
 const styles = stylex.create({
-  body: { padding: spacing.inset, display: 'flex', flexDirection: 'column', gap: spacing.gap },
+  body: { padding: spacing.inset, display: 'flex', flexDirection: 'column', gap: spacing.tight },
   empty: { padding: spacing.inset, color: colors.dim },
   frame: { position: 'relative', height: '100%', minHeight: 0 },
   // Over the transcript's foot, where the eye goes when the lit line has scrolled out of view.
@@ -32,8 +32,18 @@ const styles = stylex.create({
   stamp: {
     textAlign: 'start', paddingInline: spacing.tight, borderRadius: radius.control, backgroundColor: { default: 'transparent', ':hover': colors.raised },
   },
-  words: { margin: 0, color: colors.cream, lineHeight: typography.proseLeading },
-  word: { position: 'relative', isolation: 'isolate', cursor: 'pointer', borderRadius: radius.control },
+  // A line's time to the second; the hundredths only under the pointer, where they're wanted to place a cut.
+  whole: { display: { default: 'inline', [stylex.when.ancestor(':hover')]: 'none' } },
+  exact: { display: { default: 'none', [stylex.when.ancestor(':hover')]: 'inline' } },
+  // Words dragged over take the accent's tone, not the browser's blue, which reads as the cobalt of the word being said.
+  words: {
+    margin: 0, color: colors.cream, lineHeight: typography.proseLeading,
+    '::selection': { backgroundColor: `color-mix(in srgb, ${colors.accent} 40%, transparent)`, color: colors.cream },
+  },
+  word: {
+    position: 'relative', isolation: 'isolate', cursor: 'pointer', borderRadius: radius.control,
+    '::selection': { backgroundColor: `color-mix(in srgb, ${colors.accent} 40%, transparent)`, color: colors.cream },
+  },
   // The word being said: lit in cobalt from its start to its end, pure CSS on the time variable, as the plan lights it.
   wash: {
     position: 'absolute', insetInline: `calc(-1 * ${spacing.hairline})`, insetBlock: 0, backgroundColor: colors.cobalt,
@@ -153,7 +163,12 @@ export function LibraryTranscript() {
           {lines.map((line, n) => (
             <Box key={line.firstWord} data-line={n} aria-current={n === shownLine || undefined}
               {...stylex.props(styles.line, lineFlags[n] && LINE_RULES[lineFlags[n].by])}>
-              <UnstyledButton onClick={() => playback.seek(line.start)} {...stylex.props(styles.stamp)}><Readout>{formatReviewClock(line.start)}</Readout></UnstyledButton>
+              <UnstyledButton onClick={() => playback.seek(line.start)} {...stylex.props(styles.stamp, stylex.defaultMarker())}>
+                <Readout>
+                  <Box component="span" {...stylex.props(styles.whole)}>{formatReviewClock(line.start).slice(0, -3)}</Box>
+                  <Box component="span" {...stylex.props(styles.exact)}>{formatReviewClock(line.start)}</Box>
+                </Readout>
+              </UnstyledButton>
               <Text component="p" size="md" {...stylex.props(styles.words)}>
                 {words.slice(line.firstWord, line.firstWord + line.wordCount).map((word, k) => {
                   const i = line.firstWord + k, middle = (word.start + word.end) / 2;
