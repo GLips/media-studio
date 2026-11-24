@@ -35,7 +35,7 @@ function reviewStillZoomOf(actual: boolean, frame: { w: number; h: number } | nu
 }
 
 type ReviewStillsBarProps = {
-  /** Where the open still stands in its folder, and how many there are; null for a still alone. */
+  /** Where the open still stands in its folder, and how many there are; null for a still alone, and on the grid. */
   readonly position: { at: number; of: number } | null;
   readonly grid: boolean;
   /** Whether any still shown lets the ground through: only then are the grounds offered. */

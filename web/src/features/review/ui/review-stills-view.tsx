@@ -26,24 +26,33 @@ const reviewSearchCarriedToStill = ({ filter, z }: ReviewSearch): ReviewSearch =
  * stepping opens it.
  */
 export function ReviewStillsView() {
-  const { project, artifact, search } = useReviewScreen();
+  const { project, artifact, search, setSearch } = useReviewScreen();
   const stills = useReviewStillSiblings();
   const pixels = useReviewStillPixels(stills);
   const { ref: stageRef, width, height } = useElementSize();
   const navigate = useNavigate({ from: '/projects/$project/artifacts/$' });
   const open = (path: string) =>
     void navigate({ to: '/projects/$project/artifacts/$', params: { project, _splat: path }, search: reviewSearchCarriedToStill });
+  // On the grid, the selection is the open still: the rail's preview, facts, notes and prompt are all that still's.
+  // Replacing history, as arrowing through twenty stills is one look, not twenty places to go back through.
+  const select = (path: string) => void navigate({
+    to: '/projects/$project/artifacts/$', params: { project, _splat: path }, replace: true,
+    search: (was) => ({ ...reviewSearchCarriedToStill(was), view: 'grid' }),
+  });
   const folder = stills.length > 1;
   const grid = folder && search.view === 'grid';
   const here = stills.findIndex((s) => s.path === artifact.path);
   const clear = new Set(stills.filter((_, i) => pixels[i]?.clear).map((s) => s.path));
   return (
     <Box {...stylex.props(styles.view, folder && !grid && styles.withStrip)}>
-      {grid ? <ReviewStillGrid stills={stills} openPath={artifact.path} clear={clear} onOpen={open} /> : (
-        <Box ref={stageRef} {...stylex.props(styles.stage)}><ReviewStage /></Box>
+      {grid
+        ? <ReviewStillGrid stills={stills} selectedPath={artifact.path} clear={clear} onSelect={select} onOpen={() => setSearch({ view: 'stage' })} />
+        : <Box ref={stageRef} {...stylex.props(styles.stage)}><ReviewStage /></Box>}
+      {/* The grid's sections count its stills, so its bar is there only for the grounds, when a still is clear. */}
+      {(!grid || clear.size > 0) && (
+        <ReviewStillsBar position={folder && !grid ? { at: here, of: stills.length } : null} grid={grid}
+          clear={grid ? clear.size > 0 : clear.has(artifact.path)} frame={pixels[here] ?? null} stage={{ width, height }} />
       )}
-      <ReviewStillsBar position={folder ? { at: here, of: stills.length } : null} grid={grid}
-        clear={grid ? clear.size > 0 : clear.has(artifact.path)} frame={pixels[here] ?? null} stage={{ width, height }} />
       {folder && !grid && <ReviewFilmstrip stills={stills} openPath={artifact.path} clear={clear} onOpen={open} />}
     </Box>
   );

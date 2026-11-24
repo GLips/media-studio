@@ -13,8 +13,7 @@ const styles = stylex.create({
   },
   // The whole name, which the grid shortens: broken anywhere rather than cut, since its tail is what tells variants apart.
   name: { color: colors.cream, fontWeight: 600, overflowWrap: 'anywhere' },
-  // The open still whole, the rail's width up to half the screen: big enough to judge it without leaving the grid, and
-  // it says which still the rail's notes are on while the cursor is elsewhere.
+  // The selected still whole, the rail's width up to half the screen: big enough to judge it without leaving the grid.
   open: { display: 'block', marginBottom: spacing.gap, borderRadius: radius.control, cursor: 'zoom-in' },
   preview: { display: 'block', width: '100%', maxHeight: '50dvh', objectFit: 'contain', objectPosition: 'left center', borderRadius: radius.control },
 });
