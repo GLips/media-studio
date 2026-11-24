@@ -2,8 +2,8 @@ import { Box, Code, Group, Stack, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { AudioLines, File, Film, Mic, Monitor, Video, type LucideIcon } from 'lucide-react';
-import { useRef } from 'react';
-import { formatLibraryLength, libraryItemHasRecorderTitle, librarySourcesOf, type LibrarySourceKind } from '#lib/footage/library/models/library-item.ts';
+import { useRef, useState } from 'react';
+import { formatLibraryLength, librarySourcesOf, type LibrarySourceKind } from '#lib/footage/library/models/library-item.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
@@ -15,6 +15,8 @@ import { libraryShelfQueryOptions } from '../controllers/library-queries.ts';
 import type { LibraryShelfItem } from '../controllers/library-reads.ts';
 import { LibraryPoster } from './library-poster.tsx';
 import { LibrarySearchHitRow } from './library-search-hit-row.tsx';
+import { libraryShelfLabelsOf } from './library-shelf-labels.ts';
+import { LibraryShelfTile } from './library-shelf-tile.tsx';
 import { libraryShelfColumns, LibraryShelfRow } from './library-shelf-row.tsx';
 import { focusLibraryShelfRow, useLibraryShelfHotkeys } from './use-library-shelf-hotkeys.ts';
 import { useLibraryShelfQuery } from './use-library-shelf-query.ts';
@@ -51,35 +53,25 @@ const styles = stylex.create({
     whiteSpace: 'nowrap',
   },
   sources: { color: colors.dim, width: 'fit-content' },
+  // As the project page's tile grid, posters as large as four abreast allow; inset so their edges meet the title's.
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', alignItems: 'start', gap: spacing.gap, marginInline: spacing.tight },
 });
 
 const SOURCE_ICONS: Record<LibrarySourceKind, LucideIcon> = { screen: Monitor, camera: Video, mic: Mic, video: Film, audio: AudioLines, other: File };
 
-/** When the footage began, or was added: `Nov 22, 9:41 PM`, with the year only when it isn't this one. */
-function formatLibraryDate(iso: string): string {
-  const date = new Date(iso);
-  const year = date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric';
-  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', year, hour: 'numeric', minute: '2-digit' });
-}
-
-/**
- * An item's two lines. A recording the recorder named is titled by when it began, and its opening words tell it from
- * its neighbours; a named item keeps its name, over its date and opening words.
- */
-function LibraryShelfItemName({ shelved: { item, opening, flags } }: { readonly shelved: LibraryShelfItem }) {
-  const interrupted = item.source.kind === 'studio-recorder' && item.source.status === 'interrupted';
-  const date = formatLibraryDate(item.recordedAt ?? item.addedAt);
-  const dated = libraryItemHasRecorderTitle(item);
+/** An item's two lines in the list: its title and marks, then its date where that isn't the title, and its opening words. */
+function LibraryShelfItemName({ shelved }: { readonly shelved: LibraryShelfItem }) {
+  const { title, dateLead, opening, interrupted, flagCount } = libraryShelfLabelsOf(shelved);
   return (
     <Box {...stylex.props(styles.name)}>
       <Box {...stylex.props(styles.titleLine)}>
-        <Text component="span" size="md" title={item.title} {...stylex.props(styles.text)}>{dated ? date : item.title}</Text>
+        <Text component="span" size="md" title={shelved.item.title} {...stylex.props(styles.text)}>{title}</Text>
         {interrupted && <Text component="span" size="sm" {...stylex.props(styles.mark)}>interrupted</Text>}
-        {flags > 0 && <Text component="span" size="xs" {...stylex.props(styles.badge)}>{flags} flag{flags > 1 ? 's' : ''}</Text>}
+        {flagCount && <Text component="span" size="xs" {...stylex.props(styles.badge)}>{flagCount}</Text>}
       </Box>
-      {(!dated || opening) && (
+      {(dateLead || opening) && (
         <Text component="span" size="sm" {...stylex.props(styles.text, styles.second)}>
-          {!dated && <Text component="span" inherit {...stylex.props(styles.dim)}>{date}{opening && ' · '}</Text>}
+          {dateLead && <Text component="span" inherit {...stylex.props(styles.dim)}>{dateLead}{opening && ' · '}</Text>}
           <Text component="span" inherit {...stylex.props(styles.said)}>{opening}</Text>
         </Text>
       )}
@@ -121,8 +113,8 @@ function LibraryShelfColumnHead() {
 }
 
 /**
- * The footage library: every item, newest first, on columns under a poster each, or with a query, every place an
- * item says it or a flag's note does. Keyboard first: `/` searches, the arrows walk the rows, `Enter` opens one at
+ * The footage library: every item, newest first, as large posters or as a table of rows, or with a query, every place
+ * an item says it or a flag's note does. Keyboard first: `/` searches, the arrows walk the rows, `Enter` opens one at
  * its moment.
  */
 export function LibraryShelfPage() {
@@ -133,11 +125,14 @@ export function LibraryShelfPage() {
   useLibraryShelfHotkeys(listRef, searchRef);
   const titles = new Map(shelf.items.map(({ item }) => [item.id, item.title]));
   const count = shelf.items.length;
+  // Stands in for useStudioCollectionView() (web/src/shared/ui/) until it lands: the studio-wide list or grid.
+  const [shelfView] = useState<'grid' | 'list'>('grid');
+  const listed = shelfView === 'list';
   return (
     <StudioShell>
       <StudioPageTitle count={count > 0 ? `${count} recording${count > 1 ? 's' : ''}` : undefined}>Library</StudioPageTitle>
       <FadeScroll>
-        <Stack ref={listRef} gap={0} {...stylex.props(styles.page, libraryShelfColumns.table, stylex.defaultMarker())}>
+        <Stack ref={listRef} gap={0} {...stylex.props(styles.page, listed && libraryShelfColumns.table, stylex.defaultMarker())}>
           <TextInput
             ref={searchRef}
             aria-label="Search the library"
@@ -166,8 +161,13 @@ export function LibraryShelfPage() {
           {!searching && count === 0 && (
             <Text size="sm" {...stylex.props(styles.quiet)}>The library is empty: <Code>studio library add &lt;file&gt;</Code></Text>
           )}
-          {!searching && count > 0 && <LibraryShelfColumnHead />}
-          {!searching && shelf.items.map((shelved) => <LibraryShelfItemRow key={shelved.item.id} shelved={shelved} online={shelf.media.online} />)}
+          {!searching && count > 0 && listed && <LibraryShelfColumnHead />}
+          {!searching && listed && shelf.items.map((shelved) => <LibraryShelfItemRow key={shelved.item.id} shelved={shelved} online={shelf.media.online} />)}
+          {!searching && count > 0 && !listed && (
+            <Box {...stylex.props(styles.grid)}>
+              {shelf.items.map((shelved) => <LibraryShelfTile key={shelved.item.id} shelved={shelved} online={shelf.media.online} />)}
+            </Box>
+          )}
         </Stack>
       </FadeScroll>
     </StudioShell>
