@@ -10,7 +10,7 @@ import { Readout } from '#web/shared/ui/readout.tsx';
 import { StudioPageTitle } from '#web/shared/ui/studio-page-title.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
 import { TextInput } from '#web/shared/ui/text-input.tsx';
-import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
+import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { libraryShelfQueryOptions } from '../controllers/library-queries.ts';
 import type { LibraryShelfItem } from '../controllers/library-reads.ts';
 import { LibraryPoster } from './library-poster.tsx';
@@ -20,7 +20,8 @@ import { focusLibraryShelfRow, useLibraryShelfHotkeys } from './use-library-shel
 import { useLibraryShelfQuery } from './use-library-shelf-query.ts';
 
 const styles = stylex.create({
-  // Fills whatever width it's given: a row's columns spread with it, so its figures line up under their names.
+  // As wide as it's given, to the table's cap (libraryShelfColumns.table): a row's columns spread with it, so its
+  // figures line up under their names.
   // Each row pads itself by a gap, so the page pads the rest: the search field, the column names and the posters all
   // start at the page title's inset (StudioPageTitle).
   page: { paddingInline: `calc(${spacing.row} - ${spacing.gap})`, paddingBlockStart: spacing.gap, paddingBlockEnd: spacing.row },
@@ -44,6 +45,11 @@ const styles = stylex.create({
   said: { color: `color-mix(in srgb, ${colors.cream} 70%, transparent)` },
   dim: { color: colors.dim },
   mark: { color: colors.caution, whiteSpace: 'nowrap' },
+  // A count beside the title, not a column: most items have no flags, and a column of blanks says nothing.
+  badge: {
+    flexShrink: 0, paddingInline: spacing.tight, borderRadius: radius.control, color: colors.cream, backgroundColor: colors.raised,
+    whiteSpace: 'nowrap',
+  },
   sources: { color: colors.dim, width: 'fit-content' },
 });
 
@@ -60,7 +66,7 @@ function formatLibraryDate(iso: string): string {
  * An item's two lines. A recording the recorder named is titled by when it began, and its opening words tell it from
  * its neighbours; a named item keeps its name, over its date and opening words.
  */
-function LibraryShelfItemName({ shelved: { item, opening } }: { readonly shelved: LibraryShelfItem }) {
+function LibraryShelfItemName({ shelved: { item, opening, flags } }: { readonly shelved: LibraryShelfItem }) {
   const interrupted = item.source.kind === 'studio-recorder' && item.source.status === 'interrupted';
   const date = formatLibraryDate(item.recordedAt ?? item.addedAt);
   const dated = libraryItemHasRecorderTitle(item);
@@ -69,6 +75,7 @@ function LibraryShelfItemName({ shelved: { item, opening } }: { readonly shelved
       <Box {...stylex.props(styles.titleLine)}>
         <Text component="span" size="md" title={item.title} {...stylex.props(styles.text)}>{dated ? date : item.title}</Text>
         {interrupted && <Text component="span" size="sm" {...stylex.props(styles.mark)}>interrupted</Text>}
+        {flags > 0 && <Text component="span" size="xs" {...stylex.props(styles.badge)}>{flags} flag{flags > 1 ? 's' : ''}</Text>}
       </Box>
       {(!dated || opening) && (
         <Text component="span" size="sm" {...stylex.props(styles.text, styles.second)}>
@@ -81,7 +88,7 @@ function LibraryShelfItemName({ shelved: { item, opening } }: { readonly shelved
 }
 
 function LibraryShelfItemRow({ shelved, online }: { readonly shelved: LibraryShelfItem; readonly online: boolean }) {
-  const { item, flags } = shelved;
+  const { item } = shelved;
   const sources = librarySourcesOf(item);
   const named = sources.map(({ label }) => label).join(', ');
   return (
@@ -97,7 +104,6 @@ function LibraryShelfItemRow({ shelved, online }: { readonly shelved: LibraryShe
         </Group>
       </HotkeyTooltip>
       <Box {...stylex.props(libraryShelfColumns.end)}><Readout>{formatLibraryLength(item.durationSeconds)}</Readout></Box>
-      <Box {...stylex.props(libraryShelfColumns.end)}>{flags > 0 && <Text component="span" size="sm">{flags} flag{flags > 1 ? 's' : ''}</Text>}</Box>
     </LibraryShelfRow>
   );
 }
@@ -110,7 +116,6 @@ function LibraryShelfColumnHead() {
       <Text component="span" size="sm">Title</Text>
       <Text component="span" size="sm">Sources</Text>
       <Text component="span" size="sm" {...stylex.props(libraryShelfColumns.end)}>Length</Text>
-      <Text component="span" size="sm" {...stylex.props(libraryShelfColumns.end)}>Flags</Text>
     </Box>
   );
 }
@@ -132,7 +137,7 @@ export function LibraryShelfPage() {
     <StudioShell>
       <StudioPageTitle count={count > 0 ? `${count} recording${count > 1 ? 's' : ''}` : undefined}>Library</StudioPageTitle>
       <FadeScroll>
-        <Stack ref={listRef} gap={0} {...stylex.props(styles.page, stylex.defaultMarker())}>
+        <Stack ref={listRef} gap={0} {...stylex.props(styles.page, libraryShelfColumns.table, stylex.defaultMarker())}>
           <TextInput
             ref={searchRef}
             aria-label="Search the library"

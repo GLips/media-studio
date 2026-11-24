@@ -7,14 +7,18 @@ import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 export const LIBRARY_SHELF_ROW_ATTRIBUTE = 'data-library-row';
 
 /**
- * The shelf's columns: poster, title (with its second line), sources, length, flags. The column header and every item row lay out
- * on this one grid, so a column's words sit under its name.
+ * The shelf's columns: poster, title (with its second line and its flags), sources, length. The column header and
+ * every item row lay out on this one grid, so a column's words sit under its name.
  */
 export const libraryShelfColumns = stylex.create({
   grid: {
-    display: 'grid', gridTemplateColumns: '96px minmax(0, 1fr) 72px 64px 56px', columnGap: spacing.inset, alignItems: 'center',
+    display: 'grid', gridTemplateColumns: '96px minmax(0, 1fr) 72px 64px', columnGap: spacing.inset, alignItems: 'center',
     paddingInline: spacing.gap,
   },
+  // The shelf page's widest: a title column of about 720px, a reading width, so the sources and length sit close by
+  // it rather than across the window; the search above keeps to it too. 96 + 720 + 72 + 64, three column gaps, and
+  // a row's padding with the page's inset (row − gap), each side.
+  table: { maxWidth: `calc(952px + 3 * ${spacing.inset} + 2 * ${spacing.row})` },
   end: { justifySelf: 'end', textAlign: 'end' },
 });
 
