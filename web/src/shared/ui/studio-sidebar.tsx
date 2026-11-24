@@ -39,6 +39,8 @@ const styles = stylex.create({
     display: 'flex', justifyContent: 'space-between', color: colors.dim, fontWeight: 600,
     paddingInline: spacing.gap, paddingBlockStart: spacing.row, paddingBlockEnd: spacing.tight,
   },
+  // A run inside a section's list (a month of projects): set closer to the run above, in the items' size.
+  nested: { paddingBlockStart: spacing.gap, fontSize: typography.chrome },
 });
 
 /** True inside StudioSidebarFrame: the page's StudioShell then draws no bar, its title row (StudioPageTitle) the bar's stand-in. */
@@ -90,10 +92,17 @@ export function StudioSidebarBody({ head, list }: StudioSidebarBodyProps) {
   );
 }
 
+type StudioSidebarSectionProps = {
+  readonly children: ReactNode;
+  readonly count?: number;
+  /** A run within a section's list, a level under its heading. */
+  readonly nested?: boolean;
+};
+
 /** A dim label over a run of items, with how many there are when that's worth knowing. */
-export function StudioSidebarSection({ children, count }: { readonly children: ReactNode; readonly count?: number }) {
+export function StudioSidebarSection({ children, count, nested = false }: StudioSidebarSectionProps) {
   return (
-    <Text component="h2" size="sm" {...stylex.props(styles.section)}>
+    <Text component={nested ? 'h3' : 'h2'} size="sm" {...stylex.props(styles.section, nested && styles.nested)}>
       <span>{children}</span>
       {count !== undefined && count > 0 && <span>{count}</span>}
     </Text>

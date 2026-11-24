@@ -2,11 +2,11 @@ import { Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useLocation, useNavigate } from '@tanstack/react-router';
 import { Inbox, Library } from 'lucide-react';
-import { Suspense, useState, type ReactNode } from 'react';
+import { Fragment, Suspense, useState, type ReactNode } from 'react';
 import { StudioSidebarBody, StudioSidebarFrame, StudioSidebarLink, StudioSidebarSection } from '#web/shared/ui/studio-sidebar.tsx';
 import { TextInput } from '#web/shared/ui/text-input.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
-import { ProjectName } from './project-name.tsx';
+import { projectDateSplitOf, projectMonthLabelOf } from './project-name.tsx';
 import { projectsRenderedFirst, useProjectsAwaiting, type ProjectAwaiting } from './use-projects-awaiting.ts';
 
 const ICON_SIZE = 14;
@@ -23,18 +23,33 @@ const styles = stylex.create({
 
 const projectMatchesFilter = (project: string, filter: string) => project.toLowerCase().includes(filter.trim().toLowerCase());
 
+/** A month's projects in the sidebar; `month` is null for the names with no date, listed last. */
+type ProjectMonthGroup = { month: string | null; projects: ProjectAwaiting[] };
+
+/** Projects by the month their name opens with, newest first and undated last, each keeping the order it was given. */
+function projectMonthGroupsOf(projects: readonly ProjectAwaiting[]): ProjectMonthGroup[] {
+  const byMonth = new Map<string | null, ProjectAwaiting[]>();
+  for (const project of projects) {
+    const { month } = projectDateSplitOf(project.summary.project);
+    byMonth.set(month, [...(byMonth.get(month) ?? []), project]);
+  }
+  return [...byMonth]
+    .map(([month, inMonth]) => ({ month, projects: inMonth }))
+    .toSorted((a, b) => (b.month ?? '').localeCompare(a.month ?? ''));
+}
+
 type StudioSidebarProps = { readonly projects: readonly ProjectAwaiting[] };
 
 /**
- * Awaiting you with its count, the library, then every project with what waits in it, narrowed by the filter. The
- * projects are listed once they load; until then the first two items stand alone.
+ * Awaiting you with its count, the library, then every project with what waits in it under its month, narrowed by the
+ * filter, which matches the whole name. The projects are listed once they load; until then the first two stand alone.
  */
 function StudioSidebar({ projects }: StudioSidebarProps) {
   const pathname = useLocation({ select: (location) => location.pathname });
   const navigate = useNavigate();
   const [filter, setFilter] = useState('');
   const waiting = projects.reduce((sum, project) => sum + project.waiting, 0);
-  const shown = projectsRenderedFirst(projects).filter(({ summary }) => projectMatchesFilter(summary.project, filter));
+  const shown = projectMonthGroupsOf(projectsRenderedFirst(projects).filter(({ summary }) => projectMatchesFilter(summary.project, filter)));
   const head = (
     <>
       <StudioSidebarLink to="/" icon={<Inbox size={ICON_SIZE} />} label="Awaiting you" waiting={waiting} current={pathname === '/'} />
@@ -50,7 +65,7 @@ function StudioSidebar({ projects }: StudioSidebarProps) {
             value={filter}
             onChange={(event) => setFilter(event.currentTarget.value)}
             onKeyDown={(event) => {
-              const first = shown[0];
+              const first = shown[0]?.projects[0];
               if (event.key === 'Enter' && first) void navigate({ to: '/projects/$project', params: { project: first.summary.project } });
               else if (event.key === 'Escape') {
                 setFilter('');
@@ -66,8 +81,13 @@ function StudioSidebar({ projects }: StudioSidebarProps) {
   );
   const list = (
     <>
-      {shown.map(({ summary: { project }, waiting: inProject }) => (
-        <StudioSidebarLink key={project} to="/projects/$project" params={{ project }} title={project} label={<ProjectName project={project} />} waiting={inProject} />
+      {shown.map(({ month, projects: inMonth }) => (
+        <Fragment key={month ?? 'undated'}>
+          <StudioSidebarSection nested>{month === null ? 'Undated' : projectMonthLabelOf(month)}</StudioSidebarSection>
+          {inMonth.map(({ summary: { project }, waiting: inProject }) => (
+            <StudioSidebarLink key={project} to="/projects/$project" params={{ project }} title={project} label={projectDateSplitOf(project).rest} waiting={inProject} />
+          ))}
+        </Fragment>
       ))}
       {projects.length > 0 && shown.length === 0 && <Text size="sm" {...stylex.props(styles.none)}>No project matches “{filter.trim()}”</Text>}
     </>

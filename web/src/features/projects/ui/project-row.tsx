@@ -29,15 +29,17 @@ const styles = stylex.create({
   name: { fontWeight: 600 },
   // A title with no columns after it, free of the name column's cap.
   wide: { gridColumn: '2 / -1' },
+  // A name with no question beside it takes the question's column too, rather than truncating beside it.
+  alone: { gridColumn: 'span 2' },
   end: { justifySelf: 'end' },
 });
 
 export const projectListStyles = stylex.create({
-  // Every row's columns: picture, name and what it asks (each its longest, to a cap), then its state and its age close
-  // after, and the empty rest last. The picture's column is `auto`: a subgrid row's padding is laid into it. Inset so a
-  // row's picture starts under the page title (StudioPageTitle).
+  // Every row's columns: picture, name (its longest, to a cap), what it asks taking the slack, then its state and its age
+  // pinned at the right edge at widths that hold as a group opens. The picture's column is `auto`: a subgrid row's
+  // padding is laid into it. Inset so a row's picture starts under the page title (StudioPageTitle).
   list: {
-    display: 'grid', gridTemplateColumns: 'auto fit-content(280px) fit-content(360px) auto auto minmax(0, 1fr)',
+    display: 'grid', gridTemplateColumns: 'auto fit-content(280px) minmax(0, 1fr) minmax(160px, auto) minmax(88px, auto)',
     columnGap: spacing.inset, alignContent: 'start', paddingInline: `calc(${spacing.row} - ${spacing.gap})`, paddingBlockStart: spacing.gap, paddingBlockEnd: spacing.row,
   },
   // Anything in the list that isn't a row (a header, a rule, a note) spans every column.
@@ -62,8 +64,8 @@ export function ProjectRow({ target, thumbnail, title, detail, status, end }: Pr
   return (
     <ProjectRowLink target={target}>
       {thumbnail}
-      <Text component="span" size="md" {...stylex.props(styles.cell, styles.name)}>{title}</Text>
-      <Text component="span" size="md" {...stylex.props(styles.cell)}>{detail}</Text>
+      <Text component="span" size="md" {...stylex.props(styles.cell, styles.name, detail === undefined && styles.alone)}>{title}</Text>
+      {detail !== undefined && <Text component="span" size="md" {...stylex.props(styles.cell)}>{detail}</Text>}
       <Group component="span" gap="gap" wrap="nowrap">{status}</Group>
       <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>{end}</Group>
     </ProjectRowLink>

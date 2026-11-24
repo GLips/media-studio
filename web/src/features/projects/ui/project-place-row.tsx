@@ -37,21 +37,17 @@ function planLatestStepOf(row: PlanRow, allSigned: boolean): { at: string; what:
 
 /**
  * `plan  3 of 4 signed`, in caution while its scenes wait (one changed since signed off, or one unsigned once the plan
- * has been handed over), which its glyph's tooltip names. Until the storyboard resolves, or when it doesn't, the row
- * says `plan` alone and waits on nothing.
+ * has been handed over). Until the storyboard resolves, or when it doesn't, the row says `plan` alone and waits on nothing.
  */
 function planViewOf(project: string, row: PlanRow, signoffs: ProjectPlanSignoffs | null, now: number): PlaceView {
   const signed = signoffs?.filter((s) => s.state === 'signed').length ?? 0;
-  const stale = signoffs?.filter((s) => s.state === 'stale').length ?? 0;
   const all = signoffs !== null && signoffs.length > 0 && signed === signoffs.length;
-  const unsettled = stale > 0 ? `${stale} scene${stale === 1 ? '' : 's'} changed since signed off` : 'scenes not signed off';
-  const waiting = reviewPlanScenesAwaitYou(row, signoffs) ? unsettled : undefined;
   const { at, what } = planLatestStepOf(row, all);
   return {
     target: { project, on: 'plan' },
-    thumbnail: <ProjectThumbnail glyph={<ScrollText size={GLYPH_SIZE} />} waiting={waiting} />,
+    thumbnail: <ProjectThumbnail glyph={<ScrollText size={GLYPH_SIZE} />} />,
     title: 'plan',
-    state: signoffs !== null && <PlaceState waiting={waiting !== undefined}>{signed} of {signoffs.length} signed</PlaceState>,
+    state: signoffs !== null && <PlaceState waiting={reviewPlanScenesAwaitYou(row, signoffs)}>{signed} of {signoffs.length} signed</PlaceState>,
     end: <ProjectAge now={now} at={at} what={what} />,
   };
 }
@@ -74,7 +70,7 @@ function placeViewOf({ project, rows }: ReviewProjectSummary, row: Exclude<Revie
       const open = row.state === 'open';
       return {
         target: { project, on: 'decision', topic: row.topic },
-        thumbnail: <ProjectThumbnail glyph={<Split size={GLYPH_SIZE} />} waiting={open ? 'not decided' : undefined} />,
+        thumbnail: <ProjectThumbnail glyph={<Split size={GLYPH_SIZE} />} />,
         title: row.topic,
         detail: row.question,
         state: <PlaceState waiting={open}>{open ? 'not decided' : 'decided'}</PlaceState>,

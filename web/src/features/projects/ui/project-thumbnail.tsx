@@ -3,7 +3,6 @@ import * as stylex from '@stylexjs/stylex';
 import { useState, type ReactNode } from 'react';
 import type { ReviewProjectThumbnail } from '#lib/output/review/models/review-dashboard.ts';
 import { projectFileUrl, reviewStillUrl } from '#web/shared/media-urls.ts';
-import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { colors, radius } from '#web/shared/ui/theme.stylex.ts';
 
 const styles = stylex.create({
@@ -15,7 +14,6 @@ const styles = stylex.create({
   pending: { backgroundColor: colors.skeleton },
   // A kind's glyph sits on the ground, with no tile: one on every decision and plan row reads as a wall of grey boxes.
   glyph: { backgroundColor: 'transparent' },
-  waiting: { color: colors.caution },
   video: { width: '100%', height: '100%', objectFit: 'contain' },
   // A still keeps its own box, so portrait, square and story read apart, and a checker shows through its transparency.
   still: {
@@ -35,20 +33,17 @@ function thumbnailUrl(project: string, thumbnail: ReviewProjectThumbnail): strin
 }
 
 type ProjectThumbnailProps =
-  | { readonly project: string; readonly thumbnail: ReviewProjectThumbnail; readonly glyph?: never; readonly waiting?: never }
-  /** A row with no picture shows its kind's glyph; `waiting` names what waits on the reviewer and tints it caution. */
-  | { readonly glyph: ReactNode; readonly waiting?: string; readonly project?: never; readonly thumbnail?: never };
+  | { readonly project: string; readonly thumbnail: ReviewProjectThumbnail; readonly glyph?: never }
+  /** A row with no picture shows its kind's glyph, always dim: the status words alone carry a row's state in colour. */
+  | { readonly glyph: ReactNode; readonly project?: never; readonly thumbnail?: never };
 
 /**
  * A row's 64px picture: the file's frame, a skeleton until it's cut, the bare ground when it can't be (a slice too short
  * for its guessed frame). A decision or the plan shows its glyph in the same box, so rows line up.
  */
-export function ProjectThumbnail({ project, thumbnail, glyph, waiting }: ProjectThumbnailProps) {
+export function ProjectThumbnail({ project, thumbnail, glyph }: ProjectThumbnailProps) {
   const [state, setState] = useState<'pending' | 'shown' | 'failed'>('pending');
-  if (!thumbnail) {
-    const box = <Box {...stylex.props(styles.frame, styles.glyph, waiting !== undefined && styles.waiting)}>{glyph}</Box>;
-    return waiting === undefined ? box : <HotkeyTooltip name={waiting}>{box}</HotkeyTooltip>;
-  }
+  if (!thumbnail) return <Box aria-hidden {...stylex.props(styles.frame, styles.glyph)}>{glyph}</Box>;
   return (
     <Box aria-hidden {...stylex.props(styles.frame, state === 'pending' && styles.pending)}>
       {state !== 'failed' && (

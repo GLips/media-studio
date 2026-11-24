@@ -10,7 +10,8 @@ const styles = stylex.create({
   count: { whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' },
   linked: { cursor: 'pointer', textDecoration: { default: 'none', ':hover': 'underline' } },
   open: { color: colors.accent },
-  addressed: { color: colors.pass },
+  // Verifying is the reviewer's to do, so it isn't pass-green, which reads as done on a list of what waits.
+  addressed: { color: colors.cream },
   asks: { color: colors.caution },
 });
 
