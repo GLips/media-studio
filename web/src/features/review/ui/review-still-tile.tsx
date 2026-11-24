@@ -48,9 +48,9 @@ type ReviewStillTileProps = {
   /** The ground a transparent picture shows over; null for one that isn't. */
   readonly ground: ReviewProofGround | null;
   readonly selected: boolean;
-  /** The still whose notes are open, marked quietly while the cursor is on another. */
-  readonly open?: boolean;
   readonly onClick: () => void;
+  /** The grid's way to show a still on the stage, a click there only selecting it. */
+  readonly onDoubleClick?: () => void;
   /** Drawn over the picture's top-right corner: the notes' dots. */
   readonly corner?: ReactNode;
 };
@@ -59,7 +59,7 @@ type ReviewStillTileProps = {
  * A still that opens something: a Board frame, a still in the grid or the filmstrip. Its box has the picture's shape
  * from the start, a skeleton until the picture lands, never a black box; a selected tile scrolls itself into view.
  */
-export function ReviewStillTile({ src, label, aspect, fill, ground, selected, open = false, onClick, corner }: ReviewStillTileProps) {
+export function ReviewStillTile({ src, label, aspect, fill, ground, selected, onClick, onDoubleClick, corner }: ReviewStillTileProps) {
   const [loaded, setLoaded] = useState<number | null>(null);
   const button = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -67,11 +67,11 @@ export function ReviewStillTile({ src, label, aspect, fill, ground, selected, op
   }, [selected]);
   const shape = aspect ?? loaded ?? REVIEW_TILE_GUESSED_ASPECT;
   return (
-    <UnstyledButton ref={button} aria-label={label} aria-current={selected || undefined} onClick={onClick}
+    <UnstyledButton ref={button} aria-label={label} aria-current={selected || undefined} onClick={onClick} onDoubleClick={onDoubleClick}
       {...stylex.props(styles.button, styles[fill], fill === 'cell' && styles.cellBox)}>
       <Box {...stylex.props(
         styles.picture, { row: styles.inRow, cell: styles.inCell, column: styles.inColumn }[fill](shape),
-        loaded !== null && ground && reviewProofGroundStyles[ground], open && !selected && shadows.tileOpenRing, selected && shadows.tileSelectedRing,
+        loaded !== null && ground && reviewProofGroundStyles[ground], selected && shadows.tileSelectedRing,
       )}>
         <Image src={src} alt="" loading="lazy" draggable={false}
           // A picture the browser had before the page hydrated has loaded already, and fires no load event.
