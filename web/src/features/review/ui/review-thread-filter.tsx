@@ -124,6 +124,12 @@ export function ReviewThreadFilter({ head, counts, filter, onFilter, actions, ch
           </UnstyledButton>
         </HotkeyTooltip>
       )}
+      {/* Beside the resolved count, so `resolved` is said once: an Undo row in the list takes a slip back. */}
+      {counts.resolved > 0 && (
+        <HotkeyTooltip name="Clear the resolved notes">
+          <UnstyledButton onClick={actions.clearResolved} {...stylex.props(styles.chip)}><Text component="span" size="sm" inherit>Clear</Text></UnstyledButton>
+        </HotkeyTooltip>
+      )}
       <Box {...stylex.props(styles.end)} />
       {counts.addressed > 0 && <IconButton name="Resolve all addressed" onClick={() => actions.resolveAddressed()}><CheckCheck size={14} /></IconButton>}
       {actions.copy && (
