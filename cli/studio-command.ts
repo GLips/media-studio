@@ -6,7 +6,7 @@ import type { StudioVerbGroups } from './command-help.ts';
 
 /** Every verb, under the heading the root index lists it by; the index refuses a registered verb missing here. */
 export const STUDIO_VERB_GROUPS = {
-  make: ['new', 'library', 'capture', 'voice', 'audition', 'music', 'sfx', 'gen', 'paint', 'brushes', 'still', 'render'],
+  make: ['new', 'library', 'grade', 'capture', 'voice', 'audition', 'music', 'sfx', 'gen', 'paint', 'brushes', 'still', 'render'],
   inspect: ['look', 'check', 'clock', 'mix', 'probe', 'transcribe', 'study', 'repeatable', 'profile', 'trace', 'api', 'gpu'],
   review: ['review', 'preview', 'app'],
   setup: ['workspace', 'hosts', 'remote', 'home', 'recorder'],
@@ -23,6 +23,7 @@ export const studioCommand = defineCommand({
     workspace: () => import('./commands/workspace.ts').then((m) => m.default),
     recorder: () => import('./commands/recorder.ts').then((m) => m.default),
     library: () => import('./commands/library.ts').then((m) => m.default),
+    grade: () => import('./commands/grade.ts').then((m) => m.default),
     app: () => import('./commands/app.ts').then((m) => m.default),
     brushes: () => import('./commands/brushes.ts').then((m) => m.default),
     new: () => import('./commands/new.ts').then((m) => m.default),
