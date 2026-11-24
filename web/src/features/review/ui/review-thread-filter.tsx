@@ -12,15 +12,16 @@ import type { ReviewThreadActions } from './use-review-thread-panel.ts';
 
 const styles = stylex.create({
   row: {
-    height: spacing.row, flexShrink: 0, paddingInlineStart: spacing.gap, paddingInlineEnd: spacing.tight,
+    minHeight: spacing.row, flexShrink: 0, paddingInlineStart: spacing.inset, paddingInlineEnd: spacing.tight,
     borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: colors.line,
   },
+  title: { color: colors.cream, fontWeight: 600, paddingInlineEnd: spacing.tight, whiteSpace: 'nowrap' },
   chip: {
-    paddingInline: spacing.tight, borderRadius: radius.control,
-    backgroundColor: { default: 'transparent', ':hover': colors.raised },
+    display: 'inline-flex', alignItems: 'center', gap: spacing.tight, paddingInline: spacing.tight, borderRadius: radius.control,
+    whiteSpace: 'nowrap', color: { default: colors.dim, ':hover': colors.cream }, backgroundColor: { default: 'transparent', ':hover': colors.raised },
   },
-  lit: { backgroundColor: colors.raised },
-  count: { paddingInline: spacing.tight, cursor: 'default' },
+  lit: { color: colors.cream, backgroundColor: colors.raised },
+  count: { display: 'inline-flex', alignItems: 'center', gap: spacing.tight, paddingInline: spacing.tight, whiteSpace: 'nowrap', color: colors.dim, cursor: 'default' },
   open: { color: colors.accent },
   addressed: { color: colors.pass },
   asks: { color: colors.caution },
@@ -34,21 +35,32 @@ const styles = stylex.create({
 export type ReviewThreadCounts = Record<ReviewThreadTone, number>;
 
 type ReviewThreadFilterProps = {
-  /** What the thread is about, leading the row (ReviewThreadPanel's `head`). */
+  /** What the thread is about, leading the row in the place of `Notes` (ReviewThreadPanel's `head`). */
   readonly head?: ReactNode;
   readonly counts: ReviewThreadCounts;
   readonly filter: NonNullable<ReviewSearch['filter']>;
   readonly onFilter: (filter: NonNullable<ReviewSearch['filter']>) => void;
   readonly actions: ReviewThreadActions;
-  /** The check queue, on a render's thread: its button by ◐, and the row it becomes while checking. */
+  /** The check queue, on a render's thread: its button by the addressed count, and the row it becomes while checking. */
   readonly check?: ReviewCheck;
 };
 
-function Count({ children, glyphStyle, word }: { readonly children: ReactNode; readonly glyphStyle: keyof typeof styles; readonly word: string }) {
+/** A state's count in words, the index's words (`THREAD_COUNT_WORDS`): `1 open note`, `2 to verify`, `3 questions`. */
+const REVIEW_THREAD_COUNT_WORDS: Readonly<Record<ReviewThreadTone, (count: number) => string>> = {
+  open: (count) => (count === 1 ? '1 open note' : `${count} open notes`),
+  addressed: (count) => `${count} to verify`,
+  asks: (count) => (count === 1 ? '1 question' : `${count} questions`),
+  keep: (count) => `${count} to keep`,
+  resolved: (count) => `${count} resolved`,
+};
+
+/** The state's glyph in its colour, then its count in words: the glyph is each row's, so the header is their legend. */
+function ReviewToneWords({ tone, count }: { readonly tone: ReviewThreadTone; readonly count: number }) {
   return (
-    <HotkeyTooltip name={word}>
-      <Text component="span" size="sm" {...stylex.props(styles.count, styles[glyphStyle])}>{children}</Text>
-    </HotkeyTooltip>
+    <>
+      <Text component="span" size="sm" {...stylex.props(styles[tone])}>{REVIEW_THREAD_TONES[tone].glyph}</Text>
+      <Text component="span" size="sm" inherit>{REVIEW_THREAD_COUNT_WORDS[tone](count)}</Text>
+    </>
   );
 }
 
@@ -59,7 +71,7 @@ function ReviewCheckRow({ head, step }: { readonly head?: ReactNode; readonly st
       {head}
       <Text component="span" size="sm" {...stylex.props(styles.count, styles.addressed)}>Checking {step.at} of {step.of} ·</Text>
       <HotkeyTooltip name="Leave check">
-        <UnstyledButton onClick={step.leave} {...stylex.props(styles.chip, styles.resolved)}><Text component="span" size="sm" inherit>Esc</Text></UnstyledButton>
+        <UnstyledButton onClick={step.leave} {...stylex.props(styles.chip)}><Text component="span" size="sm" inherit>Esc</Text></UnstyledButton>
       </HotkeyTooltip>
       <Box {...stylex.props(styles.end)} />
       <Text component="span" size="sm" {...stylex.props(styles.count, step.compare.vs ? styles.cream : styles.resolved)}>{step.compare.label}</Text>
@@ -68,9 +80,9 @@ function ReviewCheckRow({ head, step }: { readonly head?: ReactNode; readonly st
 }
 
 /**
- * `●4 ◐2 ?1 ◇1 … ✓9`: the thread's states by glyph and count, zero counts left out. `●` narrows to the open notes and
- * `✓` lets the resolved in; both again, or `F`, go back. With rows selected, the row becomes their actions; while the
- * check queue walks, its place.
+ * `Notes  ● 1 open note  ◐ 2 to verify  ? 1 question  ✓ 9 resolved`: the thread's states in words, zero counts left out.
+ * `open` and `resolved` are its two filters: `open` narrows to the open notes, `resolved` lets the resolved in; either
+ * again, or `F`, goes back. With rows selected, the row becomes their actions; while the check queue walks, its place.
  */
 export function ReviewThreadFilter({ head, counts, filter, onFilter, actions, check }: ReviewThreadFilterProps) {
   const toggle = (to: 'open' | 'all') => onFilter(filter === to ? 'active' : to);
@@ -79,7 +91,7 @@ export function ReviewThreadFilter({ head, counts, filter, onFilter, actions, ch
     return (
       <Group gap="tight" wrap="nowrap" {...stylex.props(styles.row)}>
         {head}
-        <Text component="span" size="sm" {...stylex.props(styles.count, styles.cream)}>{ids.length}</Text>
+        <Text component="span" size="sm" {...stylex.props(styles.count, styles.cream)}>{ids.length} selected</Text>
         <UnstyledButton onClick={() => actions.resolve(ids)} {...stylex.props(styles.chip, styles.cream)}><Text component="span" size="sm" inherit>Resolve</Text></UnstyledButton>
         <UnstyledButton onClick={() => actions.reopen(ids)} {...stylex.props(styles.chip, styles.cream)}><Text component="span" size="sm" inherit>Reopen</Text></UnstyledButton>
         <UnstyledButton onClick={() => actions.remove(ids)} {...stylex.props(styles.chip, styles.cream)}><Text component="span" size="sm" inherit>Delete</Text></UnstyledButton>
@@ -87,33 +99,33 @@ export function ReviewThreadFilter({ head, counts, filter, onFilter, actions, ch
     );
   }
   if (check?.step) return <ReviewCheckRow head={head} step={check.step} />;
-  // Nothing to name, count or copy (a fresh thread): no row at all, not an empty band.
-  if (!head && !actions.copy && !counts.open && !counts.addressed && !counts.asks && !counts.keep && !counts.resolved) return null;
+  // Every state at once outgrows the side's width: the counts wrap rather than run under the actions.
   return (
-    <Group gap="hairline" wrap="nowrap" {...stylex.props(styles.row)}>
-      {head}
+    <Group gap="hairline" {...stylex.props(styles.row)}>
+      {head ?? <Text component="span" size="sm" {...stylex.props(styles.title)}>Notes</Text>}
+      {Object.values(counts).every((n) => n === 0) && <Text component="span" size="sm" {...stylex.props(styles.count)}>none yet</Text>}
       {counts.open > 0 && (
-        <HotkeyTooltip name={filter === 'open' ? 'Show all live notes' : 'Only open notes'} hotkey="Filter">
-          <UnstyledButton aria-label={`${counts.open} open`} aria-pressed={filter === 'open'} onClick={() => toggle('open')} {...stylex.props(styles.chip, styles.open, filter === 'open' && styles.lit)}>
-            <Text component="span" size="sm" inherit>{REVIEW_THREAD_TONES.open.glyph}{counts.open}</Text>
+        <HotkeyTooltip name={filter === 'open' ? 'Show every live note' : 'Show only open notes'} hotkey="Filter">
+          <UnstyledButton aria-pressed={filter === 'open'} onClick={() => toggle('open')} {...stylex.props(styles.chip, filter === 'open' && styles.lit)}>
+            <ReviewToneWords tone="open" count={counts.open} />
           </UnstyledButton>
         </HotkeyTooltip>
       )}
-      {counts.addressed > 0 && <Count glyphStyle="addressed" word={REVIEW_THREAD_TONES.addressed.word}>{REVIEW_THREAD_TONES.addressed.glyph}{counts.addressed}</Count>}
+      {counts.addressed > 0 && <Text component="span" size="sm" {...stylex.props(styles.count)}><ReviewToneWords tone="addressed" count={counts.addressed} /></Text>}
       {check?.start && <IconButton name="Check addressed" onClick={check.start}><ScanEye size={14} /></IconButton>}
-      {counts.asks > 0 && <Count glyphStyle="asks" word={REVIEW_THREAD_TONES.asks.word}>{REVIEW_THREAD_TONES.asks.glyph}{counts.asks}</Count>}
-      {counts.keep > 0 && <Count glyphStyle="keep" word={REVIEW_THREAD_TONES.keep.word}>{REVIEW_THREAD_TONES.keep.glyph}{counts.keep}</Count>}
+      {counts.asks > 0 && <Text component="span" size="sm" {...stylex.props(styles.count)}><ReviewToneWords tone="asks" count={counts.asks} /></Text>}
+      {counts.keep > 0 && <Text component="span" size="sm" {...stylex.props(styles.count)}><ReviewToneWords tone="keep" count={counts.keep} /></Text>}
+      {counts.resolved > 0 && (
+        <HotkeyTooltip name={filter === 'all' ? 'Hide resolved notes' : 'Show resolved notes'} hotkey="Filter">
+          <UnstyledButton aria-pressed={filter === 'all'} onClick={() => toggle('all')} {...stylex.props(styles.chip, filter === 'all' && styles.lit)}>
+            <ReviewToneWords tone="resolved" count={counts.resolved} />
+          </UnstyledButton>
+        </HotkeyTooltip>
+      )}
       <Box {...stylex.props(styles.end)} />
       {counts.addressed > 0 && <IconButton name="Resolve all addressed" onClick={() => actions.resolveAddressed()}><CheckCheck size={14} /></IconButton>}
       {actions.copy && (
         <IconButton name="Copy notes" onClick={() => void actions.copy?.()} active={actions.copied}>{actions.copied ? <Check size={14} /> : <Copy size={14} />}</IconButton>
-      )}
-      {counts.resolved > 0 && (
-        <HotkeyTooltip name={filter === 'all' ? 'Hide resolved' : 'Show resolved'} hotkey="Filter">
-          <UnstyledButton aria-label={`${counts.resolved} resolved`} aria-pressed={filter === 'all'} onClick={() => toggle('all')} {...stylex.props(styles.chip, styles.resolved, filter === 'all' && styles.lit)}>
-            <Text component="span" size="sm" inherit>{REVIEW_THREAD_TONES.resolved.glyph}{counts.resolved}</Text>
-          </UnstyledButton>
-        </HotkeyTooltip>
       )}
     </Group>
   );

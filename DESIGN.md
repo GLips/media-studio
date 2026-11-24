@@ -219,7 +219,7 @@ Weights in use beyond the scale: 700 for the title in the bar, 600 for names (a 
 Full-viewport working screens, no page scroll: a CSS grid of a bar, a body that fills, and a foot, with panels scrolling inside themselves under a fade (`FadeScroll`).
 
 - **Plan page:** header row; then two columns, the player (`minmax(0, 1fr)`) and the scene panel (`minmax(440px, 560px)`) split by a 1px seam; the thread at the side width (360px) on the right; the scene strip and transport along the foot.
-- **Review page:** stage, a 28px transport bar, then the dock of lanes; the thread beside the stage at 360px.
+- **Review page:** stage, a 28px transport bar, then the dock of lanes; the thread beside the stage at 360px. The dock's ruler is a 16px label line over its ticks, so the playhead's flag never covers a tick. A folder of stills shows as a contact sheet of even 4:3 panel cells, each picture fitted and centred, labelled by the part of its name its folder doesn't share.
 - **Decisions page:** the queue of the project's decisions down the left at 240px, then the line the decision is for over its candidates and their transport, and the thread at 360px.
 - **Dashboard and project pages:** lists capped at 960px so a row's end readouts stay near its name.
 
@@ -265,8 +265,14 @@ A 64px column for the line's start time (mono, dim, a raised hover; click plays 
 ### Scene strip (signature)
 The whole video as blocks, each as wide as it runs, on lane-a, 3px corners, raised on hover; the focused scene is raised with a 1px cream outline. Each block names its number and title (body, 600) over its facts (readout size, dim) with state icons top right: a check in green, a question or a changed-since mark in amber. A 2px cream playhead crosses it, the target length is a dashed amber line with its label, and timing flags hang under it as dim 2px rules with dim labels.
 
+### Notes panel
+The thread beside the work. Its header names it ("Notes") and counts its states in words, each after the glyph its rows carry, so the header is the rows' legend: "● 1 open note", "◐ 2 to verify", "? 3 questions", "✓ 4 resolved", the same words the index uses. "open" and "resolved" are its filters, raised while on. Notes left on earlier renders sit behind a closed, dim "Earlier renders" toggle at the panel's foot, with no count. On a still, the panel opens with the still's whole name and its pixel size.
+
 ### Thread rows
-Indented rows with a 2px left edge, raised on hover, a 1px cream focus ring inset. The kind is a lucide icon in cream; the state is the colour. A reply landing on a row flashes it cobalt at 25% for 1s, easing out.
+Indented rows with a 2px left edge, raised on hover, a 1px cream focus ring inset. The kind is a lucide icon in cream; the state is the colour. A long body stops after four whole lines with a dim "… more", never mid-line. A reply landing on a row flashes it cobalt at 25% for 1s, easing out.
+
+### Composer
+At the thread's foot: the field, led by what the note will pin to (a video's timecode chip, dim while it follows the playhead, cobalt once pinned), with a prompt as its placeholder; under it the kind picker and a labelled "Post ↵" button. On a still it rests as a one-line prompt with its `N` key until a click or `N` opens it.
 
 ### Inputs / Fields
 Scene fields are a dim chrome label with a comment icon button, over prose-size cream text edited in place. The composer's draft is edged in cobalt.

@@ -85,7 +85,8 @@ export function ReviewLanePlayhead({ view, sketch }: ReviewLanePlayheadProps) {
       {loop && <Box {...stylex.props(styles.wash, spanStyle(view, loop.from, loop.to + 1))} />}
       {sketch && <Box {...stylex.props(styles.wash, styles.sketch, spanStyle(view, sketch.from, sketch.to + 1))} />}
       <Box {...stylex.props(styles.line, styles.at(left))} />
-      <Text component="span" ref={number} fz="xs" {...stylex.props(styles.flag, styles.at(left))}>{reviewPlayheadFlagOf(artifact, frame, timing.fps)}</Text>
+      {/* Held inside the lane at the start, where its 4px lead would clip the ▼. */}
+      <Text component="span" ref={number} fz="xs" {...stylex.props(styles.flag, styles.at(`max(4px, ${left})`))}>{reviewPlayheadFlagOf(artifact, frame, timing.fps)}</Text>
     </Box>
   );
 }

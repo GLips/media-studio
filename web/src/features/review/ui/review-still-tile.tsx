@@ -15,8 +15,8 @@ const styles = stylex.create({
   // A row's tile is as tall as the row and as wide as its picture; a cell's fits inside the cell.
   // Scrolled into view clear of the edges' fades, and in a cell with the name line under it too.
   row: { height: '100%', flexShrink: 0, scrollMarginInline: '16px' },
-  // Bottom-aligned, so a row of mixed shapes shares one baseline and each name sits right under its picture.
-  cell: { width: '100%', height: '100%', alignItems: 'flex-end', scrollMarginTop: '16px', scrollMarginBottom: '40px' },
+  // Centred in its cell, so a grid of mixed shapes reads as even cells whatever each picture's aspect.
+  cell: { width: '100%', height: '100%', scrollMarginTop: '16px', scrollMarginBottom: '40px' },
   picture: { position: 'relative', overflow: 'hidden', borderRadius: radius.control, backgroundColor: colors.skeleton },
   // The edge hugs the picture, not the cell it sits in. Its own layer over the image, which an outline would sit under;
   // being on top, it's also what the pointer hovers.
