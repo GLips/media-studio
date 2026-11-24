@@ -2,8 +2,8 @@
 
 <!-- demo video -->
 
-A video studio for you and your agents: code-based tools for making video and images, and a review app where you leave
-specific notes, frame by frame.
+<h3>A video studio for you and your agents: code-based tools for making video and images, and a review app where you
+leave specific notes, frame by frame.</h3>
 
 Your coding agent drives the `studio` CLI with skills that ship as a Claude Code plugin. It plans the video, captures,
 animates, paints, voices, scores and renders it, and you watch the result in the review app and point at what should
