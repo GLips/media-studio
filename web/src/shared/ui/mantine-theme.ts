@@ -22,13 +22,13 @@ export const mantineTheme = createTheme({
   fontFamily: fonts.display,
   fontFamilyMonospace: fonts.mono,
   lineHeights: { xs: typography.lineHeight, sm: typography.lineHeight, md: typography.lineHeight, prose: typography.proseLeading, line: typography.lineLeading, heading: typography.lineLeading },
-  fontSizes: { xs: typography.readout, sm: typography.chrome, md: typography.body, lg: typography.reading, xl: typography.display, prose: typography.prose, line: typography.line, heading: typography.heading },
+  fontSizes: { xs: typography.readout, sm: typography.chrome, md: typography.body, lg: typography.reading, xl: typography.pageTitle, prose: typography.prose, line: typography.line, heading: typography.heading },
   // The studio's spacing steps by name beside Mantine's xs–xl, so `gap="tight"` is the theme's step, not a number.
   spacing: { hairline: spacing.hairline, tight: spacing.tight, gap: spacing.gap, inset: spacing.inset },
   headings: {
     fontFamily: fonts.display,
     fontWeight: '900',
-    sizes: { h1: { fontSize: typography.display, lineHeight: typography.lineHeight } },
+    sizes: { h1: { fontSize: typography.pageTitle, lineHeight: spacing.bar } },
   },
   components: {
     Button: Button.extend({ defaultProps: { size: 'xs', variant: 'default' } }),

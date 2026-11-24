@@ -32,11 +32,11 @@ typography:
     fontFamily: "Archivo, -apple-system, Helvetica Neue, Arial, sans-serif"
     fontSize: "19px"
     lineHeight: "34px"
-  display:
+  page-title:
     fontFamily: "Archivo, -apple-system, Helvetica Neue, Arial, sans-serif"
-    fontSize: "16px"
-    fontWeight: 900
-    lineHeight: "16px"
+    fontSize: "22px"
+    fontWeight: 700
+    lineHeight: "28px"
   prose:
     fontFamily: "Archivo, -apple-system, Helvetica Neue, Arial, sans-serif"
     fontSize: "15px"
@@ -68,6 +68,7 @@ spacing:
   side-width: "360px"
   queue-width: "240px"
   sidebar-width: "240px"
+  title-row: "56px"
 components:
   button-primary:
     backgroundColor: "{colors.accent}"
@@ -202,7 +203,7 @@ A neutral dark ground with five signal hues, each owning exactly one meaning.
 - **Heading** (900, 30px, 34px leading; `size="heading"`): what a page is about, named once at its top. The plan's current scene title.
 - **Line** (500, 22px, 34px leading; `size="line"`): a plan's spoken line, read along with the picture. The words the plan page is for.
 - **Reading** (19px, 34px leading; `size="lg"`): text read for itself, large, as a decision's text candidate.
-- **Display** (700, 16px; `size="xl"`, `h1` at 900): the index's two section headers (Awaiting you, Projects), and nowhere else.
+- **Page title** (700, 22px, 28px leading; `StudioPageTitle`, `typography.pageTitle`): a sidebar page's name (Awaiting you, Library), once, in its 56px title row with a quiet count beside it. The sidebar's `studio` wordmark sits level with it at the same size, 900, tracked tight.
 - **Prose** (15px, 22px leading; `size="prose"`): prose read for content. A plan's brief and scene fields.
 - **Body** (13px, 16px; `size="md"`): note bodies, scene names on the strip, the bar's title, every list row's name (a project's at 600).
 - **Chrome** (12px, 16px; `size="sm"`, the default): bars, menus, chips, tooltips, field labels, buttons.
@@ -211,7 +212,7 @@ A neutral dark ground with five signal hues, each owning exactly one meaning.
 Weights in use beyond the scale: 700 for the title in the bar, 600 for names (a scene on the strip, a timed cue, Approved).
 
 ### Named Rules
-**The One Line Height Rule.** Every size up to body sits on a 16px line, so rows line up across panels. Only the reading sizes (prose, line, reading, heading) open up, to 22px or 34px.
+**The One Line Height Rule.** Every size up to body sits on a 16px line, so rows line up across panels. Only the reading sizes (prose, line, reading, heading) open up, to 22px or 34px, and the page title, to 28px.
 
 **The Machine Mono Rule.** Mono is for figures a machine produced: times, frame numbers, hashes, key caps, a note's anchor reference. Words people read are Archivo.
 
@@ -222,8 +223,9 @@ Full-viewport working screens, no page scroll: a CSS grid of a bar, a body that 
 - **Plan page:** header row; then two columns, the player (`minmax(0, 1fr)`) and the scene panel (`minmax(440px, 560px)`) split by a 1px seam; the thread at the side width (360px) on the right; the scene strip and transport along the foot.
 - **Review page:** stage, a 28px transport bar, then the dock of lanes; the thread beside the stage at 360px. The dock's ruler is a 16px label line over its ticks, so the playhead's flag never covers a tick. A folder of stills shows as a contact sheet of even 4:3 panel cells, each picture fitted and centred, labelled by the part of its name its folder doesn't share.
 - **Decisions page:** the queue of the project's decisions down the left at 240px, then the line the decision is for over its candidates and their transport, and the thread at 360px.
-- **Index and library:** the studio sidebar down the left at full height (240px, panel, a 1px seam): its name on the bar's line, then Awaiting you with its count, Library, and Projects, each with what waits in it in amber. The page fills the rest, its own bar over it.
-- **Index and project pages:** one uncapped list whose rows share columns (a subgrid): picture, name, what it asks (dim, taking the rest), its state in words, readouts right-aligned. The index splits it into two sections, Awaiting you then Projects, each under a Display header with its count; Awaiting you groups its rows under each project's name, cream at 600 with its count.
+- **Index and library:** the studio sidebar down the left at full height (240px, panel, a 1px seam): the `studio` wordmark, Awaiting you with its count, Library, then Projects with a filter field (`/` on the index), each project with what waits in it in amber. The sidebar is the one list of projects. The page fills the rest with no bar: its title row (`StudioPageTitle`, level with the wordmark) carries quick-open and the keys at its right, inset 24px like the rows below.
+- **Index and project pages:** one uncapped list whose rows share columns (a subgrid): picture, name, what it asks (dim, to a cap), its state in words just after, readouts at the far edge. The index is Awaiting you alone, its rows grouped under each project's name on a seam from the list's edge, cream at 600 with its count.
+- **Project names** dim their `YYYY-MM-` date, so the part that tells them apart reads first (`ProjectName`).
 - **Viewers** (a recording, a render's review, stills) keep the full width and their `◂` crumb: the work needs the room.
 - **Library shelf:** fills the width it's given, uncapped: the page's heading with its count, the search, then a table whose column names (Title, Sources, Length, Recorded, Flags) sit on the same grid as its 40px rows, each led by the item's 64px poster. Sources are lucide icons with their words. A recording still under the recorder's dated title reads "Untitled recording" in dim, so the date shows once, in Recorded.
 - **Recording page:** the title in the bar, a 24px dim line of facts under it (recorded, length, sources, window, projects); the picture over the transport and a strip with a time ruler; the flags under it, as tall as their rows up to 40% and scrolling past it; the transcript at body size in a column on the right.
@@ -286,7 +288,7 @@ Scene fields are a dim chrome label with a comment icon button, over prose-size 
 Panel fill, 1px seam border, 3px corners, cream chrome type: they sit on the dark screen as a panel, never as a light box.
 
 ### List rows
-40px rows on the index and project pages, transparent at rest, raised on hover or keyboard focus, with only one row lit at a time. Each row's state is words coloured by its job: an open note in accent, one to verify in green, a question, an open decision or an unsigned plan in amber, a settled one dim.
+40px rows on the index and project pages, transparent at rest, raised on hover or keyboard focus, with only one row lit at a time. A decision's or plan's glyph sits on the ground, with no tile; only real pictures fill the 64px box. Each row's state is words coloured by its job: an open note in accent, one to verify in green, a question, an open decision or an unsigned plan in amber, a settled one dim.
 
 ### Sidebar items
 24px rows, chrome type, a 14px lucide icon column (empty for a project, so names line up under the labels), raised on hover and on the page showing now, a count in amber at the end when something waits there.

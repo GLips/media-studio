@@ -32,11 +32,12 @@ const styles = stylex.create({
 });
 
 export const projectListStyles = stylex.create({
-  // Every row's columns: picture, name (its longest, to a cap), what it asks (the rest), its state, readouts. The edge
-  // columns are `auto`: a subgrid row's padding is laid into them, and a fixed 64px would squeeze the picture.
+  // Every row's columns: picture, name and what it asks (each its longest, to a cap), its state just after, then the
+  // readouts at the far edge. The picture's column is `auto`: a subgrid row's padding is laid into it. Inset so a
+  // row's picture starts under the page title (StudioPageTitle).
   list: {
-    display: 'grid', gridTemplateColumns: 'auto fit-content(320px) minmax(0, 1fr) auto auto', columnGap: spacing.inset,
-    alignContent: 'start', padding: spacing.gap,
+    display: 'grid', gridTemplateColumns: 'auto fit-content(320px) fit-content(480px) auto minmax(max-content, 1fr)',
+    columnGap: spacing.inset, alignContent: 'start', paddingInline: `calc(${spacing.row} - ${spacing.gap})`, paddingBlockStart: spacing.gap, paddingBlockEnd: spacing.row,
   },
   // Anything in the list that isn't a row (a header, a rule, a note) spans every column.
   span: { gridColumn: '1 / -1' },

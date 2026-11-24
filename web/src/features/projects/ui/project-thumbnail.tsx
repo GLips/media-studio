@@ -13,7 +13,8 @@ const styles = stylex.create({
     backgroundColor: colors.screen, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.dim,
   },
   pending: { backgroundColor: colors.skeleton },
-  glyph: { backgroundColor: colors.panel },
+  // A kind's glyph sits on the ground, with no tile: one on every decision and plan row reads as a wall of grey boxes.
+  glyph: { backgroundColor: 'transparent' },
   waiting: { color: colors.caution },
   video: { width: '100%', height: '100%', objectFit: 'contain' },
   // A still keeps its own box, so portrait, square and story read apart, and a checker shows through its transparency.

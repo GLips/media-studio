@@ -31,7 +31,7 @@ function studioUpLabelOf(up: StudioUpTarget): string {
   return up.to === '/library' ? 'Up to library' : `Up to ${up.params.project}`;
 }
 
-/** The 28px bar over every screen: `◂` up a level (none on the index or the library), the screen's own items, then quick-open and the keys. */
+/** The 28px bar over every screen but the sidebar's (StudioShell): `◂` up a level where there is one, the screen's own items, then quick-open and the keys. */
 export function StudioHeader({ start, end, onQuickOpen, onCheatsheet }: StudioHeaderProps) {
   const navigate = useNavigate();
   const up = useStudioUp();

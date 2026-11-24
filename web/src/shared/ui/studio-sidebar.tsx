@@ -1,7 +1,7 @@
 import { Box, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { createLink, type LinkComponent } from '@tanstack/react-router';
-import type { AnchorHTMLAttributes, ReactNode, Ref } from 'react';
+import { createContext, useContext, type AnchorHTMLAttributes, type ReactNode, type Ref } from 'react';
 import { FadeScroll } from './fade-scroll.tsx';
 import { colors, radius, spacing, typography } from './theme.stylex.ts';
 
@@ -11,15 +11,17 @@ const ICON_COLUMN = '14px';
 const styles = stylex.create({
   layout: { display: 'grid', gridTemplateColumns: `${spacing.sidebarWidth} minmax(0, 1fr)`, height: '100dvh', overflow: 'hidden' },
   sidebar: {
-    display: 'grid', gridTemplateRows: `${spacing.bar} minmax(0, 1fr)`, minHeight: 0, backgroundColor: colors.panel,
+    display: 'grid', gridTemplateRows: `${spacing.titleRow} minmax(0, 1fr)`, minHeight: 0, backgroundColor: colors.panel,
     borderInlineEndWidth: '1px', borderInlineEndStyle: 'solid', borderInlineEndColor: colors.line,
   },
-  // On the header bar's line, so the bar's rule runs on unbroken across the sidebar.
-  top: {
-    display: 'flex', alignItems: 'center', paddingInline: spacing.inset, fontWeight: 700,
-    borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: colors.line,
+  // Level with the page's title (StudioPageTitle), set over the items' icons.
+  wordmark: {
+    display: 'flex', alignItems: 'center', paddingInline: `calc(${spacing.gap} * 2)`,
+    fontSize: typography.pageTitle, lineHeight: spacing.bar, fontWeight: 900, letterSpacing: '-0.03em', color: colors.cream,
   },
-  nav: { display: 'flex', flexDirection: 'column', padding: spacing.gap },
+  body: { display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)', minHeight: 0 },
+  head: { display: 'flex', flexDirection: 'column', paddingInline: spacing.gap },
+  nav: { display: 'flex', flexDirection: 'column', paddingInline: spacing.gap, paddingBlockEnd: spacing.gap },
   main: { minWidth: 0, minHeight: 0, overflow: 'hidden' },
   item: {
     display: 'grid', gridTemplateColumns: `${ICON_COLUMN} minmax(0, 1fr) auto`, alignItems: 'center', columnGap: spacing.gap,
@@ -38,10 +40,15 @@ const styles = stylex.create({
   },
 });
 
+/** True inside StudioSidebarFrame: the page's StudioShell then draws no bar, its title row (StudioPageTitle) the bar's stand-in. */
+const StudioSidebarContext = createContext(false);
+
+export const useInStudioSidebar = () => useContext(StudioSidebarContext);
+
 type StudioSidebarFrameProps = {
-  /** The sidebar's items, under the studio's name. */
+  /** Under the wordmark: a StudioSidebarBody. */
   readonly sidebar: ReactNode;
-  /** The page, which brings its own bar (StudioShell). */
+  /** The page, which titles itself (StudioPageTitle). */
   readonly children: ReactNode;
 };
 
@@ -53,12 +60,31 @@ export function StudioSidebarFrame({ sidebar, children }: StudioSidebarFrameProp
   return (
     <Box {...stylex.props(styles.layout)}>
       <Box component="aside" {...stylex.props(styles.sidebar)}>
-        <Text size="sm" {...stylex.props(styles.top)}>studio</Text>
-        <FadeScroll>
-          <Box component="nav" {...stylex.props(styles.nav)}>{sidebar}</Box>
-        </FadeScroll>
+        <Text component="span" {...stylex.props(styles.wordmark)}>studio</Text>
+        {sidebar}
       </Box>
-      <Box {...stylex.props(styles.main)}>{children}</Box>
+      <StudioSidebarContext value>
+        <Box {...stylex.props(styles.main)}>{children}</Box>
+      </StudioSidebarContext>
+    </Box>
+  );
+}
+
+type StudioSidebarBodyProps = {
+  /** Fixed: the pages, a list's heading and filter. */
+  readonly head: ReactNode;
+  /** Under the head, scrolling on its own: the projects. */
+  readonly list: ReactNode;
+};
+
+/** The sidebar under its wordmark: what stays put, then the list that scrolls. */
+export function StudioSidebarBody({ head, list }: StudioSidebarBodyProps) {
+  return (
+    <Box component="nav" {...stylex.props(styles.body)}>
+      <Box {...stylex.props(styles.head)}>{head}</Box>
+      <FadeScroll>
+        <Box {...stylex.props(styles.nav)}>{list}</Box>
+      </FadeScroll>
     </Box>
   );
 }
@@ -76,7 +102,7 @@ export function StudioSidebarSection({ children, count }: { readonly children: R
 type SidebarAnchorProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
   readonly ref?: Ref<HTMLAnchorElement>;
   readonly icon?: ReactNode;
-  readonly label: string;
+  readonly label: ReactNode;
   /** What waits on the reviewer there, in caution; none is left out. */
   readonly waiting?: number;
   /** The page showing now: lit, and announced as the current page. */
@@ -87,7 +113,7 @@ function SidebarAnchor({ icon, label, waiting = 0, current = false, ref, ...anch
   return (
     <a ref={ref} {...anchor} aria-current={current ? 'page' : undefined} {...stylex.props(styles.item, current && styles.current)}>
       <span {...stylex.props(styles.icon)}>{icon}</span>
-      <span title={label} {...stylex.props(styles.label)}>{label}</span>
+      <span {...stylex.props(styles.label)}>{label}</span>
       {waiting > 0 && <span {...stylex.props(styles.count)}>{waiting}</span>}
     </a>
   );
@@ -95,5 +121,5 @@ function SidebarAnchor({ icon, label, waiting = 0, current = false, ref, ...anch
 
 const RouterSidebarAnchor = createLink(SidebarAnchor);
 
-/** A sidebar item: its icon, its name and what waits there, as a route link. */
+/** A sidebar item: its icon, its name and what waits there, as a route link. A truncated name's whole is its `title`. */
 export const StudioSidebarLink: LinkComponent<typeof SidebarAnchor> = (props) => <RouterSidebarAnchor preload="intent" {...props} />;

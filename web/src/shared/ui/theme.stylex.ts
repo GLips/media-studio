@@ -76,8 +76,8 @@ export const typography = stylex.defineVars({
   heading: '30px',
   /** Text read for itself, large: a decision's text candidate. */
   reading: '19px',
-  /** The index's section headers (Awaiting you, Projects), and nowhere else. */
-  display: '16px',
+  /** A sidebar page's title (Awaiting you, Library), on the studio wordmark's line: StudioPageTitle. */
+  pageTitle: '22px',
   /** One line height for every size, so rows line up across panels. */
   lineHeight: '16px',
   /** The large sizes read as running text, so they open up past the one shared height. */
@@ -104,6 +104,8 @@ export const spacing = stylex.defineVars({
   queueWidth: '240px',
   /** The studio's sidebar beside the index and the library: what waits, the library, every project. */
   sidebarWidth: '240px',
+  /** A sidebar page's title row, and the sidebar's wordmark row level with it. */
+  titleRow: '56px',
 });
 
 export const radius = stylex.defineVars({

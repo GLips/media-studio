@@ -5,10 +5,11 @@ import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { projectListStyles } from './project-row.tsx';
 
 const styles = stylex.create({
-  // Lines up with the rows' titles: the row's inset, the 64px thumbnail and the gap after it.
+  // A seam from the list's edge, and the label at the rows' own edge, so each run reads as a group under its head.
   label: {
     display: 'flex', alignItems: 'baseline', gap: spacing.gap, color: colors.cream, fontWeight: 600,
-    paddingInlineStart: `calc(${spacing.gap} + 64px + ${spacing.inset})`, paddingBlockStart: spacing.inset, paddingBlockEnd: spacing.tight,
+    paddingInline: spacing.gap, paddingBlockStart: spacing.inset, paddingBlockEnd: spacing.tight, marginBlockStart: spacing.gap,
+    borderBlockStartWidth: '1px', borderBlockStartStyle: 'solid', borderBlockStartColor: colors.line,
   },
   count: { color: colors.dim, fontWeight: 400, fontVariantNumeric: 'tabular-nums' },
 });
@@ -19,12 +20,12 @@ type ProjectRowGroupLabelProps = {
   readonly count?: number;
 };
 
-/** A heading over a run of rows (a project's in "Awaiting you", a folder's on a project's page), set over their titles. */
+/** A heading over a run of rows (a project's in "Awaiting you", a folder's on a project's page), on a seam above them. */
 export function ProjectRowGroupLabel({ children, count = 0 }: ProjectRowGroupLabelProps) {
   return (
-    <Text component="h3" size="sm" {...stylex.props(projectListStyles.span, styles.label)}>
+    <Text component="h3" size="md" {...stylex.props(projectListStyles.span, styles.label)}>
       {children}
-      {count > 0 && <Text component="span" inherit {...stylex.props(styles.count)}>{count}</Text>}
+      {count > 0 && <Text component="span" size="sm" {...stylex.props(styles.count)}>{count}</Text>}
     </Text>
   );
 }
