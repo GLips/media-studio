@@ -6,11 +6,11 @@ import { libraryPosterFrameOf, type LibraryItem } from '#lib/footage/library/mod
 import { libraryPosterUrl } from '#lib/footage/library/studio/library-media.ts';
 import { colors, radius } from '#web/shared/ui/theme.stylex.ts';
 
-// The index's ProjectThumbnail box, so the shelf's rows read as the dashboard's do.
+// The index's ProjectThumbnail box, larger: on the shelf the picture is how a take is told apart.
 const styles = stylex.create({
   // 16:9; a screen of another shape letterboxes inside it on the screen ground.
   frame: {
-    position: 'relative', flexShrink: 0, width: '64px', height: '36px', overflow: 'hidden', borderRadius: radius.control,
+    position: 'relative', flexShrink: 0, width: '96px', height: '54px', overflow: 'hidden', borderRadius: radius.control,
     backgroundColor: colors.screen, display: 'flex', alignItems: 'center', justifyContent: 'center', color: colors.dim,
   },
   pending: { backgroundColor: colors.skeleton },
@@ -22,13 +22,13 @@ const styles = stylex.create({
 type LibraryPosterProps = { readonly item: LibraryItem; readonly online: boolean };
 
 /**
- * An item's 64px poster: its leading picture a third of the way in, a skeleton until it's cut, the bare ground when
+ * An item's 96px poster: its leading picture a third of the way in, a skeleton until it's cut, the bare ground when
  * it can't be (the media offline, a file ffmpeg can't read). An item with no picture shows a sound glyph.
  */
 export function LibraryPoster({ item, online }: LibraryPosterProps) {
   const [state, setState] = useState<'pending' | 'shown' | 'failed'>('pending');
   const poster = libraryPosterFrameOf(item);
-  if (!poster) return <Box aria-hidden {...stylex.props(styles.frame, styles.sound)}><AudioLines size={14} /></Box>;
+  if (!poster) return <Box aria-hidden {...stylex.props(styles.frame, styles.sound)}><AudioLines size={16} /></Box>;
   const cut = online && state !== 'failed';
   return (
     <Box aria-hidden {...stylex.props(styles.frame, cut && state === 'pending' && styles.pending)}>

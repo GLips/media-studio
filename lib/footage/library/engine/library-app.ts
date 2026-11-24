@@ -7,12 +7,13 @@ import type { ReviewAuthor } from '#lib/output/review/models/review-threads.ts';
 import type { LibraryFlagOp, LibraryFlagsFile } from '../models/library-flags.ts';
 import { libraryFootage, type LibraryTranscriptFile } from '../models/library-footage.ts';
 import type { LibraryItem } from '../models/library-item.ts';
+import { libraryOpeningWords } from '../models/library-opening-words.ts';
 import { libraryRangeOf, libraryWordsSaidIn } from '../models/library-range.ts';
 import { searchLibrary, type LibrarySearchHit } from '../models/library-search.ts';
 import { LibraryStore } from './library-store.ts';
 
-/** One item as the shelf lists it. */
-export type LibraryShelfItem = { item: LibraryItem; flags: number };
+/** One item as the shelf lists it: its flags counted, and its opening words, empty before its transcript is made. */
+export type LibraryShelfItem = { item: LibraryItem; flags: number; opening: string };
 
 /** Every item, newest first, and whether the media is there to play. */
 export type LibraryShelf = { items: LibraryShelfItem[]; media: { path: string; online: boolean } };
@@ -27,7 +28,8 @@ export const readLibraryShelfEffect = Effect.fn('LibraryApp.shelf')(function* ()
   const items = yield* Effect.forEach(yield* store.itemIds(), (id) => Effect.all({
     item: store.readItem(id),
     flags: Effect.map(store.readFlags(id), (file) => file.flags.length),
-  }));
+    transcript: Effect.map(store.readTranscript(id), Option.getOrUndefined),
+  }).pipe(Effect.map(({ item, flags, transcript }): LibraryShelfItem => ({ item, flags, opening: libraryOpeningWords(libraryFootage(item, transcript).words) }))));
   // Ids lead with the day they were recorded or added, so the newest recordings come first.
   return { items: items.toReversed(), media: yield* libraryMediaPlace() } satisfies LibraryShelf;
 });
