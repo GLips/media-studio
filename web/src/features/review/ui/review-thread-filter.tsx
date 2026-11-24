@@ -20,6 +20,8 @@ const styles = stylex.create({
     display: 'inline-flex', alignItems: 'center', gap: spacing.tight, paddingInline: spacing.tight, borderRadius: radius.control,
     whiteSpace: 'nowrap', color: { default: colors.dim, ':hover': colors.cream }, backgroundColor: { default: 'transparent', ':hover': colors.raised },
   },
+  // A filter is edged at rest, so it reads as a control beside the bare counts; lit, it fills.
+  filter: { height: spacing.rowDense, borderWidth: '1px', borderStyle: 'solid', borderColor: { default: colors.line, ':hover': colors.dim } },
   lit: { color: colors.cream, backgroundColor: colors.raised },
   count: { display: 'inline-flex', alignItems: 'center', gap: spacing.tight, paddingInline: spacing.tight, whiteSpace: 'nowrap', color: colors.dim, cursor: 'default' },
   open: { color: colors.accent },
@@ -101,12 +103,12 @@ export function ReviewThreadFilter({ head, counts, filter, onFilter, actions, ch
   if (check?.step) return <ReviewCheckRow head={head} step={check.step} />;
   // Every state at once outgrows the side's width: the counts wrap rather than run under the actions.
   return (
-    <Group gap="hairline" {...stylex.props(styles.row)}>
+    <Group gap="tight" {...stylex.props(styles.row)}>
       {head ?? <Text component="span" size="sm" {...stylex.props(styles.title)}>Notes</Text>}
       {Object.values(counts).every((n) => n === 0) && <Text component="span" size="sm" {...stylex.props(styles.count)}>none yet</Text>}
       {counts.open > 0 && (
         <HotkeyTooltip name={filter === 'open' ? 'Show every live note' : 'Show only open notes'} hotkey="Filter">
-          <UnstyledButton aria-pressed={filter === 'open'} onClick={() => toggle('open')} {...stylex.props(styles.chip, filter === 'open' && styles.lit)}>
+          <UnstyledButton aria-pressed={filter === 'open'} onClick={() => toggle('open')} {...stylex.props(styles.chip, styles.filter, filter === 'open' && styles.lit)}>
             <ReviewToneWords tone="open" count={counts.open} />
           </UnstyledButton>
         </HotkeyTooltip>
@@ -117,7 +119,7 @@ export function ReviewThreadFilter({ head, counts, filter, onFilter, actions, ch
       {counts.keep > 0 && <Text component="span" size="sm" {...stylex.props(styles.count)}><ReviewToneWords tone="keep" count={counts.keep} /></Text>}
       {counts.resolved > 0 && (
         <HotkeyTooltip name={filter === 'all' ? 'Hide resolved notes' : 'Show resolved notes'} hotkey="Filter">
-          <UnstyledButton aria-pressed={filter === 'all'} onClick={() => toggle('all')} {...stylex.props(styles.chip, filter === 'all' && styles.lit)}>
+          <UnstyledButton aria-pressed={filter === 'all'} onClick={() => toggle('all')} {...stylex.props(styles.chip, styles.filter, filter === 'all' && styles.lit)}>
             <ReviewToneWords tone="resolved" count={counts.resolved} />
           </UnstyledButton>
         </HotkeyTooltip>

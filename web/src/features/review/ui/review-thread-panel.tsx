@@ -65,6 +65,8 @@ export function ReviewThreadPanel({ head, lead }: { readonly head?: ReactNode; r
   return (
     <Stack ref={threadRef} gap={0} tabIndex={-1} aria-label="Thread" {...{ [REVIEW_THREAD_ATTRIBUTE]: subject.on }} {...stylex.props(styles.panel, stylex.defaultMarker())}>
       {lead}
+      {/* A still's rail has room to spare: its prompt sits right under the still's facts, not a screen's height below. */}
+      {subject.on === 'still' && <ReviewThreadComposer docked="head" />}
       <ReviewThreadFilter head={head} counts={counts} filter={filter} onFilter={(next) => setSearch({ filter: next })} actions={actions} check={check} />
       {reviewThreadListEmpty(listing, actions) ? (
         // A still's resting composer is its own prompt, key and all: the hint would say it twice.
@@ -73,7 +75,7 @@ export function ReviewThreadPanel({ head, lead }: { readonly head?: ReactNode; r
           <Readout>N</Readout>
         </Group>
       ) : <ReviewThreadList listing={listing} actions={actions} live={live} rowOf={rowOf} />}
-      <ReviewThreadComposer />
+      {subject.on === 'still' || <ReviewThreadComposer docked="foot" />}
     </Stack>
   );
 }
