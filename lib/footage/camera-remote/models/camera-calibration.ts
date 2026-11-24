@@ -34,9 +34,11 @@ export const DEFAULT_CALIBRATION_TARGETS: CalibrationTargets = { skinLuma: 120, 
 const LUMA_TOLERANCE = 0.08;
 // Frame to frame, a monitor-lit face's warmth wanders about 0.01 with what's on screen.
 const WARMTH_TOLERANCE = 0.02;
-// Encoded luma rises about 2^(1/2.2) per stop, so a ratio's stops are its log2 times 2.2.
-const ENCODING_GAMMA = 2.2;
-const MAX_STOPS_PER_STEP = 2;
+// A ratio of skin luma is log2(ratio) × this many stops. Measured live in Cine1: 2.4 (ISO 1250→640, monitor light),
+// 2.6 and 3.1 (ISO 400→125, daylight), steeper where Cine1 rolls off highlights. 2.2, plain gamma, undershot.
+const ENCODING_GAMMA = 2.6;
+// Bright daylight sits 3 stops over a night setting; a step that covers it saves a round trip.
+const MAX_STOPS_PER_STEP = 4;
 // Measured on the a6400 in Cine1 under monitor light: 1000K moved skin warmth 0.11 near 3500K and 0.04 near 5200K.
 // The middle slope, with the step held to 1200K, so one reading can't swing far past its target.
 const KELVIN_PER_WARMTH = 1000 / 0.07;
@@ -83,6 +85,11 @@ export type CalibrationStep =
   | { readonly kind: 'settled'; readonly settings: CalibratedSettings }
   /** The face wants more light than `maxIso` gives: the room needs light, not the camera. */
   | { readonly kind: 'needs-light'; readonly settings: CalibratedSettings }
+  /**
+   * The face is too bright at the lowest ISO. Aperture (f/1.4, the look) and shutter (1/60, the frame rate) are
+   * Graham's to keep, so the room has to give less light: dim the window.
+   */
+  | { readonly kind: 'too-bright'; readonly settings: CalibratedSettings }
   | { readonly kind: 'adjust'; readonly settings: CalibratedSettings };
 
 /**
@@ -108,6 +115,7 @@ export function nextCalibrationStep(
   if (!lumaOff && !warmthOff) return { kind: 'settled', settings };
   const stuck = iso === current.iso && whiteBalanceKelvin === current.whiteBalanceKelvin;
   if (stuck && lumaOff && reading.luma < targets.skinLuma && iso === Math.max(...allowed)) return { kind: 'needs-light', settings };
+  if (stuck && lumaOff && reading.luma > targets.skinLuma && iso === Math.min(...allowed)) return { kind: 'too-bright', settings };
   // A move the camera can't make finer (ISO's ladder, 100K steps) is as close as it gets.
   return stuck ? { kind: 'settled', settings } : { kind: 'adjust', settings };
 }

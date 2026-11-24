@@ -24,6 +24,12 @@ test('a face too dim at the highest allowed ISO needs light', () => {
   assert.equal(step.settings.iso, 3200);
 });
 
+// Aperture and shutter belong to the look: past the lowest ISO, the window has to give less light.
+test('a face too bright at the lowest ISO is too bright, not an aperture change', () => {
+  const step = nextCalibrationStep({ luma: 220, warmth: 0.16 }, { whiteBalanceKelvin: 6400, iso: 100 }, DEFAULT_CALIBRATION_TARGETS, ISO_LADDER);
+  assert.deepEqual(step, { kind: 'too-bright', settings: { whiteBalanceKelvin: 6400, iso: 100 } });
+});
+
 test('skin is read from the middle of the face box, not its corners', () => {
   const width = 10;
   const height = 10;

@@ -13,8 +13,9 @@ import type { FaceBox, RgbFrame } from '../models/camera-calibration.ts';
 
 /** The size calibration reads a frame at: plenty for a face's average colour, and quick to decode. */
 const READ_SIZE = { width: 640, height: 360 } as const;
-// The capture card's first frames after opening can be black or stale; these are skipped.
-const SETTLE_FRAMES = 15;
+// The capture card's first frames after opening can be black or stale; these are skipped. A live probe read the
+// right picture from the first frame, so 8 is margin, a quarter second.
+const SETTLE_FRAMES = 8;
 /** How many frames calibration averages a reading over, about a third of a second. */
 const READ_FRAMES = 8;
 

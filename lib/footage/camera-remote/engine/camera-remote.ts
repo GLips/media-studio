@@ -76,12 +76,13 @@ export type CameraCalibration = {
 };
 
 const MAX_CALIBRATION_STEPS = 6;
-// The camera applies a change at once, but the capture card's picture trails it by a few frames.
-const SETTLE_AFTER_CHANGE = Duration.millis(2500);
+// Measured live: the HDMI picture shows a change in the first frame ffmpeg reads after it, so the grab's own
+// opening covers the lag; this is margin for a slow camera reply.
+const SETTLE_AFTER_CHANGE = Duration.millis(300);
 
 /**
- * Moves ISO and white balance until the face in the HDMI picture reads at the config's targets, a step at a time,
- * and leaves them set. Aperture and shutter aren't touched. The face is found once: the person sits still for it.
+ * Moves ISO and white balance until the face in the HDMI picture reads at the config's targets, and leaves them
+ * set, all in one visit to the camera's Wi-Fi. Aperture and shutter aren't touched. The face is found once: the person sits still for it.
  */
 export const calibrateCamera = Effect.fn('CameraRemote.calibrate')(function* (config: CameraRemoteSettings) {
   const fs = yield* FileSystem.FileSystem;
@@ -100,6 +101,8 @@ export const calibrateCamera = Effect.fn('CameraRemote.calibrate')(function* (co
       const reading = readSkinAcross(frames, face);
       const next = nextCalibrationStep(reading, settings, config.calibration, isoLadder);
       yield* Effect.log(`step ${step}: skin luma ${reading.luma.toFixed(0)}, warmth ${reading.warmth.toFixed(3)} at ${settings.whiteBalanceKelvin}K ISO ${settings.iso} → ${next.kind}`);
+      if (next.kind === 'too-bright') yield* Effect.log('too-bright: dim the window (ISO is at its lowest; aperture and shutter stay put)');
+      if (next.kind === 'needs-light') yield* Effect.log('needs-light: the face is too dim at the highest allowed ISO');
       if (next.kind !== 'adjust') return { outcome: next.kind, settings, reading, steps: step } satisfies CameraCalibration;
       if (step === MAX_CALIBRATION_STEPS) return { outcome: 'gave-up', settings, reading, steps: step } satisfies CameraCalibration;
       if (next.settings.whiteBalanceKelvin !== settings.whiteBalanceKelvin) yield* setCameraWhiteBalance(next.settings.whiteBalanceKelvin);

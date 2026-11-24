@@ -72,7 +72,7 @@ const calibrateCommand = defineCommand({
   meta: {
     name: 'calibrate',
     description: 'Set ISO and white balance so the face in the HDMI picture meets its brightness and skin-tone targets.',
-    about: `Sit where you record. Finds the face once (macOS Vision; the first run builds the detector), then reads the skin's brightness and warmth off the HDMI picture and moves ISO and white balance a step at a time, up to six, leaving them set. Aperture and shutter stay as they are. Prints JSON: outcome (settled; needs-light, when the face is too dim at the highest allowed ISO; gave-up), the settings left, the last reading and the steps taken. Targets are the config's calibration (skinLuma, skinWarmth, maxIso), with defaults read off a picture Graham approved in Cine1. ${WIFI_ABOUT}`,
+    about: `Sit where you record. Finds the face once (macOS Vision; the first run builds the detector), then reads the skin's brightness and warmth off the HDMI picture and moves ISO and white balance by the measured difference, up to six steps, leaving them set. Aperture and shutter stay as they are: they set the look and the motion. Prints JSON: outcome (settled; needs-light, when the face is too dim at the highest allowed ISO; too-bright, when it is too bright at ISO 100 and the window needs dimming; gave-up), the settings left, the last reading and the steps taken. Targets are the config's calibration (skinLuma, skinWarmth, maxIso), with defaults read off a picture Graham approved in Cine1. ${WIFI_ABOUT}`,
   },
   async run() {
     const { calibrateCamera } = await import('#lib/footage/camera-remote/engine/camera-remote.ts');
