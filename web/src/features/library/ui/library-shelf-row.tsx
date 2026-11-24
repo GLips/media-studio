@@ -7,12 +7,12 @@ import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 export const LIBRARY_SHELF_ROW_ATTRIBUTE = 'data-library-row';
 
 /**
- * The shelf's columns: poster, title, sources, length, recorded, flags. The column header and every item row lay out
+ * The shelf's columns: poster, title (with its second line), sources, length, flags. The column header and every item row lay out
  * on this one grid, so a column's words sit under its name.
  */
 export const libraryShelfColumns = stylex.create({
   grid: {
-    display: 'grid', gridTemplateColumns: '64px minmax(0, 1fr) 200px 64px 152px 56px', columnGap: spacing.inset, alignItems: 'center',
+    display: 'grid', gridTemplateColumns: '96px minmax(0, 1fr) 72px 64px 56px', columnGap: spacing.inset, alignItems: 'center',
     paddingInline: spacing.gap,
   },
   end: { justifySelf: 'end', textAlign: 'end' },
@@ -30,6 +30,8 @@ const styles = stylex.create({
     },
     outlineColor: colors.cream, outlineStyle: 'solid', outlineOffset: '-1px', outlineWidth: { default: 0, ':focus-visible': '1px' },
   },
+  // Two lines beside a 54px poster.
+  item: { height: '64px' },
   flex: { display: 'flex', alignItems: 'center', gap: spacing.inset, paddingInline: spacing.gap },
 });
 
@@ -42,7 +44,7 @@ type LibraryShelfRowProps = {
   readonly children: ReactNode;
 };
 
-/** The shelf's one row, an item or a hit in it: 40px, lit on hover or keyboard focus; it opens the item. */
+/** The shelf's one row, an item (64px, two lines) or a hit in it (40px): lit on hover or keyboard focus; it opens the item. */
 export function LibraryShelfRow({ item, at, layout, children }: LibraryShelfRowProps) {
   return (
     <AnchorLink
@@ -51,7 +53,7 @@ export function LibraryShelfRow({ item, at, layout, children }: LibraryShelfRowP
       search={at ? { t: at.t, flag: at.flag } : {}}
       underline="never"
       {...{ [LIBRARY_SHELF_ROW_ATTRIBUTE]: '' }}
-      {...stylex.props(styles.row, layout === 'columns' ? libraryShelfColumns.grid : styles.flex)}
+      {...stylex.props(styles.row, layout === 'columns' ? [libraryShelfColumns.grid, styles.item] : styles.flex)}
     >
       {children}
     </AnchorLink>

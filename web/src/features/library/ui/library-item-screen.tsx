@@ -3,6 +3,7 @@ import * as stylex from '@stylexjs/stylex';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { libraryFootage } from '#lib/footage/library/models/library-footage.ts';
+import { libraryPictureTracksOf } from '#lib/footage/library/models/library-item.ts';
 import { libraryFlagsInOrder, type LibraryFlag, type LibraryFlagFilter } from '#lib/footage/library/models/library-flags.ts';
 import { transcriptLines } from '#lib/footage/transcript/models/footage-transcript.ts';
 import { RouteNotFoundPage } from '#web/shared/ui/route-not-found-page.tsx';
@@ -23,12 +24,15 @@ import { useLibraryItemHotkeys } from './use-library-item-hotkeys.ts';
 const styles = stylex.create({
   body: {
     display: 'grid', height: '100%', minHeight: 0,
-    // The flags take the height their rows need, up to 40%, and scroll past it; the picture has the rest.
-    gridTemplateColumns: `minmax(0, 1fr) minmax(320px, 34%)`, gridTemplateRows: 'auto minmax(0, 1fr) auto fit-content(40%)',
+    // The picture takes its own shape at the column's width, so it has no bars; the flags have the height left.
+    gridTemplateColumns: `minmax(0, 1fr) minmax(320px, 34%)`, gridTemplateRows: 'auto auto auto minmax(0, 1fr)',
     gridTemplateAreas: '"facts facts" "picture transcript" "timeline transcript" "flags transcript"',
   },
   facts: { gridArea: 'facts', minWidth: 0 },
   picture: { gridArea: 'picture', minHeight: 0, position: 'relative' },
+  // The column's width, unless that's too tall to leave the transport and a few flags in view (the bar, the facts
+  // line and the transport take about 140px, and the flags keep 120px): then narrower, centred on the ground.
+  shape: (ratio: number) => ({ aspectRatio: ratio, justifySelf: 'center', width: `min(100%, calc((100dvh - 260px) * ${ratio}))` }),
   offline: {
     position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: spacing.inset, color: colors.dim,
     backgroundColor: colors.screen, textAlign: 'center',
@@ -85,12 +89,16 @@ function LibraryItemScreenBody({ view }: { readonly view: LibraryItemView }) {
   };
   useLibraryItemHotkeys(screen);
   const { reach, heard, attachRoot, attachLeader } = playback;
+  const { main } = libraryPictureTracksOf(item);
+  const video = main ? item.tracks[main].video : undefined;
+  // An item with no picture keeps a screen's shape for whatever stands in for it.
+  const pictureRatio = video ? video.width / video.height : 16 / 9;
   return (
     <LibraryItemScreenProvider value={screen}>
       <StudioShell start={<LibraryItemHeader />}>
         <Box ref={attachRoot} {...stylex.props(styles.body)}>
           <Box {...stylex.props(styles.facts)}><LibraryItemFacts /></Box>
-          <Box {...stylex.props(styles.picture)}>
+          <Box {...stylex.props(styles.picture, styles.shape(pictureRatio))}>
             <LibraryRecordingMedia item={item} clock={playback} placement={{ offsetSeconds: 0, fps: LIBRARY_CLOCK_FPS }}
               heard={{ track: heard, attach: attachLeader }} />
             {!view.media.online && (

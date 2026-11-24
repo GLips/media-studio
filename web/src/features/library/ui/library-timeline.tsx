@@ -28,7 +28,7 @@ const styles = stylex.create({
     borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line, userSelect: 'none',
   },
   // What's said: each line of the transcript a band, so the quiet stretches between takes show.
-  line: { position: 'absolute', bottom: '6px', height: '8px', backgroundColor: colors.laneB, borderRadius: radius.control, pointerEvents: 'none' },
+  line: { position: 'absolute', bottom: '6px', height: '8px', backgroundColor: colors.mark, borderRadius: radius.control, pointerEvents: 'none' },
   // The time ruler, across the strip's top: a tick and its time wherever a label has room, as the render review's.
   ruler: { position: 'absolute', insetInline: 0, top: 0, height: spacing.laneGutter, pointerEvents: 'none', overflow: 'hidden' },
   tick: { position: 'absolute', top: 0, width: '1px', height: spacing.tight, backgroundColor: colors.mark },

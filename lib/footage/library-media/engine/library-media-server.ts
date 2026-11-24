@@ -24,14 +24,14 @@ export const LIBRARY_MEDIA_PATH = '/library-media';
 const LIBRARY_FRAMES_PATH = '/library-frames';
 const LIBRARY_POSTERS_PATH = '/library-posters';
 
-/** A poster's width: twice the shelf's 64px thumbnail, for a 2x screen. */
-const LIBRARY_POSTER_WIDTH = 128;
+/** A poster's width: twice the shelf's 96px poster, for a 2x screen. */
+const LIBRARY_POSTER_WIDTH = 192;
 /**
  * The decoder grid a poster is cut on. Coarse, since a poster needs no exact frame, but fine enough that the seek's
  * lead decodes only a few frames before it.
  */
 const LIBRARY_POSTER_FPS = 4;
-/** Posters kept in memory, about 6 KB each: more than a shelf shows. */
+/** Posters kept in memory, about 10 KB each: more than a shelf shows. */
 const LIBRARY_POSTER_CAPACITY = 512;
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {

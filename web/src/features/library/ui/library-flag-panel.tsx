@@ -17,7 +17,8 @@ const styles = stylex.create({
   head: { paddingInline: spacing.gap, borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: colors.line },
   chip: { paddingInline: spacing.tight, borderRadius: radius.control, color: colors.dim, backgroundColor: { default: 'transparent', ':hover': colors.raised } },
   chipOn: { color: colors.cream, backgroundColor: colors.raised },
-  step: { color: colors.dim, marginInlineStart: 'auto' },
+  step: { color: colors.dim, marginInlineStart: 'auto', minWidth: 0, display: 'flex', alignItems: 'center', gap: spacing.gap },
+  hint: { minWidth: 0, color: colors.dim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   // The row's tools sit beside its button, not in it: a button can't hold buttons.
   row: {
     display: 'flex', alignItems: 'center', gap: spacing.tight, paddingInlineEnd: spacing.tight,
@@ -131,7 +132,8 @@ export function LibraryFlagPanel() {
         ))}
         {at >= 0 && <Readout>{at + 1} of {queue.length}</Readout>}
         <Box {...stylex.props(styles.step)}>
-          <HotkeyTooltip name={marked ? 'Flag the marked range' : 'Mark a range first: drag on the timeline, select words, or press I and O'} hotkey="Flag range">
+          {!marked && <Text component="span" size="sm" {...stylex.props(styles.hint)}>Drag on the timeline or select words to mark a range</Text>}
+          <HotkeyTooltip name={marked ? 'Flag the marked range' : 'Or mark one with I and O as it plays'} hotkey="Flag range">
             <Box component="span" {...stylex.props(styles.hinted)}>
               <Button size="compact-xs" leftSection={<Flag size={12} />} disabled={!marked || composing !== null}
                 onClick={() => marked && setComposing({ kind: 'new', range: marked })}>

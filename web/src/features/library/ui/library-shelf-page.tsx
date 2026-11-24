@@ -6,6 +6,7 @@ import { useRef } from 'react';
 import { libraryItemHasRecorderTitle, librarySourcesOf, type LibrarySourceKind } from '#lib/footage/library/models/library-item.ts';
 import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
+import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
 import { TextInput } from '#web/shared/ui/text-input.tsx';
@@ -21,22 +22,28 @@ import { useLibraryShelfQuery } from './use-library-shelf-query.ts';
 const styles = stylex.create({
   // Fills whatever width it's given: a row's columns spread with it, so its figures line up under their names.
   page: { paddingInline: spacing.row, paddingBlock: spacing.row },
-  title: { display: 'flex', alignItems: 'baseline', gap: spacing.inset, paddingInline: spacing.gap, paddingBlockEnd: spacing.inset },
-  heading: { fontWeight: 900, color: colors.cream, margin: 0 },
+  // The title row's right end stays clear: on sidebar pages the bar's quick-open and keys move there.
+  title: { display: 'flex', alignItems: 'baseline', gap: spacing.gap, paddingInline: spacing.gap, paddingBlockEnd: spacing.inset },
+  // Stands in for the shared page-title token (synthesis 2, fix 3) until web/src/shared/ui/ has it: swap it in here.
+  heading: { lineHeight: spacing.bar, fontWeight: 700, color: colors.cream, margin: 0 },
   count: { color: colors.dim },
   search: { paddingInline: spacing.gap, paddingBlockEnd: spacing.inset },
+  // An outline on the ground, as the page is, rather than a filled box.
+  searchField: {
+    backgroundColor: 'transparent', color: colors.cream,
+    borderColor: { default: colors.line, ':hover': colors.mark, ':focus': colors.cream },
+  },
   head: {
     height: spacing.row, color: colors.dim,
     borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: colors.line, marginBlockEnd: spacing.tight,
   },
   quiet: { padding: spacing.gap, color: colors.dim },
-  name: { minWidth: 0, display: 'flex', alignItems: 'baseline', gap: spacing.gap },
+  name: { minWidth: 0, display: 'flex', flexDirection: 'column', gap: spacing.hairline },
+  titleLine: { minWidth: 0, display: 'flex', alignItems: 'baseline', gap: spacing.gap },
   text: { minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  untitled: { color: colors.dim },
-  fact: { color: colors.dim },
+  said: { color: colors.dim },
   mark: { color: colors.caution, whiteSpace: 'nowrap' },
-  sources: { color: colors.dim, minWidth: 0, overflow: 'hidden' },
-  source: { display: 'inline-flex', alignItems: 'center', gap: spacing.tight, whiteSpace: 'nowrap' },
+  sources: { color: colors.dim, width: 'fit-content' },
 });
 
 const SOURCE_ICONS: Record<LibrarySourceKind, LucideIcon> = { screen: Monitor, camera: Video, mic: Mic, video: Film, audio: AudioLines, other: File };
@@ -48,29 +55,43 @@ function formatLibraryDate(iso: string): string {
   return date.toLocaleString(undefined, { month: 'short', day: 'numeric', year, hour: 'numeric', minute: '2-digit' });
 }
 
-function LibraryShelfItemRow({ shelved: { item, flags }, online }: { readonly shelved: LibraryShelfItem; readonly online: boolean }) {
+/**
+ * An item's two lines. A recording the recorder named is titled by when it began, and its opening words tell it from
+ * its neighbours; a named item keeps its name, over its date and opening words.
+ */
+function LibraryShelfItemName({ shelved: { item, opening } }: { readonly shelved: LibraryShelfItem }) {
   const interrupted = item.source.kind === 'studio-recorder' && item.source.status === 'interrupted';
-  // A recording the recorder named is named by its date, which the Recorded column already says.
-  const untitled = libraryItemHasRecorderTitle(item);
+  const date = formatLibraryDate(item.recordedAt ?? item.addedAt);
+  const dated = libraryItemHasRecorderTitle(item);
+  const second = [!dated && date, opening].filter(Boolean).join(' · ');
+  return (
+    <Box {...stylex.props(styles.name)}>
+      <Box {...stylex.props(styles.titleLine)}>
+        <Text component="span" size="md" title={item.title} {...stylex.props(styles.text)}>{dated ? date : item.title}</Text>
+        {interrupted && <Text component="span" size="sm" {...stylex.props(styles.mark)}>interrupted</Text>}
+      </Box>
+      {second && <Text component="span" size="sm" {...stylex.props(styles.text, styles.said)}>{second}</Text>}
+    </Box>
+  );
+}
+
+function LibraryShelfItemRow({ shelved, online }: { readonly shelved: LibraryShelfItem; readonly online: boolean }) {
+  const { item, flags } = shelved;
+  const sources = librarySourcesOf(item);
+  const named = sources.map(({ label }) => label).join(', ');
   return (
     <LibraryShelfRow item={item.id} layout="columns">
       <LibraryPoster item={item} online={online} />
-      <Box {...stylex.props(styles.name)}>
-        <Text component="span" size="md" title={item.title} {...stylex.props(styles.text, untitled && styles.untitled)}>{untitled ? 'Untitled recording' : item.title}</Text>
-        {interrupted && <Text component="span" size="sm" {...stylex.props(styles.mark)}>interrupted</Text>}
-      </Box>
-      <Group gap="inset" wrap="nowrap" {...stylex.props(styles.sources)}>
-        {librarySourcesOf(item).map(({ track, kind, label }) => {
-          const Icon = SOURCE_ICONS[kind];
-          return (
-            <Text key={track} component="span" size="sm" {...stylex.props(styles.source)}>
-              <Icon size={12} aria-hidden />{label}
-            </Text>
-          );
-        })}
-      </Group>
+      <LibraryShelfItemName shelved={shelved} />
+      <HotkeyTooltip name={named}>
+        <Group gap="gap" wrap="nowrap" aria-label={named} {...stylex.props(styles.sources)}>
+          {sources.map(({ track, kind }) => {
+            const Icon = SOURCE_ICONS[kind];
+            return <Icon key={track} size={14} aria-hidden />;
+          })}
+        </Group>
+      </HotkeyTooltip>
       <Box {...stylex.props(libraryShelfColumns.end)}><Readout>{formatReviewClock(item.durationSeconds)}</Readout></Box>
-      <Text component="span" size="sm" {...stylex.props(styles.text, styles.fact)}>{formatLibraryDate(item.recordedAt ?? item.addedAt)}</Text>
       <Box {...stylex.props(libraryShelfColumns.end)}>{flags > 0 && <Text component="span" size="sm">{flags} flag{flags > 1 ? 's' : ''}</Text>}</Box>
     </LibraryShelfRow>
   );
@@ -84,7 +105,6 @@ function LibraryShelfColumnHead() {
       <Text component="span" size="sm">Title</Text>
       <Text component="span" size="sm">Sources</Text>
       <Text component="span" size="sm" {...stylex.props(libraryShelfColumns.end)}>Length</Text>
-      <Text component="span" size="sm">Recorded</Text>
       <Text component="span" size="sm" {...stylex.props(libraryShelfColumns.end)}>Flags</Text>
     </Box>
   );
@@ -108,7 +128,7 @@ export function LibraryShelfPage() {
       <FadeScroll>
         <Stack ref={listRef} gap={0} {...stylex.props(styles.page, stylex.defaultMarker())}>
           <Box {...stylex.props(styles.title)}>
-            <Text component="h1" size="heading" {...stylex.props(styles.heading)}>Library</Text>
+            <Text component="h1" size="line" {...stylex.props(styles.heading)}>Library</Text>
             {count > 0 && <Text component="span" size="sm" {...stylex.props(styles.count)}>{count} recording{count > 1 ? 's' : ''}</Text>}
           </Box>
           <TextInput
@@ -123,6 +143,7 @@ export function LibraryShelfPage() {
                 focusLibraryShelfRow(listRef.current, 1);
               } else if (event.key === 'Escape') event.currentTarget.blur();
             }}
+            classNames={{ input: stylex.props(styles.searchField).className }}
             {...stylex.props(styles.search)}
           />
           {!shelf.media.online && (
