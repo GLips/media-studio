@@ -35,8 +35,8 @@ const styles = stylex.create({
   flash: { animationName: flashIn, animationDuration: '1s', animationTimingFunction: 'ease-out' },
   head: { height: spacing.rowDense, minWidth: 0 },
   glyph: { width: spacing.inset, flexShrink: 0, textAlign: 'center' },
-  // Neutral beside the state's colour: the kind is what the note is, the colour where it stands.
-  kind: { display: 'inline-flex', alignItems: 'center', gap: spacing.hairline, flexShrink: 0, color: colors.cream },
+  // Dim, like the rest of the label line: the request under it is what reads first.
+  kind: { display: 'inline-flex', alignItems: 'center', gap: spacing.hairline, flexShrink: 0, color: colors.dim },
   earlier: { color: colors.dim, paddingInlineStart: spacing.inset },
   open: { color: colors.accent },
   addressed: { color: colors.pass },
@@ -46,9 +46,13 @@ const styles = stylex.create({
   scene: { color: colors.dim, whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0 },
   actions: { marginInlineStart: 'auto', flexShrink: 0 },
   body: { paddingInlineStart: spacing.inset },
-  // A gap after the label line and a wider one before the replies, so a note's three parts don't read as one block.
+  // A gap after the label line; the replies stand a step further in, under a quiet rule, so the request reads apart
+  // from both.
   words: { paddingTop: spacing.tight },
-  replies: { paddingInlineStart: spacing.inset, paddingTop: spacing.gap },
+  replies: {
+    marginInlineStart: spacing.inset, marginTop: spacing.gap, paddingTop: spacing.gap, paddingInlineStart: spacing.inset,
+    borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line,
+  },
   author: { color: colors.cream, width: spacing.inset, flexShrink: 0 },
   reply: { minWidth: 0, flex: 1 },
   commit: {
@@ -216,7 +220,7 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
             {thread.kind !== 'fix' && thread.kind}
           </Text>
         </Tooltip>
-        <Readout bright>#{thread.id}</Readout>
+        <Readout>#{thread.id}</Readout>
         {where && <Readout>{where}</Readout>}
         {scene && <Text component="span" size="sm" {...stylex.props(styles.scene)}>{scene.id}</Text>}
         {thread.anchor.on === 'video' && thread.anchor.cue && <Text component="span" size="sm" {...stylex.props(styles.scene)}>♪ {reviewCueNameOf(thread.anchor.cue)}</Text>}

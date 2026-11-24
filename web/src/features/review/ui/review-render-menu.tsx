@@ -2,7 +2,6 @@ import { Group, Menu, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useState } from 'react';
 import { projectPulseHashOf } from '#lib/output/review/models/project-pulse.ts';
-import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { formatReviewVersionCommit, ReviewRenderVersionRow } from './review-render-version-row.tsx';
@@ -19,9 +18,9 @@ const styles = stylex.create({
 });
 
 /**
- * `r14 ▾ 3a9f2c1*`: the render shown, by its place among its path's kept versions, and its commit. The menu lists
- * every kept version, newest first; the newest is the file on disk, so choosing it leaves `r` out of the URL. A render
- * never kept (made outside `studio render`, never noted on) shows its hash.
+ * `r14 ▾`: the render shown, by its place among its path's kept versions; its commit is in the menu, which lists every
+ * kept version with its commit, newest first. The newest is the file on disk, so choosing it leaves `r` out of the URL.
+ * A render never kept (made outside `studio render`, never noted on) shows nothing here.
  */
 export function ReviewRenderMenu() {
   const { artifact, pulse, setSearch } = useReviewScreen();
@@ -29,15 +28,8 @@ export function ReviewRenderMenu() {
   // Ages are as of opening the screen: a version's age moving while it's on screen would say nothing.
   const [now] = useState(Date.now);
   const newest = projectPulseHashOf(pulse, artifact.path) ?? artifact.render.hash;
-  // A still is the file itself: its name says which, and a hash beside it says nothing more.
-  if (!shown && artifact.kind === 'still') return null;
-  if (!shown) {
-    return (
-      <HotkeyTooltip name={`render ${artifact.render.hash}`}>
-        <Readout>{artifact.render.hash.slice(0, 6)}</Readout>
-      </HotkeyTooltip>
-    );
-  }
+  // A render never kept has no versions to choose from; its hash is in the file menu, not the bar.
+  if (!shown) return null;
   // No tooltip on the target: it would sit over the open menu, whose rows name both commits.
   return (
     <Menu position="bottom-start" withinPortal>
@@ -46,7 +38,6 @@ export function ReviewRenderMenu() {
           <Group gap="tight" wrap="nowrap">
             <Readout bright>r{shown.r}</Readout>
             <Text component="span" size="xs" {...stylex.props(styles.caret)}>▾</Text>
-            <Readout>{formatReviewVersionCommit(shown)}</Readout>
           </Group>
         </UnstyledButton>
       </Menu.Target>

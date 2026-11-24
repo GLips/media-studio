@@ -1,6 +1,7 @@
 import { Box, Image, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { shadows } from '#web/shared/ui/shadows.ts';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { reviewProofGroundStyles, type ReviewProofGround } from './use-review-proof-ground.ts';
 
@@ -29,10 +30,6 @@ const styles = stylex.create({
     position: 'absolute', inset: 0, borderRadius: radius.control,
     borderWidth: spacing.hairline, borderStyle: 'solid', borderColor: { default: 'transparent', ':hover': colors.dim },
   },
-  // Accent, so the tile the keys are on stands out against pictures of any colour.
-  selected: { borderColor: colors.accent },
-  // The still whose notes are open, when the cursor has moved off it: a quieter, thinner cream edge.
-  open: { borderWidth: '1px', borderColor: colors.cream },
   inRow: (aspect: number) => ({ height: '100%', aspectRatio: aspect }),
   inColumn: (aspect: number) => ({ aspectRatio: aspect, width: `min(100%, calc(${REVIEW_TILE_COLUMN_MAX_HEIGHT} * ${aspect}))` }),
   inCell: (aspect: number) => ({ aspectRatio: aspect, maxWidth: '100%', maxHeight: '100%', width: `min(100%, 100cqh * ${aspect})` }),
@@ -72,13 +69,16 @@ export function ReviewStillTile({ src, label, aspect, fill, ground, selected, op
   return (
     <UnstyledButton ref={button} aria-label={label} aria-current={selected || undefined} onClick={onClick}
       {...stylex.props(styles.button, styles[fill], fill === 'cell' && styles.cellBox)}>
-      <Box {...stylex.props(styles.picture, { row: styles.inRow, cell: styles.inCell, column: styles.inColumn }[fill](shape), loaded !== null && ground && reviewProofGroundStyles[ground])}>
+      <Box {...stylex.props(
+        styles.picture, { row: styles.inRow, cell: styles.inCell, column: styles.inColumn }[fill](shape),
+        loaded !== null && ground && reviewProofGroundStyles[ground], open && !selected && shadows.tileOpenRing, selected && shadows.tileSelectedRing,
+      )}>
         <Image src={src} alt="" loading="lazy" draggable={false}
           // A picture the browser had before the page hydrated has loaded already, and fires no load event.
           ref={(img: HTMLImageElement | null) => { if (img?.complete && img.naturalWidth) setLoaded(img.naturalWidth / img.naturalHeight); }}
           onLoad={(e) => setLoaded(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight)}
           {...stylex.props(styles.image, loaded === null && styles.waiting)} />
-        <Box {...stylex.props(styles.edge, open && !selected && styles.open, selected && styles.selected)} />
+        <Box {...stylex.props(styles.edge)} />
         {corner !== undefined && <Box {...stylex.props(styles.corner)}>{corner}</Box>}
       </Box>
     </UnstyledButton>
