@@ -9,7 +9,7 @@ import { StudioPageTitle } from '#web/shared/ui/studio-page-title.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { ProjectName } from './project-name.tsx';
-import { ProjectPlaceRow, projectPlaceKeyOf } from './project-place-row.tsx';
+import { ProjectPlace, projectPlaceKeyOf } from './project-place.tsx';
 import { projectListStyles, ProjectRowButton } from './project-row.tsx';
 import { ProjectRowGroupLabel } from './project-row-group-label.tsx';
 import { ProjectThumbnail } from './project-thumbnail.tsx';
@@ -40,7 +40,7 @@ function AwaitingProjectRows({ awaiting: { summary, rows, waiting }, now }: { re
       <ProjectRowGroupLabel count={waiting}>
         <AnchorLink to="/projects/$project" params={{ project }} underline="hover" {...stylex.props(styles.project)}><ProjectName project={project} /></AnchorLink>
       </ProjectRowGroupLabel>
-      {shown.map((row) => <ProjectPlaceRow key={projectPlaceKeyOf(row)} summary={summary} row={row} now={now} />)}
+      {shown.map((row) => <ProjectPlace key={projectPlaceKeyOf(row)} summary={summary} row={row} now={now} />)}
       {folds && (
         <ProjectRowButton
           expanded={expanded} onToggle={() => setExpanded((was) => !was)}

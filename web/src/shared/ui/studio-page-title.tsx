@@ -19,13 +19,15 @@ type StudioPageTitleProps = {
   readonly children: ReactNode;
   /** Quiet, beside the name: `28`, `8 recordings`. Left out when there's nothing to count. */
   readonly count?: ReactNode;
+  /** The page's own controls, before quick-open and the keys: the list-or-grid toggle (StudioCollectionViewToggle). */
+  readonly end?: ReactNode;
 };
 
 /**
  * A sidebar page's one title row: its name at the page-title size, a quiet count, then quick-open and the keys at the
  * right, since a sidebar page has no bar (StudioShell). Keep it outside the page's scroll, so its buttons stay put.
  */
-export function StudioPageTitle({ children, count }: StudioPageTitleProps) {
+export function StudioPageTitle({ children, count, end }: StudioPageTitleProps) {
   const { openCheatsheet, openQuickOpen } = useStudioOverlays();
   return (
     <Group gap="inset" wrap="nowrap" {...stylex.props(styles.row)}>
@@ -34,6 +36,7 @@ export function StudioPageTitle({ children, count }: StudioPageTitleProps) {
         {count !== undefined && <Text component="span" size="md" {...stylex.props(styles.count)}>{count}</Text>}
       </Group>
       <Group gap="tight" wrap="nowrap" {...stylex.props(styles.end)}>
+        {end}
         <IconButton name="Open…" onClick={openQuickOpen}><Search size={14} /></IconButton>
         <IconButton name="Keys" onClick={openCheatsheet}><Keyboard size={14} /></IconButton>
       </Group>

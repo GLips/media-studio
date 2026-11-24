@@ -21,6 +21,9 @@ const styles = stylex.create({
   none: { paddingInline: spacing.gap, paddingBlock: spacing.tight, color: colors.dim },
 });
 
+/** The filter as last typed, kept as the reader moves between sidebar pages, each of which mounts its own sidebar. */
+const sidebarFilter = { text: '' };
+
 const projectMatchesFilter = (project: string, filter: string) => project.toLowerCase().includes(filter.trim().toLowerCase());
 
 /** A month's projects in the sidebar; `month` is null for the names with no date, listed last. */
@@ -47,7 +50,11 @@ type StudioSidebarProps = { readonly projects: readonly ProjectAwaiting[] };
 function StudioSidebar({ projects }: StudioSidebarProps) {
   const pathname = useLocation({ select: (location) => location.pathname });
   const navigate = useNavigate();
-  const [filter, setFilter] = useState('');
+  const [filter, setFilterState] = useState(sidebarFilter.text);
+  const setFilter = (text: string) => {
+    sidebarFilter.text = text;
+    setFilterState(text);
+  };
   const waiting = projects.reduce((sum, project) => sum + project.waiting, 0);
   const shown = projectMonthGroupsOf(projectsRenderedFirst(projects).filter(({ summary }) => projectMatchesFilter(summary.project, filter)));
   const head = (
@@ -85,7 +92,7 @@ function StudioSidebar({ projects }: StudioSidebarProps) {
         <Fragment key={month ?? 'undated'}>
           <StudioSidebarSection nested>{month === null ? 'Undated' : projectMonthLabelOf(month)}</StudioSidebarSection>
           {inMonth.map(({ summary: { project }, waiting: inProject }) => (
-            <StudioSidebarLink key={project} to="/projects/$project" params={{ project }} title={project} label={projectDateSplitOf(project).rest} waiting={inProject} />
+            <StudioSidebarLink key={project} to="/projects/$project" params={{ project }} title={project} current={pathname.replace(/\/$/, '') === `/projects/${encodeURIComponent(project)}`} label={projectDateSplitOf(project).rest} waiting={inProject} />
           ))}
         </Fragment>
       ))}
@@ -100,7 +107,7 @@ function StudioSidebarLoaded() {
 }
 
 /**
- * The index's and the library's frame: the studio's sidebar beside the page. Its projects suspend on their own, so
+ * The index's, the library's and a project page's frame: the studio's sidebar beside the page. Its projects suspend on their own, so
  * the page's loading state shows beside the sidebar's first two items instead of replacing the frame.
  */
 export function StudioSidebarLayout({ children }: { readonly children: ReactNode }) {

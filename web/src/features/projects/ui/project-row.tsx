@@ -1,14 +1,8 @@
 import { Group, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import type { ReactNode } from 'react';
-import { AnchorLink } from '#web/shared/ui/anchor-link.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
-
-/** Where a row leads: a project's page, one of its files, a decision or its plan. */
-export type ProjectRowTarget = { project: string } & ({ on: 'project' } | { on: 'file'; path: string } | { on: 'decision'; topic: string } | { on: 'plan' });
-
-/** Marks the rows the arrow keys walk (use-project-row-hotkeys.ts). */
-export const PROJECT_ROW_ATTRIBUTE = 'data-project-row';
+import { PROJECT_ROW_ATTRIBUTE, ProjectTargetLink, type ProjectRowTarget } from './project-target-link.tsx';
 
 const styles = stylex.create({
   // A subgrid of its list (projectListStyles), so names, details, states and readouts line up down every row.
@@ -62,13 +56,13 @@ type ProjectRowProps = {
 /** A project page's and the awaiting list's one row: 44px, picture, name, what it asks, its state, and when. */
 export function ProjectRow({ target, thumbnail, title, detail, status, end }: ProjectRowProps) {
   return (
-    <ProjectRowLink target={target}>
+    <ProjectTargetLink target={target} xstyle={styles.row}>
       {thumbnail}
       <Text component="span" size="md" {...stylex.props(styles.cell, styles.name, detail === undefined && styles.alone)}>{title}</Text>
       {detail !== undefined && <Text component="span" size="md" {...stylex.props(styles.cell)}>{detail}</Text>}
       <Group component="span" gap="gap" wrap="nowrap">{status}</Group>
       <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>{end}</Group>
-    </ProjectRowLink>
+    </ProjectTargetLink>
   );
 }
 
@@ -87,15 +81,4 @@ export function ProjectRowButton({ thumbnail, title, expanded, onToggle }: Proje
       <Text component="span" size="md" {...stylex.props(styles.cell, styles.wide)}>{title}</Text>
     </UnstyledButton>
   );
-}
-
-function ProjectRowLink({ target, children }: { readonly target: ProjectRowTarget; readonly children: ReactNode }) {
-  const row = { ...stylex.props(styles.row), underline: 'never', [PROJECT_ROW_ATTRIBUTE]: '' } as const;
-  const { project } = target;
-  switch (target.on) {
-    case 'project': return <AnchorLink to="/projects/$project" params={{ project }} {...row}>{children}</AnchorLink>;
-    case 'file': return <AnchorLink to="/projects/$project/artifacts/$" params={{ project, _splat: target.path }} {...row}>{children}</AnchorLink>;
-    case 'decision': return <AnchorLink to="/projects/$project/decisions/$topic" params={{ project, topic: target.topic }} {...row}>{children}</AnchorLink>;
-    default: return <AnchorLink to="/projects/$project/plan" params={{ project }} {...row}>{children}</AnchorLink>;
-  }
 }
