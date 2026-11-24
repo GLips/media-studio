@@ -33,7 +33,7 @@ export type LibraryGradeMeasurement = typeof LibraryGradeMeasurement.Type;
 /**
  * A look. Strengths run 0 (leave it) to 1 (all the way to the target). `face` parses the face: hair, beard and shirt
  * take `restShare` of the skin's correction, and the face's halves move `balance` of the way toward each other.
- * A LUT is a .cube in the LUT folder, mixed in at `mix`.
+ * `lut` is a Cineon-input film .cube in the LUT folder, mixed in at `mix`; library-grade.py re-encodes for it.
  */
 export type LibraryGradeLook = {
   readonly description: string;
@@ -59,12 +59,44 @@ const DESK_NIGHT_BASE = {
   vignette: 0.4,
 } as const;
 
-/** Every look by name. The first is the default. */
+// The desk by day in PP3 at the white balance Graham chose (6200K): the camera already lands the look, so the grade
+// only nudges the room and the skin and evens the cheeks.
+const DESK_DAY_BASE = {
+  background: { strength: 0.25, level: 0.9 },
+  skin: { strength: 0.25 },
+  face: { restShare: 0.5, balance: 0.5 },
+  exposure: 1,
+  split: 0,
+  saturation: 1,
+  vignette: 0.25,
+} as const;
+
+// The film LUTs here are the personal-use ones Resolve bundles, so they stay in the LUT folder, out of the repo.
+const FILM_MIX = 0.5;
+
+/** Every look by name. */
 export const LIBRARY_GRADE_LOOKS = {
   'desk-night': {
     ...DESK_NIGHT_BASE,
     description: 'The desk at night under mixed light: background toward neutral and a touch darker, skin toward healthy, the face parsed so the beard keeps its colour and both cheeks match; gentle contrast, split tone and vignette.',
     face: { restShare: 0.5, balance: 0.8 },
+  },
+  'desk-day': {
+    ...DESK_DAY_BASE,
+    description: 'The desk by day in PP3: room and skin nudged a quarter of the way, cheeks evened half way, a touch of contrast and vignette.',
+    contrast: 0.15,
+  },
+  'film-kodak': {
+    ...DESK_DAY_BASE,
+    description: 'desk-day through Kodak 2383 print film at half strength: warmer, denser, a film tint.',
+    contrast: 0,
+    lut: { file: 'kodak2383.cube', mix: FILM_MIX },
+  },
+  'film-fuji': {
+    ...DESK_DAY_BASE,
+    description: 'desk-day through Fuji 3513 print film at half strength: cooler and more muted.',
+    contrast: 0,
+    lut: { file: 'fuji3513.cube', mix: FILM_MIX },
   },
   'desk-night-person': {
     ...DESK_NIGHT_BASE,
@@ -73,7 +105,6 @@ export const LIBRARY_GRADE_LOOKS = {
 } as const satisfies Record<string, LibraryGradeLook>;
 export type LibraryGradeLookName = keyof typeof LIBRARY_GRADE_LOOKS;
 export const isLibraryGradeLookName = (name: string): name is LibraryGradeLookName => Object.hasOwn(LIBRARY_GRADE_LOOKS, name);
-export const LIBRARY_GRADE_DEFAULT_LOOK: LibraryGradeLookName = 'desk-night';
 
 /** Healthy skin, sRGB about (224, 172, 140), as linear RGB over its green. The skin's measured cast is pulled toward it. */
 export const LIBRARY_GRADE_SKIN_TARGET: LibraryGradeRgb = [1.8, 1, 0.65];

@@ -19,7 +19,7 @@ async function runGradeProgram<A, E>(program: Effect.Effect<A, E, LibraryStore |
 
 const gradeArgs = {
   item: { type: 'positional', required: true, description: 'The library item, by its id or a part of it only one id holds' },
-  look: { type: 'string', default: 'desk-night', description: 'The look: desk-night (face-parsed, the default) or desk-night-person (the person matte alone)' },
+  look: { type: 'string', default: 'desk-day', description: 'The look: desk-day (PP3 by day, gentle; the default), film-kodak or film-fuji (desk-day through a print-film LUT at half strength), desk-night (mixed night light, stronger) or desk-night-person (desk-night by the person matte alone)' },
   track: { type: 'string', default: 'camera', description: 'The track to grade' },
 } as const;
 

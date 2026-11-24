@@ -9,6 +9,7 @@ person tunes lives in TypeScript.
     measure  sampled frames' mean linear colour: background, skin, and the parsed face's skin and two halves
     grade    a stretch of frames graded to an H.264 file with no sound (`--skip` frames warm the masks, unwritten)
     still    one frame, before and after side by side, as a JPEG
+    check    the colour maths (Cineon encoding, .cube reading) asserted, for library-grade-colour.test.ts
 
 The person comes off the background with MediaPipe's multiclass selfie segmenter (Apache-2.0); the face's skin, less
 the beard, with a BiSeNet face parser (yakhyo/face-parsing resnet18, MIT) run through OpenCV's DNN, since onnxruntime
@@ -190,14 +191,32 @@ def measure(a):
     print(json.dumps(out))
 
 
-def load_cube(path):
+def load_cube(lines):
+    """A 3D .cube's table, from its lines, indexed lut[b, g, r] (the format runs red fastest). Its LUT_3D_INPUT_RANGE and other
+    keywords are skipped: the film LUTs here take 0–1 Cineon, which is the range apply_cube assumes."""
     rows, size = [], None
-    for line in open(path):
+    for line in lines:
         t = line.split()
         if not t or t[0].startswith('#'): continue
         if t[0] == 'LUT_3D_SIZE': size = int(t[1])
         elif re.match(r'^[-0-9.]', t[0]) and len(t) == 3: rows.append([float(v) for v in t])
-    return np.array(rows, np.float32).reshape(size, size, size, 3)  # .cube is red-fastest: lut[b, g, r]
+    return np.array(rows, np.float32).reshape(size, size, size, 3)
+
+
+# Kodak's Cineon printing density: code 95 is black, 685 is white (90% reflectance), 0.002 density a code, negative
+# gamma 0.6. Linear 0.18 lands near code 470.
+CINEON_BLACK, CINEON_WHITE = 95, 685
+CINEON_OFFSET = 10 ** ((CINEON_BLACK - CINEON_WHITE) * 0.002 / 0.6)
+
+
+def cineon_from_display(d):
+    """Camera display values (0–1) as 0–1 Cineon log, what a film LUT takes. The camera's curve is undone as Rec.709's
+    (exact for PP3's ITU709 and close for PP1's Movie gamma; only approximate for PP5's Cine1, which bends highlights
+    its own way), back to scene linear, then encoded as Cineon."""
+    d = np.clip(d, 0, 1)
+    lin = np.where(d < 0.081, d / 4.5, ((d + 0.099) / 1.099) ** (1 / 0.45))
+    code = CINEON_WHITE + 300 * np.log10(lin * (1 - CINEON_OFFSET) + CINEON_OFFSET)
+    return np.clip(code / 1023, 0, 1)
 
 
 def apply_cube(d, lut):
@@ -230,7 +249,7 @@ class Grader:
         self.seg = Segmenter(models, a.width, a.height)
         self.fm = FaceMasks(FaceParser(models), a.width, a.height) if self.look.get("face") else None
         lut = self.look.get("lut")
-        self.lut = (load_cube(Path(a.luts) / lut["file"]), lut["mix"]) if lut else None
+        self.lut = (load_cube(open(Path(a.luts) / lut["file"])), lut["mix"]) if lut else None
         self.vign = None
         if self.look["vignette"]:
             yy, xx = np.mgrid[0:self.h, 0:self.w]
@@ -264,13 +283,14 @@ class Grader:
         else:
             out = lin * (g_bg * (1 - pm) + g_p * pm)
         out *= L["exposure"] * ((1 - pm) * L["background"]["level"] + pm)
-        d = curve(to_gam(out), L["contrast"])
+        d = to_gam(out)
+        if self.lut is not None:  # a film LUT reads Cineon log, so the corrected picture is re-encoded for it
+            d = d * (1 - self.lut[1]) + apply_cube(cineon_from_display(d), self.lut[0]) * self.lut[1]
+        d = curve(d, L["contrast"])
         if L["split"]:  # teal shadows, warm highlights
             luma = d @ LUMA
             sh = np.clip(1 - luma / 0.5, 0, 1)[..., None]; hl = np.clip((luma - 0.5) / 0.5, 0, 1)[..., None]
             d = d + L["split"] * (sh * np.array([-0.6, 0.1, 0.5]) + hl * np.array([0.4, 0.1, -0.5])) * 0.1
-        if self.lut is not None:
-            d = d * (1 - self.lut[1]) + apply_cube(d, self.lut[0]) * self.lut[1]
         luma = (d @ LUMA)[..., None]
         d = luma + (d - luma) * L["saturation"]
         if self.vign is not None: d = d * self.vign[..., None]
@@ -300,11 +320,24 @@ def still(a):
     cv2.imwrite(a.out, cv2.cvtColor(np.hstack(last), cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, 92])
 
 
+def check(a):
+    """The colour maths a grade can't be eyeballed for: Cineon's mid-grey, and a Resolve-style .cube read whole."""
+    mid = 1.099 * 0.18 ** 0.45 - 0.099  # linear 0.18 as Rec.709 display
+    code = float(cineon_from_display(np.array(mid))) * 1023
+    assert abs(code - 470) < 6, f"18% grey at Cineon code {code:.1f}, not about 470"
+    cube = ["# t", "LUT_3D_SIZE 2", "LUT_3D_INPUT_RANGE 0.0 1.0", ""] + [f"{r} {g} {b}" for b in (0, 1) for g in (0, 1) for r in (0, 1)]
+    lut = load_cube(cube)
+    assert lut.shape == (2, 2, 2, 3), lut.shape
+    probe = np.array([[0.25, 0.5, 0.75]], np.float32)
+    assert np.allclose(apply_cube(probe, lut), probe), apply_cube(probe, lut)
+    print(json.dumps({"cineonMidGrey": round(code, 1)}))
+
+
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("mode", choices=["measure", "grade", "still"])
-    p.add_argument("--src", required=True); p.add_argument("--models", required=True)
-    p.add_argument("--width", type=int, required=True); p.add_argument("--height", type=int, required=True)
+    p.add_argument("mode", choices=["measure", "grade", "still", "check"])
+    p.add_argument("--src"); p.add_argument("--models")
+    p.add_argument("--width", type=int); p.add_argument("--height", type=int)
     p.add_argument("--fps", default="30000/1001")
     p.add_argument("--times", help="measure: media seconds to sample, comma-separated")
     p.add_argument("--ss", type=float, help="media second of the first frame read")
@@ -312,7 +345,7 @@ def main():
     p.add_argument("--frames", type=int, help="frames written")
     p.add_argument("--look"); p.add_argument("--gains"); p.add_argument("--luts"); p.add_argument("--out")
     a = p.parse_args()
-    {"measure": measure, "grade": grade, "still": still}[a.mode](a)
+    {"measure": measure, "grade": grade, "still": still, "check": check}[a.mode](a)
 
 
 if __name__ == "__main__":
