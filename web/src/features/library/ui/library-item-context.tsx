@@ -31,10 +31,12 @@ export type LibraryItemScreenValue = {
   setMarked: (range: LibraryMarkedRange | null) => void;
   composing: LibraryComposing | null;
   setComposing: (composing: LibraryComposing | null) => void;
-  /** Sends a change to the flags as the reviewer; a refusal shows by the composer. */
-  changeFlags: (op: LibraryFlagOpInput) => void;
+  /** Sends a change to the flags as the reviewer; `onSaved` hears the server take it. A refusal shows by the composer. */
+  changeFlags: (op: LibraryFlagOpInput, onSaved?: () => void) => void;
   /** Why the last change was refused, if it was. */
   refusal: string | undefined;
+  /** A change is on its way to the server. */
+  saving: boolean;
 };
 
 const LibraryItemScreenContext = createContext<LibraryItemScreenValue | null>(null);

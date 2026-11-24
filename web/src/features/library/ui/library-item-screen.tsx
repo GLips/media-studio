@@ -3,7 +3,6 @@ import * as stylex from '@stylexjs/stylex';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { libraryFootage } from '#lib/footage/library/models/library-footage.ts';
-import { libraryPictureTracksOf } from '#lib/footage/library/models/library-item.ts';
 import { libraryFlagsInOrder, type LibraryFlag, type LibraryFlagFilter } from '#lib/footage/library/models/library-flags.ts';
 import { transcriptLines } from '#lib/footage/transcript/models/footage-transcript.ts';
 import { RouteNotFoundPage } from '#web/shared/ui/route-not-found-page.tsx';
@@ -13,7 +12,7 @@ import { libraryItemViewQueryOptions, useLibraryFlagOps, useLibraryFlags } from 
 import type { LibraryItemView } from '../controllers/library-reads.ts';
 import { useLibraryItemSearch } from '../controllers/library-search.ts';
 import { LibraryFlagPanel } from './library-flag-panel.tsx';
-import { LibraryItemFacts, LibraryItemHeader } from './library-item-header.tsx';
+import { LibraryItemHeader } from './library-item-header.tsx';
 import { LibraryItemScreenProvider, type LibraryComposing, type LibraryItemScreenValue, type LibraryMarkedRange } from './library-item-context.tsx';
 import { createLibraryItemPlayback, LIBRARY_CLOCK_FPS } from './library-item-playback.ts';
 import { LibraryRecordingMedia } from './library-recording-media.tsx';
@@ -24,16 +23,11 @@ import { useLibraryItemHotkeys } from './use-library-item-hotkeys.ts';
 const styles = stylex.create({
   body: {
     display: 'grid', height: '100%', minHeight: 0,
-    // The picture takes its own shape at the column's width, so it has no bars; the flags have the height left.
-    gridTemplateColumns: `minmax(0, 1fr) minmax(320px, 34%)`, gridTemplateRows: 'auto auto auto minmax(0, 1fr)',
-    gridTemplateAreas: '"facts facts" "picture transcript" "timeline transcript" "flags transcript"',
+    // The transcript a reading column, the flags as tall as they are, and the picture whatever's left, fitted whole.
+    gridTemplateColumns: 'minmax(0, 1fr) 400px', gridTemplateRows: 'minmax(0, 1fr) auto auto',
+    gridTemplateAreas: '"picture transcript" "timeline transcript" "flags transcript"',
   },
-  facts: { gridArea: 'facts', minWidth: 0 },
   picture: { gridArea: 'picture', minHeight: 0, position: 'relative' },
-  // The column's width, unless that's too tall to leave the transport and the flags in view (the bar, the facts line
-  // and the transport take about 140px; the flags keep 160px, room for their head, a flag and an open composer): then
-  // narrower, centred on the ground.
-  shape: (ratio: number) => ({ aspectRatio: ratio, justifySelf: 'center', width: `min(100%, calc((100dvh - 300px) * ${ratio}))` }),
   offline: {
     position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: spacing.inset, color: colors.dim,
     backgroundColor: colors.screen, textAlign: 'center',
@@ -74,7 +68,12 @@ function LibraryItemScreenBody({ view }: { readonly view: LibraryItemView }) {
   }, [playback, loopStart, loopEnd]);
 
   const screen: LibraryItemScreenValue = {
-    view, playback, words, lines, flags, queue, filter, setFilter, focused, marked, setMarked, composing, setComposing,
+    view, playback, words, lines, flags, queue, filter, setFilter, focused, marked, setMarked, composing,
+    // A composer opened or left starts with no refusal from before on show.
+    setComposing: (next) => {
+      ops.reset();
+      setComposing(next);
+    },
     focusFlag: (flag) => {
       setSearch({ flag: flag?.id });
       if (!flag) return;
@@ -82,26 +81,22 @@ function LibraryItemScreenBody({ view }: { readonly view: LibraryItemView }) {
       playback.seek(flag.start);
       playback.play();
     },
-    changeFlags: (op) => {
+    changeFlags: (op, onSaved) => {
       ops.reset();
-      ops.apply(op);
+      ops.apply(op, onSaved);
     },
     refusal: ops.error?.message,
+    saving: ops.saving,
   };
   useLibraryItemHotkeys(screen);
   const { reach, heard, attachRoot, attachLeader } = playback;
-  const { main } = libraryPictureTracksOf(item);
-  const video = main ? item.tracks[main].video : undefined;
-  // An item with no picture keeps a screen's shape for whatever stands in for it.
-  const pictureRatio = video ? video.width / video.height : 16 / 9;
   return (
     <LibraryItemScreenProvider value={screen}>
       <StudioShell start={<LibraryItemHeader />}>
         <Box ref={attachRoot} {...stylex.props(styles.body)}>
-          <Box {...stylex.props(styles.facts)}><LibraryItemFacts /></Box>
-          <Box {...stylex.props(styles.picture, styles.shape(pictureRatio))}>
+          <Box {...stylex.props(styles.picture)}>
             <LibraryRecordingMedia item={item} clock={playback} placement={{ offsetSeconds: 0, fps: LIBRARY_CLOCK_FPS }}
-              heard={{ track: heard, attach: attachLeader }} />
+              heard={{ track: heard, attach: attachLeader }} letterbox={false} />
             {!view.media.online && (
               <Text size="sm" {...stylex.props(styles.offline)}>
                 Media offline: {view.media.path} isn&apos;t there, so nothing plays. The transcript, search and flags still work.

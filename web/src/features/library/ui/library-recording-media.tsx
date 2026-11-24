@@ -10,9 +10,11 @@ import { libraryTrackReach } from './library-item-playback.ts';
 
 const styles = stylex.create({
   // A size container, so the picture fits it whole at its own shape and the inset sits on the picture, not the bars.
-  stage: { position: 'relative', width: '100%', height: '100%', containerType: 'size', display: 'grid', placeItems: 'center', backgroundColor: colors.screen },
+  stage: { position: 'relative', width: '100%', height: '100%', containerType: 'size', display: 'grid', placeItems: 'center' },
+  letterbox: { backgroundColor: colors.screen },
   picture: (ratio: number) => ({
     position: 'relative', width: `min(100cqw, calc(100cqh * ${ratio}))`, height: `min(100cqh, calc(100cqw / ${ratio}))`,
+    backgroundColor: colors.screen,
   }),
   video: { display: 'block', width: '100%', height: '100%', objectFit: 'contain' },
   inset: {
@@ -84,20 +86,22 @@ type LibraryRecordingMediaProps = {
   readonly heard: LibraryHeardMedia;
   /** Shown in place of a picture for an item with none (a voice take): its words, say. */
   readonly children?: ReactNode;
+  /** False to leave the page's ground around the picture rather than a screen's black: a page the picture leads. */
+  readonly letterbox?: boolean;
 };
 
 /**
  * A recording on a linked media clock: its screen with the camera inset, each track lined up by its sync corrections,
  * and the heard track as the clock's leader. An item with no picture is its sound alone, under `children`.
  */
-export function LibraryRecordingMedia({ item, clock, placement, heard, children }: LibraryRecordingMediaProps) {
+export function LibraryRecordingMedia({ item, clock, placement, heard, children, letterbox = true }: LibraryRecordingMediaProps) {
   const { main, insets } = libraryPictureTracksOf(item);
   const video = main ? item.tracks[main].video : undefined;
   const slot = (name: string, inset?: boolean) => (name === heard.track
     ? <LibraryHeardElement item={item} heard={heard} inset={inset} />
     : <LibraryTrackFollower item={item} track={item.tracks[name]} clock={clock} placement={placement} inset={inset} />);
   return (
-    <Box {...stylex.props(styles.stage)}>
+    <Box {...stylex.props(styles.stage, letterbox && styles.letterbox)}>
       {!item.tracks[heard.track].video && <LibraryHeardElement item={item} heard={heard} />}
       {main && video && (
         <Box {...stylex.props(styles.picture(video.width / video.height))}>

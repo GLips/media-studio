@@ -249,3 +249,9 @@ export const libraryRecorderTitle = (folderName: string) => `Recording ${folderN
 export function libraryItemHasRecorderTitle(item: LibraryItem): boolean {
   return item.source.kind === 'studio-recorder' && item.title === libraryRecorderTitle(item.source.folder.split('/').at(-1) ?? '');
 }
+
+/** `4:17`: an item's length to the nearest second, as a shelf reads it; the review clock's minutes, without hundredths. */
+export function formatLibraryLength(seconds: number): string {
+  const whole = Math.round(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+}

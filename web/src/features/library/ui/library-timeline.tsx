@@ -1,7 +1,7 @@
 import { Box, Group, Text, UnstyledButton } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
 import * as stylex from '@stylexjs/stylex';
-import { Pause, Play } from 'lucide-react';
+import { Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import { useRef, type PointerEvent } from 'react';
 import { formatReviewClock, formatReviewClockRange, reviewRulerTicks, reviewTimelineFit } from '#lib/output/review/models/review-timeline-geometry.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
@@ -47,7 +47,45 @@ const styles = stylex.create({
   head: { position: 'absolute', insetBlock: 0, width: spacing.hairline, backgroundColor: colors.cream, pointerEvents: 'none', translate: '-1px 0' },
   headAt: (seconds: number) => ({ left: `calc(${TIME} / ${seconds} * 100%)` }),
   range: { color: colors.cobalt, fontFamily: fonts.mono },
+  // A readout that steps on a click, so the speed reads as a value, as the render review's rate does.
+  rate: {
+    paddingInline: spacing.tight, borderRadius: radius.control, backgroundColor: { default: 'transparent', ':hover': colors.raised },
+    outlineColor: colors.cream, outlineStyle: 'solid', outlineOffset: '1px', outlineWidth: { default: 0, ':focus-visible': '1px' },
+  },
 });
+
+/** Play, the time, the speed and the sound: the render review's transport, on the library's clock. */
+function LibraryTransport() {
+  const { view, playback, marked } = useLibraryItemScreen();
+  const playing = useLibraryPlaybackState(playback, (s) => s.playing);
+  const time = useLibraryPlaybackState(playback, (s) => s.time);
+  const rate = useLibraryPlaybackState(playback, (s) => s.rate);
+  const muted = useLibraryPlaybackState(playback, (s) => s.muted);
+  const clock = useRef<HTMLSpanElement>(null);
+  // The text node React rendered, not textContent: replacing the node would leave React updating a detached one.
+  useLinkedMediaTick(playback, (frame) => {
+    const node = clock.current?.firstChild;
+    if (node) node.nodeValue = formatReviewClock(frame / LIBRARY_CLOCK_FPS);
+  });
+  return (
+    <Group gap="gap" wrap="nowrap" {...stylex.props(styles.bar)}>
+      <IconButton name="Play" onClick={playback.toggle} active={playing}>{playing ? <Pause size={14} /> : <Play size={14} />}</IconButton>
+      <Readout bright ref={clock} chars={8}>{formatReviewClock(time)}</Readout>
+      <Readout>{formatReviewClock(view.item.durationSeconds)}</Readout>
+      <HotkeyTooltip name="Speed">
+        <UnstyledButton aria-label={`Speed ${rate}×`} onClick={playback.cycleRate} {...stylex.props(styles.rate)}>
+          <Readout bright={rate !== 1}>{`${rate}×`}</Readout>
+        </UnstyledButton>
+      </HotkeyTooltip>
+      <IconButton name="Mute" active={muted} onClick={() => playback.setMuted(!muted)}>{muted ? <VolumeX size={14} /> : <Volume2 size={14} />}</IconButton>
+      {marked && (
+        <HotkeyTooltip name="Flag the marked range" hotkey="Flag range">
+          <Text component="span" size="xs" {...stylex.props(styles.range)}>{formatReviewClockRange(marked.start, marked.end)}</Text>
+        </HotkeyTooltip>
+      )}
+    </Group>
+  );
+}
 
 /**
  * The transport and the item's whole length as one strip: what's said as bands, flags above them (an agent's in
@@ -56,18 +94,11 @@ const styles = stylex.create({
  */
 export function LibraryTimeline({ reach }: { readonly reach: { start: number; end: number } }) {
   const { view, playback, lines, flags, focused, focusFlag, marked, setMarked } = useLibraryItemScreen();
-  const playing = useLibraryPlaybackState(playback, (s) => s.playing);
   const time = useLibraryPlaybackState(playback, (s) => s.time);
-  const clock = useRef<HTMLSpanElement>(null);
   const press = useRef<{ x: number; seconds: number } | null>(null);
   const duration = view.item.durationSeconds;
   const { ref: sized, width } = useElementSize<HTMLDivElement>();
   const ticks = reviewRulerTicks(reviewTimelineFit(Math.round(duration * LIBRARY_CLOCK_FPS), width), { fps: LIBRARY_CLOCK_FPS, beats: [] });
-  // The text node React rendered, not textContent: replacing the node would leave React updating a detached one.
-  useLinkedMediaTick(playback, (frame) => {
-    const node = clock.current?.firstChild;
-    if (node) node.nodeValue = formatReviewClock(frame / LIBRARY_CLOCK_FPS);
-  });
   const secondsAt = (event: PointerEvent<HTMLElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
     const seconds = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width)) * duration;
@@ -75,16 +106,7 @@ export function LibraryTimeline({ reach }: { readonly reach: { start: number; en
   };
   return (
     <Box>
-      <Group gap="gap" wrap="nowrap" {...stylex.props(styles.bar)}>
-        <IconButton name="Play" onClick={playback.toggle} active={playing}>{playing ? <Pause size={14} /> : <Play size={14} />}</IconButton>
-        <Readout bright ref={clock} chars={8}>{formatReviewClock(time)}</Readout>
-        <Readout>{formatReviewClock(duration)}</Readout>
-        {marked && (
-          <HotkeyTooltip name="Flag the marked range" hotkey="Flag range">
-            <Text component="span" size="xs" {...stylex.props(styles.range)}>{formatReviewClockRange(marked.start, marked.end)}</Text>
-          </HotkeyTooltip>
-        )}
-      </Group>
+      <LibraryTransport />
       <Box
         ref={sized}
         role="slider"
