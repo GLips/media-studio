@@ -4,6 +4,7 @@
 //
 // Negative space: nothing here knows whether the media is online. A request for offline media fails where it's served,
 // which says so.
+import type { LibraryPosterFrame } from '../models/library-item.ts';
 
 let origin = '';
 
@@ -15,6 +16,10 @@ export function setLibraryMediaOrigin(url: string): void {
 /** The URL of `file` in library item `item`'s media folder, as this page is served it. */
 export const libraryMediaUrl = (item: string, file: string): string =>
   `${origin}/library-media/${encodeURIComponent(item)}/${file.split('/').map(encodeURIComponent).join('/')}`;
+
+/** The URL of an item's poster: a small JPEG of `poster`'s picture, cut once and kept by whoever serves this page. */
+export const libraryPosterUrl = (item: string, poster: LibraryPosterFrame): string =>
+  `${origin}/library-posters?${new URLSearchParams({ item, file: poster.file, t: poster.seconds.toFixed(2) })}`;
 
 /** What a render's page asks its server for: a video file's picture at `t` media seconds, `width` pixels wide, on an `fps` grid. */
 export type LibraryFrameRequest = { item: string; file: string; t: number; width: number; fps: number };

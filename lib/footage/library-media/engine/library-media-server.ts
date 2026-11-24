@@ -2,26 +2,37 @@
 //
 //   /library-media/<item>/<file>                  a file, with HTTP Range, for <video>, <audio> and fetch
 //   /library-frames?item=&file=&t=&width=&fps=    a video file's picture at media time `t`, as a JPEG (library-frame-decoder.ts)
+//   /library-posters?item=&file=&t=               a shelf poster, cut once per server
 //
-// A render or the Remotion Studio serves both from a loopback server of its own (LibraryMediaServer), the studio
+// A render or the Remotion Studio serves each from a loopback server of its own (LibraryMediaServer), the studio
 // app's Vite server through its middleware (studio-app-library-media.ts). Media offline answers 503 with the reason.
 // Node only.
 //
-// Each request is an Effect program run on services built once per server; a file's bytes stream from the media
-// folder into the response with Range offsets, at the pace the page reads them. node:http stays: the handler is
-// what Vite's middleware and a loopback server both call.
+// Each request is an Effect program on services built once per server; a file's bytes stream into the response at
+// the pace the page reads them. node:http stays: the handler is what Vite's middleware and a loopback server both call.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { NodeSink } from '@effect/platform-node';
-import { Context, Effect, FileSystem, Layer, Path, Ref, Schema, Stream } from 'effect';
+import { Cache, Context, Data, Effect, FileSystem, Layer, Path, Ref, Schema, Stream } from 'effect';
 import { listenOnRenderLoopback } from '#lib/platform/browser/engine/render-loopback.ts';
 import { studioFfmpegLayer } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
 import { studioNodeLayer } from '#lib/platform/process/engine/studio-effect-runtime.ts';
-import { LibraryFrameDecoders, libraryFrameDecodersLayer } from './library-frame-decoder.ts';
+import { LibraryFrameDecoders, libraryFrameDecodersLayer, type LibraryFrameUndecodable } from './library-frame-decoder.ts';
 import { LibraryMediaFolder, libraryMediaFolderLayer } from './library-media-folder.ts';
 
 /** The path every page asks for library media under (library-media.ts names files under it). */
 export const LIBRARY_MEDIA_PATH = '/library-media';
 const LIBRARY_FRAMES_PATH = '/library-frames';
+const LIBRARY_POSTERS_PATH = '/library-posters';
+
+/** A poster's width: twice the shelf's 64px thumbnail, for a 2x screen. */
+const LIBRARY_POSTER_WIDTH = 128;
+/**
+ * The decoder grid a poster is cut on. Coarse, since a poster needs no exact frame, but fine enough that the seek's
+ * lead decodes only a few frames before it.
+ */
+const LIBRARY_POSTER_FPS = 4;
+/** Posters kept in memory, about 6 KB each: more than a shelf shows. */
+const LIBRARY_POSTER_CAPACITY = 512;
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
@@ -109,20 +120,42 @@ const answerFrame = Effect.fn('LibraryMediaServer.frame')(function* (response: S
   return response.writeHead(200, { ...CORS, 'content-type': 'image/jpeg', 'content-length': jpeg.length, 'cache-control': 'no-store' }).end(jpeg);
 });
 
+/** A poster's file in the media folder and the seconds into it; equal by value, as the cache needs. */
+class LibraryPosterKey extends Data.Class<{ readonly media: string; readonly seconds: number }> {}
+
+const answerPoster = Effect.fn('LibraryMediaServer.poster')(function* (response: ServerResponse, url: URL, posters: Cache.Cache<LibraryPosterKey, Buffer, LibraryFrameUndecodable>) {
+  const fs = yield* FileSystem.FileSystem, path = yield* Path.Path;
+  const [item, file] = ['item', 'file'].map((name) => url.searchParams.get(name) ?? '');
+  const seconds = Number(url.searchParams.get('t'));
+  const media = item && file ? yield* mediaFileOf(path.join(item, file)) : null;
+  if (!media || !(seconds >= 0)) return refuse(response, 400, `${url.search} names no item, file and t in the media folder`);
+  if (!(yield* fs.exists(media))) return refuse(response, 404, `${item}'s ${file} isn't in the library's media folder (${media})`);
+  const jpeg = yield* Cache.get(posters, new LibraryPosterKey({ media, seconds }));
+  // An item's files are never rewritten in place, and the URL names the file and moment, so the browser keeps it.
+  return response.writeHead(200, { ...CORS, 'content-type': 'image/jpeg', 'content-length': jpeg.length, 'cache-control': 'private, max-age=86400' }).end(jpeg);
+});
+
 /** Answers a library request, or returns false for any other path. */
 export type LibraryMediaRequestHandler = (request: IncomingMessage, response: ServerResponse) => boolean;
 
 /** A request handler running each request as a fiber of its own on the services it's made with. */
 export const makeLibraryMediaRequestHandler = Effect.fn('LibraryMediaServer.handler')(function* () {
   const run = Effect.runForkWith(yield* Effect.context<LibraryMediaFolder | LibraryFrameDecoders | FileSystem.FileSystem | Path.Path>());
+  const decoders = yield* LibraryFrameDecoders;
+  // A failed cut is kept too: a file ffmpeg can't read now won't read on the next ask, and the shelf asks every visit.
+  const posters = yield* Cache.make({
+    capacity: LIBRARY_POSTER_CAPACITY,
+    lookup: ({ media, seconds }: LibraryPosterKey) => decoders.frameAt({ path: media, width: LIBRARY_POSTER_WIDTH, fps: LIBRARY_POSTER_FPS }, seconds),
+  });
   // Said once in the terminal too: an audio pass's download names only the status.
   const warnedOffline = yield* Ref.make(false);
   const handle: LibraryMediaRequestHandler = (request, response) => {
     const url = new URL(request.url ?? '/', 'http://localhost');
-    const media = url.pathname.startsWith(`${LIBRARY_MEDIA_PATH}/`), frames = url.pathname === LIBRARY_FRAMES_PATH;
-    if (!media && !frames) return false;
+    const media = url.pathname.startsWith(`${LIBRARY_MEDIA_PATH}/`), frames = url.pathname === LIBRARY_FRAMES_PATH, poster = url.pathname === LIBRARY_POSTERS_PATH;
+    if (!media && !frames && !poster) return false;
     const answer = Effect.gen(function* () {
-      return media ? yield* answerMediaFile(request, response, url) : yield* answerFrame(response, url);
+      if (media) return yield* answerMediaFile(request, response, url);
+      return frames ? yield* answerFrame(response, url) : yield* answerPoster(response, url, posters);
     });
     run(answer.pipe(
       Effect.catchTag('LibraryMediaOffline', (offline) => Ref.getAndSet(warnedOffline, true).pipe(

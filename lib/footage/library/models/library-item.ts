@@ -203,3 +203,49 @@ export function unusedLibraryItemId(base: string, taken: ReadonlySet<string>): s
   if (!taken.has(base)) return base;
   for (let n = 2; ; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
 }
+
+/** The picture an item leads with (its screen, else its first track with picture), and the rest inset over it. */
+export function libraryPictureTracksOf(item: LibraryItem): { main?: string; insets: string[] } {
+  const pictures = Object.entries(item.tracks).filter(([, t]) => t.video).map(([name]) => name);
+  const main = pictures.includes('screen') ? 'screen' : pictures[0];
+  return { main, insets: pictures.filter((name) => name !== main).slice(0, 1) };
+}
+
+/** Where the shelf takes an item's poster from: a file in its media folder, and seconds of that file's media time. */
+export type LibraryPosterFrame = { file: string; seconds: number };
+
+/** How far into an item its poster is taken: past a take's opening, where the recorder's own window tends to sit. */
+const LIBRARY_POSTER_AT = 1 / 3;
+
+/** The poster of `item`: its leading picture a third of the way in, from its proxy where it has one. None without picture. */
+export function libraryPosterFrameOf(item: LibraryItem): LibraryPosterFrame | undefined {
+  const { main } = libraryPictureTracksOf(item);
+  if (!main) return undefined;
+  const track = item.tracks[main];
+  const seconds = Math.min(Math.max(0, libraryMediaTimeOf(track, item.durationSeconds * LIBRARY_POSTER_AT)), track.mediaSeconds);
+  return { file: track.proxy?.file ?? track.file, seconds };
+}
+
+/** What a track's name says its source is: the recorder's names, or a single file's. */
+export type LibrarySourceKind = 'screen' | 'camera' | 'mic' | 'video' | 'audio' | 'other';
+
+const LIBRARY_SOURCE_ORDER: readonly LibrarySourceKind[] = ['screen', 'camera', 'mic', 'video', 'audio', 'other'];
+
+const librarySourceKindOf = (track: string): LibrarySourceKind => LIBRARY_SOURCE_ORDER.find((kind) => kind === track) ?? 'other';
+
+/**
+ * `item`'s tracks as sources, each named as a word (`screen` reads Screen), in one order whatever item.json's: screen,
+ * camera, mic, then a file's video or audio.
+ */
+export function librarySourcesOf(item: LibraryItem): { track: string; kind: LibrarySourceKind; label: string }[] {
+  return Object.keys(item.tracks).map((track) => ({ track, kind: librarySourceKindOf(track), label: track.charAt(0).toUpperCase() + track.slice(1) }))
+    .toSorted((a, b) => LIBRARY_SOURCE_ORDER.indexOf(a.kind) - LIBRARY_SOURCE_ORDER.indexOf(b.kind));
+}
+
+/** The title a recording is added with: `Recording 2026-11-23 21.25.22`, after its take folder's name. */
+export const libraryRecorderTitle = (folderName: string) => `Recording ${folderName}`;
+
+/** Whether `item` still has the title the recorder gave it: only a date, which the shelf shows once, in its own column. */
+export function libraryItemHasRecorderTitle(item: LibraryItem): boolean {
+  return item.source.kind === 'studio-recorder' && item.title === libraryRecorderTitle(item.source.folder.split('/').at(-1) ?? '');
+}

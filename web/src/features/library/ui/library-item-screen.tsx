@@ -12,7 +12,7 @@ import { libraryItemViewQueryOptions, useLibraryFlagOps, useLibraryFlags } from 
 import type { LibraryItemView } from '../controllers/library-reads.ts';
 import { useLibraryItemSearch } from '../controllers/library-search.ts';
 import { LibraryFlagPanel } from './library-flag-panel.tsx';
-import { LibraryItemHeader } from './library-item-header.tsx';
+import { LibraryItemFacts, LibraryItemHeader } from './library-item-header.tsx';
 import { LibraryItemScreenProvider, type LibraryComposing, type LibraryItemScreenValue, type LibraryMarkedRange } from './library-item-context.tsx';
 import { createLibraryItemPlayback, LIBRARY_CLOCK_FPS } from './library-item-playback.ts';
 import { LibraryRecordingMedia } from './library-recording-media.tsx';
@@ -23,9 +23,11 @@ import { useLibraryItemHotkeys } from './use-library-item-hotkeys.ts';
 const styles = stylex.create({
   body: {
     display: 'grid', height: '100%', minHeight: 0,
-    gridTemplateColumns: `minmax(0, 1fr) minmax(320px, 34%)`, gridTemplateRows: 'minmax(0, 1fr) auto minmax(120px, 30%)',
-    gridTemplateAreas: '"picture transcript" "timeline transcript" "flags transcript"',
+    // The flags take the height their rows need, up to 40%, and scroll past it; the picture has the rest.
+    gridTemplateColumns: `minmax(0, 1fr) minmax(320px, 34%)`, gridTemplateRows: 'auto minmax(0, 1fr) auto fit-content(40%)',
+    gridTemplateAreas: '"facts facts" "picture transcript" "timeline transcript" "flags transcript"',
   },
+  facts: { gridArea: 'facts', minWidth: 0 },
   picture: { gridArea: 'picture', minHeight: 0, position: 'relative' },
   offline: {
     position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: spacing.inset, color: colors.dim,
@@ -87,6 +89,7 @@ function LibraryItemScreenBody({ view }: { readonly view: LibraryItemView }) {
     <LibraryItemScreenProvider value={screen}>
       <StudioShell start={<LibraryItemHeader />}>
         <Box ref={attachRoot} {...stylex.props(styles.body)}>
+          <Box {...stylex.props(styles.facts)}><LibraryItemFacts /></Box>
           <Box {...stylex.props(styles.picture)}>
             <LibraryRecordingMedia item={item} clock={playback} placement={{ offsetSeconds: 0, fps: LIBRARY_CLOCK_FPS }}
               heard={{ track: heard, attach: attachLeader }} />
