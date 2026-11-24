@@ -1,6 +1,6 @@
 import { Box, Group } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import { Grid3x3, LayoutGrid, Pause, Pencil, Play, Repeat, Scan, Volume2, VolumeX } from 'lucide-react';
+import { LayoutGrid, Pause, Pencil, Play, Repeat, Scan, SquareDashed, Volume2, VolumeX } from 'lucide-react';
 import { useRef } from 'react';
 import { nextReviewGuideSet } from '#lib/output/review/models/review-guides.ts';
 import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
@@ -23,7 +23,8 @@ const styles = stylex.create({
     position: 'relative', height: spacing.bar, paddingInline: spacing.tight, backgroundColor: colors.panel,
     borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line,
   },
-  rule: { width: '1px', alignSelf: 'stretch', marginBlock: spacing.tight, backgroundColor: colors.line },
+  // A seam with room either side: playback, compare and the ground are separate sets, not one run of icons.
+  rule: { width: '1px', alignSelf: 'stretch', marginBlock: spacing.tight, marginInline: spacing.gap, backgroundColor: colors.line },
   // The stage's tools as one set at the bar's end, apart from playback: what they do is look at the frame, not play it.
   tools: {
     marginInlineStart: 'auto', padding: '1px', borderRadius: radius.control,
@@ -98,7 +99,7 @@ export function ReviewTransportBar() {
       )}
       <Group gap={0} wrap="nowrap" role="group" aria-label="Stage tools" {...stylex.props(styles.tools)}>
         <IconButton name="Draw on the frame" hotkey="Draw" active={mode === 'draw'} onClick={() => toggleReviewDraw(screen)}><Pencil size={14} /></IconButton>
-        <IconButton name="Safe-area guides" hotkey="Guides" active={guides !== null} onClick={() => setGuides(nextReviewGuideSet)}><Grid3x3 size={14} /></IconButton>
+        <IconButton name="Safe-area guides" hotkey="Guides" active={guides !== null} onClick={() => setGuides(nextReviewGuideSet)}><SquareDashed size={14} /></IconButton>
         {guides && <Readout bright>{guides}</Readout>}
         <IconButton name="Fit or actual size" hotkey="Fit / 1:1" active={search.z === 1} onClick={() => setSearch({ z: search.z === 1 ? undefined : 1 })}><Scan size={14} /></IconButton>
         <IconButton name="Board of scene frames" hotkey="Board" active={mode === 'board'} onClick={() => setMode(mode === 'board' ? 'stage' : 'board')}><LayoutGrid size={14} /></IconButton>

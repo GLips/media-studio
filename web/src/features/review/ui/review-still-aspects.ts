@@ -6,6 +6,8 @@ export type ReviewStillOrientation = 'wide' | 'square' | 'tall';
 /** Stills of one aspect, widest group first; `size` names their pixels when every one shares them. */
 export type ReviewStillAspectSection<T> = {
   readonly word: ReviewStillOrientation;
+  /** Width over height, to two places: what the section shares. */
+  readonly aspect: number;
   readonly size: { readonly w: number; readonly h: number } | null;
   readonly items: readonly T[];
 };
@@ -40,7 +42,7 @@ export function reviewStillAspectSectionsOf<T>(
   const groups = [...byAspect].toSorted(([a], [b]) => b - a).map(([aspect, members]) => {
     const sizes = members.map((m) => sizeOf(m)!);
     const same = sizes.every((s) => s.w === sizes[0].w && s.h === sizes[0].h);
-    return { word: orientationOfAspect(aspect), size: same ? { w: sizes[0].w, h: sizes[0].h } : null, items: members };
+    return { word: orientationOfAspect(aspect), aspect, size: same ? { w: sizes[0].w, h: sizes[0].h } : null, items: members };
   });
   return { groups, unread };
 }
@@ -63,4 +65,19 @@ export function reviewSectionedGridStep(at: number, { along, rows }: ReviewTileS
   const row = laid.findIndex((r) => at < r.first + r.length);
   const target = laid[Math.min(Math.max(row + rows, 0), laid.length - 1)];
   return target.first + Math.min(at - laid[row].first, target.length - 1);
+}
+
+/** The ratios stills are cut to, by the name each goes by: an OG card is 1.91:1, not 40:21. */
+const REVIEW_STILL_NAMED_RATIOS: readonly (readonly [number, string])[] = [
+  [21 / 9, '21:9'], [2, '2:1'], [1.91, '1.91:1'], [16 / 9, '16:9'], [3 / 2, '3:2'], [4 / 3, '4:3'], [5 / 4, '5:4'], [1, '1:1'],
+  [4 / 5, '4:5'], [3 / 4, '3:4'], [2 / 3, '2:3'], [9 / 16, '9:16'],
+];
+
+/** How close an aspect, already rounded to two places, must come to a named ratio to go by its name. */
+const REVIEW_STILL_RATIO_SLACK = 0.015;
+
+/** `16:9`, `1.91:1`, `4:5` for a ratio stills are cut to; any other as its width to one, `1.43:1`. */
+export function reviewStillRatioName(aspect: number): string {
+  const named = REVIEW_STILL_NAMED_RATIOS.find(([ratio]) => Math.abs(ratio - aspect) <= REVIEW_STILL_RATIO_SLACK);
+  return named ? named[1] : `${Number(aspect.toFixed(2))}:1`;
 }
