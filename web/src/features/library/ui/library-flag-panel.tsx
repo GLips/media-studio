@@ -4,13 +4,13 @@ import { formatForDisplay } from '@tanstack/react-hotkeys';
 import { Flag, Pencil, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { libraryFlagsInOrder, type LibraryFlag, type LibraryFlagFilter } from '#lib/footage/library/models/library-flags.ts';
-import { formatReviewClockRange } from '#lib/output/review/models/review-timeline-geometry.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { focusNoteFieldAtEnd, Textarea } from '#web/shared/ui/textarea.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
+import { LibraryClockRange } from './library-clock-range.tsx';
 import { useLibraryItemScreen, type LibraryComposing } from './library-item-context.tsx';
 
 /** One flag's row: a line of note over the button's block padding. */
@@ -92,7 +92,7 @@ function LibraryFlagComposer({ composing }: { readonly composing: LibraryComposi
   return (
     <Stack gap="tight" {...stylex.props(styles.composer)}>
       <Text size="sm" {...stylex.props(styles.composerHead)}>
-        {composing.kind === 'new' ? 'New flag' : `Note on flag ${composing.flag}`} {range && <Readout>{formatReviewClockRange(range.start, range.end)}</Readout>}
+        {composing.kind === 'new' ? 'New flag' : `Note on flag ${composing.flag}`} {range && <LibraryClockRange start={range.start} end={range.end} />}
       </Text>
       <Textarea ref={field} value={text} onChange={(event) => setText(event.currentTarget.value)} onEnter={save} onEscape={() => setComposing(null)}
         placeholder="What it is: a good take, a line to use, a stretch to cut (or nothing)" autosize minRows={1} maxRows={4} aria-label="Flag note"
@@ -126,13 +126,13 @@ function LibraryFlagRow({ flag }: { readonly flag: LibraryFlag }) {
     if (on) row.current?.scrollIntoView({ block: 'nearest' });
   }, [on]);
   return (
-    <Box ref={row} {...stylex.props(styles.row, on && styles.focused)}>
+    <Box ref={row} {...stylex.props(styles.row, on && styles.focused, stylex.defaultMarker())}>
       <UnstyledButton aria-current={on || undefined} onClick={() => focusFlag(on ? undefined : flag)} onDoubleClick={() => setComposing({ kind: 'note', flag: flag.id })}
         {...stylex.props(styles.open)}>
         <HotkeyTooltip name={`Set by ${BY_GLYPHS[flag.by].word}`}>
           <Text component="span" size="sm" {...stylex.props(styles[flag.by])}>{BY_GLYPHS[flag.by].glyph} {flag.id}</Text>
         </HotkeyTooltip>
-        <Readout bright={on}>{formatReviewClockRange(flag.start, flag.end)}</Readout>
+        <LibraryClockRange start={flag.start} end={flag.end} bright={on} />
         <Text component="span" size="sm" {...stylex.props(flag.note ? styles.note : styles.bare)}>{flag.note ?? 'no note'}</Text>
       </UnstyledButton>
       <Group gap={0} wrap="nowrap" {...stylex.props(styles.tools)}>

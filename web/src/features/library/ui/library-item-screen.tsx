@@ -25,15 +25,17 @@ const styles = stylex.create({
   body: {
     display: 'grid', height: '100%', minHeight: 0,
     // The picture and its transport own the left; the rail on the right holds the flags over the transcript.
-    gridTemplateColumns: 'minmax(0, 1fr) 400px', gridTemplateRows: 'minmax(0, 1fr) auto',
-    gridTemplateAreas: '"picture rail" "timeline rail"',
+    gridTemplateColumns: 'minmax(0, 1fr) 400px', gridTemplateRows: 'minmax(0, 1fr)', gridTemplateAreas: '"media rail"',
   },
-  picture: { gridArea: 'picture', minHeight: 0, position: 'relative' },
+  // The picture and its transport as one block, centred down the column: the picture's row is as tall as the picture
+  // at the column's width, shrinking (minmax from 0) when that and the transport would overflow.
+  media: { gridArea: 'media', minHeight: 0, display: 'grid', gridTemplateRows: 'minmax(0, auto) auto', alignContent: 'center' },
+  picture: { minHeight: 0, position: 'relative' },
   offline: {
     position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: spacing.inset, color: colors.dim,
     backgroundColor: colors.screen, textAlign: 'center',
   },
-  timeline: { gridArea: 'timeline', minWidth: 0 },
+  timeline: { minWidth: 0 },
   // The flags as tall as they are, to under half the rail, past which they scroll; the transcript has the rest.
   rail: {
     gridArea: 'rail', minHeight: 0, display: 'grid', gridTemplateRows: 'fit-content(45%) minmax(0, 1fr)',
@@ -105,16 +107,18 @@ function LibraryItemScreenBody({ view }: { readonly view: LibraryItemView }) {
     <LibraryItemScreenProvider value={screen}>
       <StudioShell start={<LibraryItemHeader />}>
         <Box ref={attachRoot} {...stylex.props(styles.body)}>
-          <Box {...stylex.props(styles.picture)}>
-            <LibraryRecordingMedia item={item} clock={playback} placement={{ offsetSeconds: 0, fps: LIBRARY_CLOCK_FPS }}
-              heard={{ track: heard, attach: attachLeader }} letterbox={false} />
-            {!view.media.online && (
-              <Text size="sm" {...stylex.props(styles.offline)}>
-                Media offline: {view.media.path} isn&apos;t there, so nothing plays. The transcript, search and flags still work.
-              </Text>
-            )}
+          <Box {...stylex.props(styles.media)}>
+            <Box {...stylex.props(styles.picture)}>
+              <LibraryRecordingMedia item={item} clock={playback} placement={{ offsetSeconds: 0, fps: LIBRARY_CLOCK_FPS }}
+                heard={{ track: heard, attach: attachLeader }} letterbox={false} />
+              {!view.media.online && (
+                <Text size="sm" {...stylex.props(styles.offline)}>
+                  Media offline: {view.media.path} isn&apos;t there, so nothing plays. The transcript, search and flags still work.
+                </Text>
+              )}
+            </Box>
+            <Box {...stylex.props(styles.timeline)}><LibraryTimeline reach={reach} /></Box>
           </Box>
-          <Box {...stylex.props(styles.timeline)}><LibraryTimeline reach={reach} /></Box>
           <Box {...stylex.props(styles.rail)}>
             <LibraryFlagPanel />
             <Box {...stylex.props(styles.transcript)}><LibraryTranscript /></Box>
