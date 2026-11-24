@@ -12,8 +12,8 @@ const styles = stylex.create({
   // A size container, so the picture fits it whole at its own shape and the inset sits on the picture, not the bars.
   stage: { position: 'relative', width: '100%', height: '100%', containerType: 'size', display: 'grid', placeItems: 'center' },
   letterbox: { backgroundColor: colors.screen },
-  // Up under whatever sits above it, so the ground left over falls below the picture, not in a band over it.
-  top: { alignItems: 'start' },
+  // As tall as the picture at the stage's width, to at most its box: so the page can sit its controls right under it.
+  fitted: (ratio: number) => ({ height: 'auto', aspectRatio: ratio, maxHeight: '100%' }),
   picture: (ratio: number) => ({
     position: 'relative', width: `min(100cqw, calc(100cqh * ${ratio}))`, height: `min(100cqh, calc(100cqw / ${ratio}))`,
     backgroundColor: colors.screen,
@@ -88,7 +88,10 @@ type LibraryRecordingMediaProps = {
   readonly heard: LibraryHeardMedia;
   /** Shown in place of a picture for an item with none (a voice take): its words, say. */
   readonly children?: ReactNode;
-  /** False for a page the picture leads: it sits at the top on the page's ground, rather than centred in a screen's black. */
+  /**
+   * False for a page the picture leads: the stage is only as tall as the picture, on the page's ground rather than a
+   * screen's black, so the page can compose it with what goes under it.
+   */
   readonly letterbox?: boolean;
 };
 
@@ -99,14 +102,15 @@ type LibraryRecordingMediaProps = {
 export function LibraryRecordingMedia({ item, clock, placement, heard, children, letterbox = true }: LibraryRecordingMediaProps) {
   const { main, insets } = libraryPictureTracksOf(item);
   const video = main ? item.tracks[main].video : undefined;
+  const ratio = video && video.width / video.height;
   const slot = (name: string, inset?: boolean) => (name === heard.track
     ? <LibraryHeardElement item={item} heard={heard} inset={inset} />
     : <LibraryTrackFollower item={item} track={item.tracks[name]} clock={clock} placement={placement} inset={inset} />);
   return (
-    <Box {...stylex.props(styles.stage, letterbox ? styles.letterbox : styles.top)}>
+    <Box {...stylex.props(styles.stage, letterbox ? styles.letterbox : ratio !== undefined && styles.fitted(ratio))}>
       {!item.tracks[heard.track].video && <LibraryHeardElement item={item} heard={heard} />}
-      {main && video && (
-        <Box {...stylex.props(styles.picture(video.width / video.height))}>
+      {main && ratio !== undefined && (
+        <Box {...stylex.props(styles.picture(ratio))}>
           {slot(main)}
           {insets.map((name) => <Box key={name} {...stylex.props(styles.inset)}>{slot(name, true)}</Box>)}
         </Box>
