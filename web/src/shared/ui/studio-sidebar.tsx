@@ -5,7 +5,7 @@ import { createContext, useContext, type AnchorHTMLAttributes, type ReactNode, t
 import { FadeScroll } from './fade-scroll.tsx';
 import { colors, radius, spacing, typography } from './theme.stylex.ts';
 
-/** The icon column every item keeps, so a project's name lines up with the labels above it. */
+/** A page's icon column. A project has none, so its name starts at the edge the Projects heading and filter share. */
 const ICON_COLUMN = '14px';
 
 const styles = stylex.create({
@@ -24,13 +24,14 @@ const styles = stylex.create({
   nav: { display: 'flex', flexDirection: 'column', paddingInline: spacing.gap, paddingBlockEnd: spacing.gap },
   main: { minWidth: 0, minHeight: 0, overflow: 'hidden' },
   item: {
-    display: 'grid', gridTemplateColumns: `${ICON_COLUMN} minmax(0, 1fr) auto`, alignItems: 'center', columnGap: spacing.gap,
+    display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center', columnGap: spacing.gap,
     height: spacing.row, paddingInline: spacing.gap, borderRadius: radius.control, textDecoration: 'none',
     fontSize: typography.chrome, lineHeight: typography.lineHeight, color: colors.cream,
     backgroundColor: { default: 'transparent', ':hover': colors.raised, ':focus-visible': colors.raised },
     outlineColor: colors.cream, outlineStyle: 'solid', outlineOffset: '-1px', outlineWidth: { default: 0, ':focus-visible': '1px' },
   },
   current: { backgroundColor: colors.raised, fontWeight: 600 },
+  withIcon: { gridTemplateColumns: `${ICON_COLUMN} minmax(0, 1fr) auto` },
   icon: { display: 'flex', color: colors.dim },
   label: { minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   count: { color: colors.caution, fontVariantNumeric: 'tabular-nums' },
@@ -111,8 +112,8 @@ type SidebarAnchorProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
 
 function SidebarAnchor({ icon, label, waiting = 0, current = false, ref, ...anchor }: SidebarAnchorProps) {
   return (
-    <a ref={ref} {...anchor} aria-current={current ? 'page' : undefined} {...stylex.props(styles.item, current && styles.current)}>
-      <span {...stylex.props(styles.icon)}>{icon}</span>
+    <a ref={ref} {...anchor} aria-current={current ? 'page' : undefined} {...stylex.props(styles.item, icon !== undefined && styles.withIcon, current && styles.current)}>
+      {icon !== undefined && <span {...stylex.props(styles.icon)}>{icon}</span>}
       <span {...stylex.props(styles.label)}>{label}</span>
       {waiting > 0 && <span {...stylex.props(styles.count)}>{waiting}</span>}
     </a>
