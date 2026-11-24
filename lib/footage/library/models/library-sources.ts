@@ -4,7 +4,7 @@ import { Result } from 'effect';
 import type { RecordingWindowPlacement } from '#lib/footage/recording/models/recording-window-log.ts';
 import type { StudioRecordingJson } from '#lib/footage/recording/models/studio-recording-json.ts';
 import { LibraryNoTrackToAdd, LibraryRequestRefused } from './library-errors.ts';
-import type { LibraryItemSource, LibraryScreenDisplay, LibraryScreenWindow } from './library-item.ts';
+import { libraryRecorderTitle, type LibraryItemSource, type LibraryScreenDisplay, type LibraryScreenWindow } from './library-item.ts';
 import type { RecorderTakeEnding } from './library-take-machine.ts';
 
 /** A track to add: its source file and its sync, before ffprobe says what it holds. */
@@ -69,7 +69,7 @@ export function recorderAddSource(
   const input = recording.input && present.has(recording.input.file) ? { path: `${folder}/${recording.input.file}`, coordinates: recording.input.coordinates } : undefined;
   const clockLog = recording.clockLog && present.has(recording.clockLog) ? `${folder}/${recording.clockLog}` : undefined;
   return Result.succeed({
-    tracks, title: `Recording ${name}`, recordedAt: recording.startedAt,
+    tracks, title: libraryRecorderTitle(name), recordedAt: recording.startedAt,
     source: { kind: 'studio-recorder', folder, status: ending },
     ...(input && { input }), ...(clockLog && { clockLog }), extras,
     ...(Object.keys(problems).length && { problems }), ...(Object.keys(leftOut).length && { leftOut }),

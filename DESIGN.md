@@ -225,6 +225,8 @@ Full-viewport working screens, no page scroll: a CSS grid of a bar, a body that 
 - **Index and library:** the studio sidebar down the left at full height (240px, panel, a 1px seam): its name on the bar's line, then Awaiting you with its count, Library, and Projects, each with what waits in it in amber. The page fills the rest, its own bar over it.
 - **Index and project pages:** one uncapped list whose rows share columns (a subgrid): picture, name, what it asks (dim, taking the rest), its state in words, readouts right-aligned. The index splits it into two sections, Awaiting you then Projects, each under a Display header with its count; Awaiting you groups its rows under each project's name, cream at 600 with its count.
 - **Viewers** (a recording, a render's review, stills) keep the full width and their `◂` crumb: the work needs the room.
+- **Library shelf:** fills the width it's given, uncapped: the page's heading with its count, the search, then a table whose column names (Title, Sources, Length, Recorded, Flags) sit on the same grid as its 40px rows, each led by the item's 64px poster. Sources are lucide icons with their words. A recording still under the recorder's dated title reads "Untitled recording" in dim, so the date shows once, in Recorded.
+- **Recording page:** the title in the bar, a 24px dim line of facts under it (recorded, length, sources, window, projects); the picture over the transport and a strip with a time ruler; the flags under it, as tall as their rows up to 40% and scrolling past it; the transcript at body size in a column on the right.
 
 Spacing is drawn from three steps, 4px (tight), 8px (gap) and 12px (inset), with 2px for hairline nudges and 24px as a list row's height and a panel's padding. Rows are 24px, dense rows 20px, bars 28px. The plan's scene panel pads 24px and separates its fields by 24px; a field's label sits 4px above its text.
 
@@ -272,7 +274,7 @@ The whole video as blocks, each as wide as it runs, on lane-a, 3px corners, rais
 Indented rows with a 2px left edge, raised on hover, a 1px cream focus ring inset. The kind is a lucide icon in cream; the state is the colour. A reply landing on a row flashes it cobalt at 25% for 1s, easing out.
 
 ### Inputs / Fields
-Scene fields are a dim chrome label with a comment icon button, over prose-size cream text edited in place. The composer's draft is edged in cobalt.
+Scene fields are a dim chrome label with a comment icon button, over prose-size cream text edited in place. The composer's draft is edged in cobalt. A composer always shows its Cancel and Save buttons (Save the screen's accent while it's open), with its keys in dim words beside them. An action that waits on something, as Flag range waits on a marked range, stays on show disabled, its tooltip saying what it waits for; a row's own actions (edit, remove) show at rest, not only on hover.
 
 ### Tooltips and menus
 Panel fill, 1px seam border, 3px corners, cream chrome type: they sit on the dark screen as a panel, never as a light box.

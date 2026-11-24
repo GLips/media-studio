@@ -1,4 +1,4 @@
-import { Box, Group, Stack, Text, UnstyledButton } from '@mantine/core';
+import { Box, Button, Group, Stack, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { Flag, Pencil, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -18,22 +18,32 @@ const styles = stylex.create({
   chip: { paddingInline: spacing.tight, borderRadius: radius.control, color: colors.dim, backgroundColor: { default: 'transparent', ':hover': colors.raised } },
   chipOn: { color: colors.cream, backgroundColor: colors.raised },
   step: { color: colors.dim, marginInlineStart: 'auto' },
+  // The row's tools sit beside its button, not in it: a button can't hold buttons.
   row: {
-    display: 'grid', gridTemplateColumns: '28px 120px minmax(0, 1fr) auto', columnGap: spacing.gap, alignItems: 'baseline',
-    width: '100%', paddingInline: spacing.gap, paddingBlock: spacing.tight, textAlign: 'start',
+    display: 'flex', alignItems: 'center', gap: spacing.tight, paddingInlineEnd: spacing.tight,
     backgroundColor: { default: 'transparent', ':hover': colors.raised },
     borderInlineStartWidth: '2px', borderInlineStartStyle: 'solid', borderInlineStartColor: 'transparent',
   },
   focused: { backgroundColor: colors.raised, borderInlineStartColor: colors.cream },
+  open: {
+    flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: '28px 120px minmax(0, 1fr)', columnGap: spacing.gap, alignItems: 'baseline',
+    paddingInlineStart: spacing.gap, paddingBlock: spacing.tight, textAlign: 'start',
+    outlineColor: colors.cream, outlineStyle: 'solid', outlineOffset: '-1px', outlineWidth: { default: 0, ':focus-visible': '1px' },
+  },
   agent: { color: colors.caution },
   reviewer: { color: colors.cobalt },
   note: { color: colors.cream, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' },
   bare: { color: colors.dim },
-  tools: { opacity: { default: 0, ':hover': 1 } },
-  toolsShown: { opacity: 1 },
+  tools: { flexShrink: 0 },
   empty: { padding: spacing.gap, color: colors.dim },
   composer: { padding: spacing.gap, borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line },
   composerHead: { color: colors.dim },
+  // The draft's edge, as every composer's: cobalt.
+  field: { borderColor: colors.cobalt },
+  keys: { color: colors.dim, marginInlineEnd: 'auto' },
+  save: { color: colors.cream, backgroundColor: colors.accent },
+  // A disabled button takes no pointer, so its hint's tooltip hangs on this wrapper.
+  hinted: { display: 'inline-flex' },
   refusal: { color: colors.danger },
 });
 
@@ -60,11 +70,17 @@ function LibraryFlagComposer({ composing }: { readonly composing: LibraryComposi
   return (
     <Stack gap="tight" {...stylex.props(styles.composer)}>
       <Text size="sm" {...stylex.props(styles.composerHead)}>
-        {composing.kind === 'new' ? 'Flag' : `Note on #${composing.flag}`} {range && formatReviewClockRange(range.start, range.end)} · Enter saves, Esc leaves
+        {composing.kind === 'new' ? 'New flag' : `Note on flag ${composing.flag}`} {range && <Readout>{formatReviewClockRange(range.start, range.end)}</Readout>}
       </Text>
       <Textarea ref={field} value={text} onChange={(event) => setText(event.currentTarget.value)} onEnter={save} onEscape={() => setComposing(null)}
-        placeholder="What it is: a good take, a line to use, a stretch to cut (or nothing)" autosize minRows={1} maxRows={4} aria-label="Flag note" />
+        placeholder="What it is: a good take, a line to use, a stretch to cut (or nothing)" autosize minRows={1} maxRows={4} aria-label="Flag note"
+        classNames={{ input: stylex.props(styles.field).className }} />
       {refusal && <Text size="sm" {...stylex.props(styles.refusal)}>{refusal}</Text>}
+      <Group gap="gap" wrap="nowrap">
+        <Text component="span" size="sm" {...stylex.props(styles.keys)}>Enter saves, Esc cancels</Text>
+        <Button onClick={() => setComposing(null)}>Cancel</Button>
+        <Button onClick={save} {...stylex.props(styles.save)}>Save</Button>
+      </Group>
     </Stack>
   );
 }
@@ -72,23 +88,25 @@ function LibraryFlagComposer({ composing }: { readonly composing: LibraryComposi
 function LibraryFlagRow({ flag }: { readonly flag: LibraryFlag }) {
   const { focused, focusFlag, setComposing, changeFlags } = useLibraryItemScreen();
   const on = focused?.id === flag.id;
-  const row = useRef<HTMLButtonElement>(null);
+  const row = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (on) row.current?.scrollIntoView({ block: 'nearest' });
   }, [on]);
   return (
-    <UnstyledButton ref={row} aria-current={on || undefined} onClick={() => focusFlag(on ? undefined : flag)} onDoubleClick={() => setComposing({ kind: 'note', flag: flag.id })}
-      {...stylex.props(styles.row, on && styles.focused)}>
-      <HotkeyTooltip name={`Set by ${BY_GLYPHS[flag.by].word}`}>
-        <Text component="span" size="sm" {...stylex.props(styles[flag.by])}>{BY_GLYPHS[flag.by].glyph} {flag.id}</Text>
-      </HotkeyTooltip>
-      <Readout bright={on}>{formatReviewClockRange(flag.start, flag.end)}</Readout>
-      <Text component="span" size="sm" {...stylex.props(flag.note ? styles.note : styles.bare)}>{flag.note ?? 'no note'}</Text>
-      <Group gap={0} wrap="nowrap" onClick={(event) => event.stopPropagation()} {...stylex.props(styles.tools, on && styles.toolsShown)}>
+    <Box ref={row} {...stylex.props(styles.row, on && styles.focused)}>
+      <UnstyledButton aria-current={on || undefined} onClick={() => focusFlag(on ? undefined : flag)} onDoubleClick={() => setComposing({ kind: 'note', flag: flag.id })}
+        {...stylex.props(styles.open)}>
+        <HotkeyTooltip name={`Set by ${BY_GLYPHS[flag.by].word}`}>
+          <Text component="span" size="sm" {...stylex.props(styles[flag.by])}>{BY_GLYPHS[flag.by].glyph} {flag.id}</Text>
+        </HotkeyTooltip>
+        <Readout bright={on}>{formatReviewClockRange(flag.start, flag.end)}</Readout>
+        <Text component="span" size="sm" {...stylex.props(flag.note ? styles.note : styles.bare)}>{flag.note ?? 'no note'}</Text>
+      </UnstyledButton>
+      <Group gap={0} wrap="nowrap" {...stylex.props(styles.tools)}>
         <IconButton name="Edit note" onClick={() => setComposing({ kind: 'note', flag: flag.id })}><Pencil size={12} /></IconButton>
         <IconButton name="Remove flag" onClick={() => changeFlags({ op: 'flag.remove', id: flag.id })}><Trash2 size={12} /></IconButton>
       </Group>
-    </UnstyledButton>
+    </Box>
   );
 }
 
@@ -113,9 +131,14 @@ export function LibraryFlagPanel() {
         ))}
         {at >= 0 && <Readout>{at + 1} of {queue.length}</Readout>}
         <Box {...stylex.props(styles.step)}>
-          {marked && !composing && (
-            <IconButton name="Flag the marked range" hotkey="Flag range" onClick={() => setComposing({ kind: 'new', range: marked })}><Flag size={12} /></IconButton>
-          )}
+          <HotkeyTooltip name={marked ? 'Flag the marked range' : 'Mark a range first: drag on the timeline, select words, or press I and O'} hotkey="Flag range">
+            <Box component="span" {...stylex.props(styles.hinted)}>
+              <Button size="compact-xs" leftSection={<Flag size={12} />} disabled={!marked || composing !== null}
+                onClick={() => marked && setComposing({ kind: 'new', range: marked })}>
+                Flag range
+              </Button>
+            </Box>
+          </HotkeyTooltip>
         </Box>
       </Group>
       <FadeScroll>

@@ -1,7 +1,7 @@
 import { Box } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useState, type ReactNode } from 'react';
-import { libraryMediaTimeOf, type LibraryItem, type LibraryTrack } from '#lib/footage/library/models/library-item.ts';
+import { libraryMediaTimeOf, libraryPictureTracksOf, type LibraryItem, type LibraryTrack } from '#lib/footage/library/models/library-item.ts';
 import { libraryMediaUrl } from '#lib/footage/library/studio/library-media.ts';
 import { linkedMediaFrameAt } from '#lib/platform/web/models/linked-media-window.ts';
 import { useLinkedMediaFollower, type LinkedMediaClock } from '#web/shared/ui/linked-media-clock.ts';
@@ -60,13 +60,6 @@ function LibraryTrackFollower({ item, track, clock, placement, inset }: LibraryT
     <Box component="video" ref={setElement} src={libraryMediaUrl(item.id, proxy?.file ?? track.file)} preload="auto" playsInline muted
       {...stylex.props(inset ? styles.insetVideo : styles.video)} />
   );
-}
-
-/** The picture an item leads with (its screen, else its first track with picture), and the rest inset over it. */
-export function libraryPictureTracksOf(item: LibraryItem): { main?: string; insets: string[] } {
-  const pictures = Object.entries(item.tracks).filter(([, t]) => t.video).map(([name]) => name);
-  const main = pictures.includes('screen') ? 'screen' : pictures[0];
-  return { main, insets: pictures.filter((name) => name !== main).slice(0, 1) };
 }
 
 /** The clock's leader: the track heard, and the ref callback its element mounts with. */

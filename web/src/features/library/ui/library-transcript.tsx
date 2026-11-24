@@ -137,7 +137,7 @@ export function LibraryTranscript() {
         {lines.map((line, n) => (
           <Box key={line.firstWord} data-line={n} aria-current={n === shownLine || undefined} {...stylex.props(styles.line)}>
             <UnstyledButton onClick={() => playback.seek(line.start)} {...stylex.props(styles.stamp)}><Readout>{formatReviewClock(line.start)}</Readout></UnstyledButton>
-            <Text component="p" size="prose" {...stylex.props(styles.words)}>
+            <Text component="p" size="md" {...stylex.props(styles.words)}>
               {words.slice(line.firstWord, line.firstWord + line.wordCount).map((word, k) => {
                 const i = line.firstWord + k, flag = marks.get(i), middle = (word.start + word.end) / 2;
                 const inMarked = marked !== null && marked.start <= middle && middle <= marked.end;

@@ -1,13 +1,14 @@
 import { Box, Group, Text, UnstyledButton } from '@mantine/core';
+import { useElementSize } from '@mantine/hooks';
 import * as stylex from '@stylexjs/stylex';
 import { Pause, Play } from 'lucide-react';
 import { useRef, type PointerEvent } from 'react';
-import { formatReviewClock, formatReviewClockRange } from '#lib/output/review/models/review-timeline-geometry.ts';
+import { formatReviewClock, formatReviewClockRange, reviewRulerTicks, reviewTimelineFit } from '#lib/output/review/models/review-timeline-geometry.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { useLinkedMediaTick } from '#web/shared/ui/linked-media-clock.ts';
 import { Readout } from '#web/shared/ui/readout.tsx';
-import { colors, fonts, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
+import { colors, fonts, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
 import { useLibraryItemScreen } from './library-item-context.tsx';
 import { LIBRARY_CLOCK_FPS, useLibraryPlaybackState } from './library-item-playback.ts';
 
@@ -23,13 +24,18 @@ const styles = stylex.create({
     borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line, backgroundColor: colors.ground,
   },
   strip: {
-    position: 'relative', height: '44px', cursor: 'pointer', touchAction: 'none', backgroundColor: colors.panel,
+    position: 'relative', height: '60px', cursor: 'pointer', touchAction: 'none', backgroundColor: colors.panel,
     borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line, userSelect: 'none',
   },
   // What's said: each line of the transcript a band, so the quiet stretches between takes show.
   line: { position: 'absolute', bottom: '6px', height: '8px', backgroundColor: colors.laneB, borderRadius: radius.control, pointerEvents: 'none' },
+  // The time ruler, across the strip's top: a tick and its time wherever a label has room, as the render review's.
+  ruler: { position: 'absolute', insetInline: 0, top: 0, height: spacing.laneGutter, pointerEvents: 'none', overflow: 'hidden' },
+  tick: { position: 'absolute', top: 0, width: '1px', height: spacing.tight, backgroundColor: colors.mark },
+  label: { position: 'absolute', top: spacing.hairline, paddingLeft: spacing.tight, fontFamily: fonts.mono, lineHeight: typography.lineHeight, color: colors.dim, whiteSpace: 'nowrap' },
+  at: (x: number) => ({ left: `${x}px` }),
   flag: {
-    position: 'absolute', top: '6px', height: '14px', minWidth: '3px', borderRadius: radius.control, cursor: 'pointer',
+    position: 'absolute', top: '24px', height: '14px', minWidth: '3px', borderRadius: radius.control, cursor: 'pointer',
     opacity: { default: 0.75, ':hover': 1 }, borderWidth: 0, padding: 0,
     outlineStyle: 'solid', outlineColor: colors.cream, outlineWidth: 0, outlineOffset: '1px',
   },
@@ -55,6 +61,8 @@ export function LibraryTimeline({ reach }: { readonly reach: { start: number; en
   const clock = useRef<HTMLSpanElement>(null);
   const press = useRef<{ x: number; seconds: number } | null>(null);
   const duration = view.item.durationSeconds;
+  const { ref: sized, width } = useElementSize<HTMLDivElement>();
+  const ticks = reviewRulerTicks(reviewTimelineFit(Math.round(duration * LIBRARY_CLOCK_FPS), width), { fps: LIBRARY_CLOCK_FPS, beats: [] });
   // The text node React rendered, not textContent: replacing the node would leave React updating a detached one.
   useLinkedMediaTick(playback, (frame) => {
     const node = clock.current?.firstChild;
@@ -78,6 +86,7 @@ export function LibraryTimeline({ reach }: { readonly reach: { start: number; en
         )}
       </Group>
       <Box
+        ref={sized}
         role="slider"
         tabIndex={-1}
         aria-label="Time"
@@ -100,6 +109,15 @@ export function LibraryTimeline({ reach }: { readonly reach: { start: number; en
         onPointerUp={() => { press.current = null; }}
         {...stylex.props(styles.strip)}
       >
+        <Box aria-hidden {...stylex.props(styles.ruler)}>
+          {ticks.map((tick) => (
+            <Box key={tick.frame}>
+              <Box {...stylex.props(styles.tick, styles.at(tick.x))} />
+              {/* The start needs no `0:00`. */}
+              {tick.kind === 'time' && tick.frame > 0 && <Text component="span" fz="xs" {...stylex.props(styles.label, styles.at(tick.x))}>{tick.label}</Text>}
+            </Box>
+          ))}
+        </Box>
         {lines.map((line) => <Box key={line.firstWord} {...stylex.props(styles.line, styles.span(line.start / duration, (line.end - line.start) / duration))} />)}
         {marked && <Box {...stylex.props(styles.marked, styles.span(marked.start / duration, (marked.end - marked.start) / duration))} />}
         {flags.flags.map((flag) => (
