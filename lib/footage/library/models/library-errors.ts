@@ -139,3 +139,14 @@ export class LibrarySheetFailed extends Schema.TaggedError<LibrarySheetFailed>()
     return `couldn't draw ${this.path}: ${this.reason}`;
   }
 }
+
+/** library-grade.py failed: couldn't start, found no person to measure, or its decoder or encoder failed. */
+export class LibraryGradeFailed extends Schema.TaggedError<LibraryGradeFailed>()('LibraryGradeFailed', {
+  id: Schema.String,
+  step: Schema.Literals(['measure', 'grade', 'still']),
+  why: Schema.String,
+}) {
+  override get message(): string {
+    return `grading ${this.id} failed to ${this.step}: ${this.why}`;
+  }
+}

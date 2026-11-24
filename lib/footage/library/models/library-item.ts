@@ -10,6 +10,7 @@ import { Schema } from 'effect';
 import type { InputLogCoordinates } from '#lib/footage/input-log/models/input-log.ts';
 import { RecordingWindowPlacement } from '#lib/footage/recording/models/recording-window-log.ts';
 import { RecordingScreenDisplay } from '#lib/footage/recording/models/studio-recording-json.ts';
+import { LibraryGradeMeasurement } from './library-grade.ts';
 
 export const LIBRARY_ITEM_FORMAT = 'studio-library-item/1';
 
@@ -68,6 +69,8 @@ export const LibraryTrack = Schema.Struct({
   window: Schema.optionalKey(LibraryScreenWindow),
   proxy: Schema.optionalKey(LibraryTrackProxy),
   levelled: Schema.optionalKey(LibraryTrackLevelled),
+  /** A camera track's colour as `studio grade` measured it, which every look grades it from. */
+  grade: Schema.optionalKey(LibraryGradeMeasurement),
 });
 export type LibraryTrack = typeof LibraryTrack.Type;
 
