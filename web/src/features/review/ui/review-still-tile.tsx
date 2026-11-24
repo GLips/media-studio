@@ -8,8 +8,8 @@ import { reviewProofGroundStyles, type ReviewProofGround } from './use-review-pr
 /** The shape a tile holds before its picture says otherwise: the common video frame. */
 const REVIEW_TILE_GUESSED_ASPECT = 16 / 9;
 
-/** The tallest a column's tile stands, so a portrait still doesn't fill the screen. */
-const REVIEW_TILE_COLUMN_MAX_HEIGHT = '200px';
+/** How tall a column's tile stands: the stills grid sizes each section's columns to this height at its aspect. */
+export const REVIEW_TILE_COLUMN_HEIGHT = '128px';
 
 const styles = stylex.create({
   button: {
@@ -20,9 +20,9 @@ const styles = stylex.create({
   // Scrolled into view clear of the edges' fades, and in a cell with the name line under it too.
   row: { height: '100%', flexShrink: 0, scrollMarginInline: '16px' },
   cell: { width: '100%', height: '100%', scrollMarginTop: '16px', scrollMarginBottom: '40px' },
-  // A column's tile is as wide as its column, held to a height, and bottom-aligned: a row of wide stills stays short,
-  // and each caption sits right under its picture on the row's one baseline.
-  column: { width: '100%', alignItems: 'flex-end', scrollMarginTop: '16px', scrollMarginBottom: '40px' },
+  // A column's tile is as wide as its column, held to a height, on the column's left edge and bottom-aligned: a still
+  // in a column cut for another shape lines up with its neighbours, and its caption sits right under it.
+  column: { width: '100%', alignItems: 'flex-end', justifyContent: 'flex-start', scrollMarginTop: '16px', scrollMarginBottom: '40px' },
   picture: { position: 'relative', overflow: 'hidden', borderRadius: radius.control, backgroundColor: colors.skeleton },
   // The edge hugs the picture, not the cell it sits in. Its own layer over the image, which an outline would sit under;
   // being on top, it's also what the pointer hovers.
@@ -31,7 +31,7 @@ const styles = stylex.create({
     borderWidth: spacing.hairline, borderStyle: 'solid', borderColor: { default: 'transparent', ':hover': colors.dim },
   },
   inRow: (aspect: number) => ({ height: '100%', aspectRatio: aspect }),
-  inColumn: (aspect: number) => ({ aspectRatio: aspect, width: `min(100%, calc(${REVIEW_TILE_COLUMN_MAX_HEIGHT} * ${aspect}))` }),
+  inColumn: (aspect: number) => ({ aspectRatio: aspect, width: `min(100%, calc(${REVIEW_TILE_COLUMN_HEIGHT} * ${aspect}))` }),
   inCell: (aspect: number) => ({ aspectRatio: aspect, maxWidth: '100%', maxHeight: '100%', width: `min(100%, 100cqh * ${aspect})` }),
   cellBox: { containerType: 'size' },
   corner: { position: 'absolute', top: spacing.tight, right: spacing.tight, pointerEvents: 'none' },
