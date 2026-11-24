@@ -1,85 +1,84 @@
-import { Box, Code, Stack, Text } from '@mantine/core';
+import { Box, Code, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { Ellipsis } from 'lucide-react';
-import { Fragment, useRef } from 'react';
-import { reviewPlanMayAwaitYou, reviewRowAwaitsYou, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
-import { useProjectsPlanSignoffs, type ProjectPlanSignoffs } from '#web/features/storyboard/index.ts';
+import { useRef, type ReactNode } from 'react';
 import { AnchorLink } from '#web/shared/ui/anchor-link.tsx';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
-import { useProjectSummaries } from '../controllers/project-queries.ts';
 import { ProjectDashboardRow } from './project-dashboard-row.tsx';
 import { ProjectPlaceRow, projectPlaceKeyOf } from './project-place-row.tsx';
 import { projectListStyles, ProjectRow } from './project-row.tsx';
 import { ProjectRowGroupLabel } from './project-row-group-label.tsx';
 import { ProjectThumbnail } from './project-thumbnail.tsx';
+import { projectsRenderedFirst, useProjectsAwaiting, type ProjectAwaiting } from './use-projects-awaiting.ts';
 import { useProjectRowHotkeys } from './use-project-row-hotkeys.ts';
 
 const styles = stylex.create({
-  label: { color: colors.dim, paddingInline: spacing.gap, paddingBlock: spacing.tight },
-  more: { color: colors.dim },
-  rule: { height: '1px', backgroundColor: colors.line, marginBlock: spacing.gap },
-  empty: { padding: spacing.inset, color: colors.dim },
-  link: { color: colors.dim },
+  section: {
+    display: 'flex', alignItems: 'baseline', gap: spacing.gap, paddingInline: spacing.gap, paddingBlockEnd: spacing.tight,
+    paddingBlockStart: spacing.row,
+  },
+  first: { paddingBlockStart: spacing.inset },
+  count: { color: colors.dim, fontWeight: 400, fontVariantNumeric: 'tabular-nums' },
+  quiet: { paddingInline: spacing.gap, paddingBlock: spacing.gap, color: colors.dim },
+  project: { color: 'inherit' },
 });
 
-/** A project's awaiting rows shown before the rest fold into `+N`, so one busy project can't fill the first screen. */
+/** A project's awaiting rows shown before the rest fold into `N more`, so one busy project can't fill the first screen. */
 const AWAITING_ROWS_PER_PROJECT = 3;
 
-type AwaitingGroup = { summary: ReviewProjectSummary; rows: ReviewProjectRow[]; more: number };
+/** One of the index's two sections' headers: its name and how many it holds. */
+function DashboardSectionHeader({ children, count, first = false }: { readonly children: ReactNode; readonly count: number; readonly first?: boolean }) {
+  return (
+    <Text component="h2" size="xl" fw={700} {...stylex.props(projectListStyles.span, styles.section, first && styles.first)}>
+      {children}
+      {count > 0 && <Text component="span" size="md" {...stylex.props(styles.count)}>{count}</Text>}
+    </Text>
+  );
+}
 
-/** "Awaiting you" by project, so each project's name shows once over its first few rows. */
-const awaitingByProject = (summaries: readonly ReviewProjectSummary[], plans: ReadonlyMap<string, ProjectPlanSignoffs | null>): AwaitingGroup[] =>
-  summaries.flatMap((summary) => {
-    const rows = summary.rows.filter((row) => reviewRowAwaitsYou(row, plans.get(summary.project) ?? null));
-    if (!rows.length) return [];
-    // One row more than the cap shows itself rather than a `+1` row in its place.
-    const shown = rows.length > AWAITING_ROWS_PER_PROJECT + 1 ? rows.slice(0, AWAITING_ROWS_PER_PROJECT) : rows;
-    return [{ summary, rows: shown, more: rows.length - shown.length }];
-  });
-
-const projectHasRender = (summary: ReviewProjectSummary) => summary.rows.some((row) => row.on === 'file');
+/** A project's run in "Awaiting you": its name (to its page), then its first few rows, the rest folded into one. */
+function AwaitingProjectRows({ awaiting: { summary, rows, waiting }, now }: { readonly awaiting: ProjectAwaiting; readonly now: number }) {
+  const { project } = summary;
+  // One row more than the cap shows itself rather than a `1 more` row in its place.
+  const shown = rows.length > AWAITING_ROWS_PER_PROJECT + 1 ? rows.slice(0, AWAITING_ROWS_PER_PROJECT) : rows;
+  const more = rows.length - shown.length;
+  return (
+    <>
+      <ProjectRowGroupLabel count={waiting}>
+        <AnchorLink to="/projects/$project" params={{ project }} underline="hover" {...stylex.props(styles.project)}>{project}</AnchorLink>
+      </ProjectRowGroupLabel>
+      {shown.map((row) => <ProjectPlaceRow key={projectPlaceKeyOf(row)} summary={summary} row={row} now={now} />)}
+      {more > 0 && (
+        <ProjectRow target={{ project, on: 'project' }} thumbnail={<ProjectThumbnail glyph={<Ellipsis size={14} />} />} title={`${more} more`} />
+      )}
+    </>
+  );
+}
 
 /**
- * The front page: what waits on you across every project (a fix to verify, an agent's question, a decision, an
- * plan handed over or changed since signed off), then every project, the most recently active first, and last those with nothing rendered.
+ * The index, beside the sidebar: what waits on you across every project (a fix to verify, an agent's question, a
+ * decision, a plan handed over or changed since signed off), by project, then every project, the most recently active
+ * first, and last those with nothing rendered.
  */
 export function ProjectsDashboardPage() {
-  const { summaries, now } = useProjectSummaries();
+  const { projects, now } = useProjectsAwaiting();
   const listRef = useRef<HTMLDivElement>(null);
   useProjectRowHotkeys(listRef);
-  const plans = useProjectsPlanSignoffs(summaries.flatMap(({ project, rows }) => rows.flatMap((row) => (row.on === 'plan' && reviewPlanMayAwaitYou(row) ? [{ project, signoffs: row.signoffs }] : []))));
-  const awaiting = awaitingByProject(summaries, plans);
-  const projects = [...summaries.filter(projectHasRender), ...summaries.filter((summary) => !projectHasRender(summary))];
+  const awaiting = projects.filter(({ rows }) => rows.length > 0);
+  const waiting = awaiting.reduce((sum, project) => sum + project.waiting, 0);
   return (
-    <StudioShell start={(
-      <>
-        <Text size="sm">studio</Text>
-        <AnchorLink to="/library" size="sm" underline="hover" {...stylex.props(styles.link)}>library</AnchorLink>
-      </>
-    )}>
+    <StudioShell>
       <FadeScroll>
-        <Stack ref={listRef} gap={0} {...stylex.props(projectListStyles.list, stylex.defaultMarker())}>
-          {summaries.length === 0 && <Text size="sm" {...stylex.props(styles.empty)}><Code>studio new</Code></Text>}
-          {awaiting.length > 0 && (
-            <>
-              <Text component="h2" size="sm" {...stylex.props(styles.label)}>Awaiting you</Text>
-              {awaiting.map(({ summary, rows, more }) => (
-                <Fragment key={summary.project}>
-                  <ProjectRowGroupLabel>{summary.project}</ProjectRowGroupLabel>
-                  {rows.map((row) => <ProjectPlaceRow key={projectPlaceKeyOf(row)} summary={summary} row={row} now={now} />)}
-                  {more > 0 && (
-                    <ProjectRow target={{ project: summary.project, on: 'project' }} thumbnail={<ProjectThumbnail glyph={<Ellipsis size={14} />} />}
-                      title={<Text component="span" inherit {...stylex.props(styles.more)}>+{more}</Text>} />
-                  )}
-                </Fragment>
-              ))}
-              <Box aria-hidden {...stylex.props(styles.rule)} />
-            </>
-          )}
-          {projects.map((summary) => <ProjectDashboardRow key={summary.project} summary={summary} now={now} />)}
-        </Stack>
+        <Box ref={listRef} {...stylex.props(projectListStyles.list, stylex.defaultMarker())}>
+          <DashboardSectionHeader count={waiting} first>Awaiting you</DashboardSectionHeader>
+          {awaiting.length === 0 && <Text size="sm" {...stylex.props(projectListStyles.span, styles.quiet)}>Nothing waits on you.</Text>}
+          {awaiting.map((project) => <AwaitingProjectRows key={project.summary.project} awaiting={project} now={now} />)}
+          <DashboardSectionHeader count={projects.length}>Projects</DashboardSectionHeader>
+          {projects.length === 0 && <Text size="sm" {...stylex.props(projectListStyles.span, styles.quiet)}><Code>studio new</Code></Text>}
+          {projectsRenderedFirst(projects).map(({ summary }) => <ProjectDashboardRow key={summary.project} summary={summary} now={now} />)}
+        </Box>
       </FadeScroll>
     </StudioShell>
   );

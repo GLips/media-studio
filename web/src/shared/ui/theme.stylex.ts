@@ -2,8 +2,8 @@ import * as stylex from '@stylexjs/stylex';
 
 /**
  * The token source: the only module allowed a raw visual value. The look: near-black ground, cream type, colour only
- * for a note's state. Copy on a working screen: no all-caps headings, no zero counts or counts of one, states as
- * glyphs with words in tooltips, icon tooltips from `useHotkeyLabel`, never typed. StyleX requires `.stylex.ts` to
+ * for a note's state. Copy: no all-caps headings, no zero counts, states in plain words (`1 open note`), icon
+ * tooltips from `useHotkeyLabel`, never typed. StyleX requires `.stylex.ts` to
  * export only `defineVars`.
  */
 
@@ -76,7 +76,7 @@ export const typography = stylex.defineVars({
   heading: '30px',
   /** Text read for itself, large: a decision's text candidate. */
   reading: '19px',
-  /** Project names on the dashboard, and nowhere else. */
+  /** The index's section headers (Awaiting you, Projects), and nowhere else. */
   display: '16px',
   /** One line height for every size, so rows line up across panels. */
   lineHeight: '16px',
@@ -102,6 +102,8 @@ export const spacing = stylex.defineVars({
   sideWidth: '360px',
   /** The decisions' queue down the left of their screen. */
   queueWidth: '240px',
+  /** The studio's sidebar beside the index and the library: what waits, the library, every project. */
+  sidebarWidth: '240px',
 });
 
 export const radius = stylex.defineVars({

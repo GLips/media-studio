@@ -1,10 +1,8 @@
-import { Box, Group, Text, UnstyledButton } from '@mantine/core';
+import { Group, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import type { ReactNode } from 'react';
-import type { ReviewThreadCounts } from '#lib/output/review/models/review-dashboard.ts';
 import { AnchorLink } from '#web/shared/ui/anchor-link.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
-import { ProjectThreadCounts } from './project-thread-counts.tsx';
 
 /** Where a row leads: a project's page, one of its files, a decision or its plan. */
 export type ProjectRowTarget = { project: string } & ({ on: 'project' } | { on: 'file'; path: string } | { on: 'decision'; topic: string } | { on: 'plan' });
@@ -13,9 +11,10 @@ export type ProjectRowTarget = { project: string } & ({ on: 'project' } | { on: 
 export const PROJECT_ROW_ATTRIBUTE = 'data-project-row';
 
 const styles = stylex.create({
+  // A subgrid of its list (projectListStyles), so names, details, states and readouts line up down every row.
   row: {
-    display: 'flex', alignItems: 'center', gap: spacing.inset, height: '40px', paddingInline: spacing.gap, minWidth: 0,
-    color: colors.cream, textDecoration: 'none', borderRadius: radius.control,
+    display: 'grid', gridColumn: '1 / -1', gridTemplateColumns: 'subgrid', alignItems: 'center', height: '40px',
+    paddingInline: spacing.gap, minWidth: 0, color: colors.cream, textDecoration: 'none', borderRadius: radius.control,
     backgroundColor: {
       default: 'transparent',
       // While the keyboard holds a row, hover lights no other, so only one row is lit. Its list carries
@@ -25,15 +24,22 @@ const styles = stylex.create({
     },
     outlineColor: colors.cream, outlineStyle: 'solid', outlineOffset: '-1px', outlineWidth: { default: 0, ':focus-visible': '1px' },
   },
-  lead: { display: 'flex', alignItems: 'center', gap: spacing.inset, minWidth: 0 },
-  title: { minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  end: { marginInlineStart: 'auto', flexShrink: 0 },
+  cell: { minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  detail: { color: colors.dim },
+  // A title with no columns after it, free of the name column's cap.
+  wide: { gridColumn: '2 / -1' },
+  end: { justifySelf: 'end' },
 });
 
 export const projectListStyles = stylex.create({
-  // Capped so a row's end readouts sit near its name on a wide screen, and the dashboard's two lists and a project's
-  // page share one right edge.
-  list: { padding: spacing.gap, maxWidth: '960px' },
+  // Every row's columns: picture, name (its longest, to a cap), what it asks (the rest), its state, readouts. The edge
+  // columns are `auto`: a subgrid row's padding is laid into them, and a fixed 64px would squeeze the picture.
+  list: {
+    display: 'grid', gridTemplateColumns: 'auto fit-content(320px) minmax(0, 1fr) auto auto', columnGap: spacing.inset,
+    alignContent: 'start', padding: spacing.gap,
+  },
+  // Anything in the list that isn't a row (a header, a rule, a note) spans every column.
+  span: { gridColumn: '1 / -1' },
 });
 
 type ProjectRowProps = {
@@ -41,24 +47,23 @@ type ProjectRowProps = {
   /** The 64px picture, or a glyph in its box (ProjectThumbnail). */
   readonly thumbnail: ReactNode;
   readonly title: ReactNode;
-  readonly threads?: ReviewThreadCounts;
-  /** State glyphs after the counts: an open decision, an unsigned plan. */
-  readonly marks?: ReactNode;
+  /** Dim, after the name: what a decision asks, a project's newest file. */
+  readonly detail?: ReactNode;
+  /** Its state in plain words: `1 open note`, `2 questions`, `0 of 6 signed`. */
+  readonly status?: ReactNode;
   /** Readouts, right-aligned: a file's age, where a row leads. */
   readonly end?: ReactNode;
 };
 
-/** The dashboard's, a project page's and the awaiting list's one row: 40px, picture, name, what waits, and when. */
-export function ProjectRow({ target, thumbnail, title, threads, marks, end }: ProjectRowProps) {
+/** The dashboard's, a project page's and the awaiting list's one row: 40px, picture, name, what it asks, its state, and when. */
+export function ProjectRow({ target, thumbnail, title, detail, status, end }: ProjectRowProps) {
   return (
     <ProjectRowLink target={target}>
       {thumbnail}
-      <Box component="span" {...stylex.props(styles.lead)}>
-        <Text component="span" size="md" {...stylex.props(styles.title)}>{title}</Text>
-        {threads && <ProjectThreadCounts threads={threads} />}
-        {marks}
-      </Box>
-      {end && <Group gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>{end}</Group>}
+      <Text component="span" size="md" {...stylex.props(styles.cell)}>{title}</Text>
+      <Text component="span" size="md" {...stylex.props(styles.cell, styles.detail)}>{detail}</Text>
+      <Group component="span" gap="gap" wrap="nowrap">{status}</Group>
+      <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>{end}</Group>
     </ProjectRowLink>
   );
 }
@@ -75,9 +80,7 @@ export function ProjectRowButton({ thumbnail, title, expanded, onToggle }: Proje
   return (
     <UnstyledButton {...stylex.props(styles.row)} {...{ [PROJECT_ROW_ATTRIBUTE]: '' }} aria-expanded={expanded} onClick={onToggle}>
       {thumbnail}
-      <Box component="span" {...stylex.props(styles.lead)}>
-        <Text component="span" size="md" {...stylex.props(styles.title)}>{title}</Text>
-      </Box>
+      <Text component="span" size="md" {...stylex.props(styles.cell, styles.wide)}>{title}</Text>
     </UnstyledButton>
   );
 }
@@ -92,4 +95,3 @@ function ProjectRowLink({ target, children }: { readonly target: ProjectRowTarge
     default: return <AnchorLink to="/projects/$project/plan" params={{ project }} {...row}>{children}</AnchorLink>;
   }
 }
-

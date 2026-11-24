@@ -1,4 +1,4 @@
-import { Box, Code, Stack, Text } from '@mantine/core';
+import { Box, Code, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Fragment, useRef, useState } from 'react';
@@ -106,17 +106,17 @@ export function ProjectPage({ project }: { readonly project: string }) {
   return (
     <StudioShell start={<><Text size="sm">{project}</Text><ProjectThreadCounts threads={summary.threads} linkedTo={summary} /></>}>
       <FadeScroll>
-        <Stack ref={listRef} gap={0} {...stylex.props(projectListStyles.list, stylex.defaultMarker())}>
-          {summary.rows.length === 0 && <Text size="sm" {...stylex.props(styles.empty)}><Code>studio render {project}</Code></Text>}
+        <Box ref={listRef} {...stylex.props(projectListStyles.list, stylex.defaultMarker())}>
+          {summary.rows.length === 0 && <Text size="sm" {...stylex.props(projectListStyles.span, styles.empty)}><Code>studio render {project}</Code></Text>}
           {shown.map((rung, i) => (
             <Fragment key={rung.key}>
-              {i > 0 && <Box aria-hidden {...stylex.props(styles.rule)} />}
+              {i > 0 && <Box aria-hidden {...stylex.props(projectListStyles.span, styles.rule)} />}
               <ProjectPageRows summary={summary} now={now} rows={rung.rows} folders={rung.folders ?? false} />
             </Fragment>
           ))}
           {folded.length > 0 && (
             <>
-              {shown.length > 0 && <Box aria-hidden {...stylex.props(styles.rule)} />}
+              {shown.length > 0 && <Box aria-hidden {...stylex.props(projectListStyles.span, styles.rule)} />}
               <ProjectRowButton
                 expanded={olderShown} onToggle={() => setOlderShown((was) => !was)}
                 thumbnail={<ProjectThumbnail glyph={olderShown ? <ChevronDown size={14} /> : <ChevronRight size={14} />} />}
@@ -125,7 +125,7 @@ export function ProjectPage({ project }: { readonly project: string }) {
               {olderShown && <ProjectPageRows summary={summary} now={now} rows={folded} folders />}
             </>
           )}
-        </Stack>
+        </Box>
       </FadeScroll>
     </StudioShell>
   );

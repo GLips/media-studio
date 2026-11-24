@@ -67,6 +67,7 @@ spacing:
   bar: "28px"
   side-width: "360px"
   queue-width: "240px"
+  sidebar-width: "240px"
 components:
   button-primary:
     backgroundColor: "{colors.accent}"
@@ -143,7 +144,7 @@ components:
 
 A dark room built for watching: a near-black ground, the picture large, cream type read beside it, and colour held back until it means something. Every screen is a working screen for one expert who opens it between agent turns, so it is dense and quiet. Rows line up across panels on one shared line height; surfaces lift off the ground by tone, not by shadow; and the only bright things on the page are the word being spoken, the one action to take, and whatever waits on a decision.
 
-The values live in one file, `web/src/shared/ui/theme.stylex.ts`, and every shadow in `web/src/shared/ui/shadows.ts`. Mantine's components take the same tokens through `web/src/shared/ui/mantine-theme.ts`, and the type scale reaches components as Mantine `Text size` keys (xs, sm, md, prose, line, lg, heading, xl). Copy is plain: no all-caps headings, no zero counts, and states spoken in words in tooltips.
+The values live in one file, `web/src/shared/ui/theme.stylex.ts`, and every shadow in `web/src/shared/ui/shadows.ts`. Mantine's components take the same tokens through `web/src/shared/ui/mantine-theme.ts`, and the type scale reaches components as Mantine `Text size` keys (xs, sm, md, prose, line, lg, heading, xl). Copy is plain: no all-caps headings, no zero counts, and states in visible words ("1 open note", "2 questions", "0 of 6 signed"), with an icon beside one only where it helps and never the meaning in a tooltip alone.
 
 The plan page shows the system at full size: the player letterboxed on the left, the scene under the playhead in a 440 to 560px column beside it, its spoken lines large and lit in cobalt word by word, and the whole video as a strip of scenes along the foot.
 
@@ -201,9 +202,9 @@ A neutral dark ground with five signal hues, each owning exactly one meaning.
 - **Heading** (900, 30px, 34px leading; `size="heading"`): what a page is about, named once at its top. The plan's current scene title.
 - **Line** (500, 22px, 34px leading; `size="line"`): a plan's spoken line, read along with the picture. The words the plan page is for.
 - **Reading** (19px, 34px leading; `size="lg"`): text read for itself, large, as a decision's text candidate.
-- **Display** (900, 16px; `size="xl"`, `h1`): project names on the dashboard, and nowhere else.
+- **Display** (700, 16px; `size="xl"`, `h1` at 900): the index's two section headers (Awaiting you, Projects), and nowhere else.
 - **Prose** (15px, 22px leading; `size="prose"`): prose read for content. A plan's brief and scene fields.
-- **Body** (13px, 16px; `size="md"`): note bodies, scene names on the strip, the bar's title.
+- **Body** (13px, 16px; `size="md"`): note bodies, scene names on the strip, the bar's title, every list row's name (a project's at 600).
 - **Chrome** (12px, 16px; `size="sm"`, the default): bars, menus, chips, tooltips, field labels, buttons.
 - **Readout** (mono, 11px, 16px, tabular figures; `size="xs"` with the mono face, or `Readout`): timecode, frame numbers, hashes, key caps.
 
@@ -221,7 +222,9 @@ Full-viewport working screens, no page scroll: a CSS grid of a bar, a body that 
 - **Plan page:** header row; then two columns, the player (`minmax(0, 1fr)`) and the scene panel (`minmax(440px, 560px)`) split by a 1px seam; the thread at the side width (360px) on the right; the scene strip and transport along the foot.
 - **Review page:** stage, a 28px transport bar, then the dock of lanes; the thread beside the stage at 360px.
 - **Decisions page:** the queue of the project's decisions down the left at 240px, then the line the decision is for over its candidates and their transport, and the thread at 360px.
-- **Dashboard and project pages:** lists capped at 960px so a row's end readouts stay near its name.
+- **Index and library:** the studio sidebar down the left at full height (240px, panel, a 1px seam): its name on the bar's line, then Awaiting you with its count, Library, and Projects, each with what waits in it in amber. The page fills the rest, its own bar over it.
+- **Index and project pages:** one uncapped list whose rows share columns (a subgrid): picture, name, what it asks (dim, taking the rest), its state in words, readouts right-aligned. The index splits it into two sections, Awaiting you then Projects, each under a Display header with its count; Awaiting you groups its rows under each project's name, cream at 600 with its count.
+- **Viewers** (a recording, a render's review, stills) keep the full width and their `◂` crumb: the work needs the room.
 
 Spacing is drawn from three steps, 4px (tight), 8px (gap) and 12px (inset), with 2px for hairline nudges and 24px as a list row's height and a panel's padding. Rows are 24px, dense rows 20px, bars 28px. The plan's scene panel pads 24px and separates its fields by 24px; a field's label sits 4px above its text.
 
@@ -275,7 +278,10 @@ Scene fields are a dim chrome label with a comment icon button, over prose-size 
 Panel fill, 1px seam border, 3px corners, cream chrome type: they sit on the dark screen as a panel, never as a light box.
 
 ### List rows
-40px rows on the dashboard and project pages, transparent at rest, raised on hover or keyboard focus, with only one row lit at a time.
+40px rows on the index and project pages, transparent at rest, raised on hover or keyboard focus, with only one row lit at a time. Each row's state is words coloured by its job: an open note in accent, one to verify in green, a question, an open decision or an unsigned plan in amber, a settled one dim.
+
+### Sidebar items
+24px rows, chrome type, a 14px lucide icon column (empty for a project, so names line up under the labels), raised on hover and on the page showing now, a count in amber at the end when something waits there.
 
 ## Do's and Don'ts
 

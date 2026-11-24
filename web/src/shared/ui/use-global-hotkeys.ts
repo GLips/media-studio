@@ -18,10 +18,10 @@ export function hotkeySequencePending(): boolean {
  */
 export type StudioUpTarget = { to: '/' } | { to: '/library' } | { to: '/projects/$project'; params: { project: string } };
 
-/** Null on the dashboard, which has nothing above it. */
+/** Null on the index and the library: the sidebar's own pages, side by side, with nothing above either. */
 export function studioUpOf(pathname: string, project: string | undefined): StudioUpTarget | null {
   if (/^\/library\/[^/]+/.test(pathname)) return { to: '/library' };
-  if (project === undefined) return pathname === '/' ? null : { to: '/' };
+  if (project === undefined) return pathname === '/' || /^\/library\/?$/.test(pathname) ? null : { to: '/' };
   const projectPage = `/projects/${encodeURIComponent(project)}`;
   return pathname.replace(/\/$/, '') === projectPage ? { to: '/' } : { to: '/projects/$project', params: { project } };
 }

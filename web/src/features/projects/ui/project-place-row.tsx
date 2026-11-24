@@ -4,30 +4,26 @@ import { MessageSquare, ScrollText, Split } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { reviewPlanScenesAwaitYou, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
 import { useProjectPlanSignoffs, type ProjectPlanSignoffs } from '#web/features/storyboard/index.ts';
-import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
-import { colors, fonts } from '#web/shared/ui/theme.stylex.ts';
+import { colors } from '#web/shared/ui/theme.stylex.ts';
 import { ProjectAge } from './project-age.tsx';
 import { ProjectRow, type ProjectRowTarget } from './project-row.tsx';
+import { ProjectThreadCounts } from './project-thread-counts.tsx';
 import { ProjectThumbnail } from './project-thumbnail.tsx';
 
 const styles = stylex.create({
   dim: { color: colors.dim },
-  settled: { fontFamily: fonts.mono, color: colors.dim, cursor: 'default' },
+  waiting: { color: colors.caution },
 });
 
 const GLYPH_SIZE = 14;
 
-/** `✓` after a settled decision or a fully signed plan, its word in the tooltip. What still waits tints its glyph instead. */
-function SettledMark({ name }: { readonly name: string }) {
-  return (
-    <HotkeyTooltip name={name}>
-      <Text component="span" size="sm" {...stylex.props(styles.settled)}>✓</Text>
-    </HotkeyTooltip>
-  );
+/** A row's state in words after its thread counts: dim once settled, caution while it waits on the reviewer. */
+function PlaceState({ children, waiting }: { readonly children: ReactNode; readonly waiting: boolean }) {
+  return <Text component="span" size="sm" {...stylex.props(waiting ? styles.waiting : styles.dim)}>{children}</Text>;
 }
 
-type PlaceView = { target: ProjectRowTarget; thumbnail: ReactNode; title: ReactNode; marks?: ReactNode; end?: ReactNode };
+type PlaceView = { target: ProjectRowTarget; thumbnail: ReactNode; title: ReactNode; detail?: ReactNode; state?: ReactNode; end?: ReactNode };
 
 type PlanRow = Extract<ReviewProjectRow, { on: 'plan' }>;
 
@@ -40,9 +36,9 @@ function planLatestStepOf(row: PlanRow, allSigned: boolean): { at: string; what:
 }
 
 /**
- * `plan · 3 of 4 signed`, and what waits in its glyph's tooltip: a scene changed since signed off, or one unsigned once
- * the plan has been handed over. Until the storyboard resolves, or when it doesn't, the row says `plan` alone and
- * waits on nothing.
+ * `plan  3 of 4 signed`, in caution while its scenes wait (one changed since signed off, or one unsigned once the plan
+ * has been handed over), which its glyph's tooltip names. Until the storyboard resolves, or when it doesn't, the row
+ * says `plan` alone and waits on nothing.
  */
 function planViewOf(project: string, row: PlanRow, signoffs: ProjectPlanSignoffs | null, now: number): PlaceView {
   const signed = signoffs?.filter((s) => s.state === 'signed').length ?? 0;
@@ -54,8 +50,8 @@ function planViewOf(project: string, row: PlanRow, signoffs: ProjectPlanSignoffs
   return {
     target: { project, on: 'plan' },
     thumbnail: <ProjectThumbnail glyph={<ScrollText size={GLYPH_SIZE} />} waiting={waiting} />,
-    title: <>plan{signoffs !== null && <Text component="span" inherit {...stylex.props(styles.dim)}> · {signed} of {signoffs.length} signed</Text>}</>,
-    marks: all ? <SettledMark name="every scene signed off" /> : undefined,
+    title: 'plan',
+    state: signoffs !== null && <PlaceState waiting={waiting !== undefined}>{signed} of {signoffs.length} signed</PlaceState>,
     end: <ProjectAge now={now} at={at} what={what} />,
   };
 }
@@ -79,8 +75,9 @@ function placeViewOf({ project, rows }: ReviewProjectSummary, row: Exclude<Revie
       return {
         target: { project, on: 'decision', topic: row.topic },
         thumbnail: <ProjectThumbnail glyph={<Split size={GLYPH_SIZE} />} waiting={open ? 'not decided' : undefined} />,
-        title: <>{row.topic} <Text component="span" inherit {...stylex.props(styles.dim)}>{row.question}</Text></>,
-        marks: open ? undefined : <SettledMark name="decided" />,
+        title: row.topic,
+        detail: row.question,
+        state: <PlaceState waiting={open}>{open ? 'not decided' : 'decided'}</PlaceState>,
         end: <ProjectAge now={now} at={row.at} what={open ? 'posted' : 'decided'} />,
       };
     }
@@ -119,11 +116,13 @@ type ProjectPlaceRowProps = {
 /** A file, decision, the plan or the project's own notes, as a project's page and the dashboard's awaiting list show it. */
 export function ProjectPlaceRow({ summary, row, now, folderLabelled = false }: ProjectPlaceRowProps) {
   if (row.on === 'plan') return <ProjectPlanPlaceRow project={summary.project} row={row} now={now} />;
-  const { target, thumbnail, title, marks, end } = placeViewOf(summary, row, now, folderLabelled);
-  return <ProjectRow target={target} thumbnail={thumbnail} title={title} threads={row.threads} marks={marks} end={end} />;
+  return <ProjectPlaceRowView view={placeViewOf(summary, row, now, folderLabelled)} row={row} />;
 }
 
 function ProjectPlanPlaceRow({ project, row, now }: { readonly project: string; readonly row: PlanRow; readonly now: number }) {
-  const { target, thumbnail, title, marks, end } = planViewOf(project, row, useProjectPlanSignoffs(project, row.signoffs), now);
-  return <ProjectRow target={target} thumbnail={thumbnail} title={title} threads={row.threads} marks={marks} end={end} />;
+  return <ProjectPlaceRowView view={planViewOf(project, row, useProjectPlanSignoffs(project, row.signoffs), now)} row={row} />;
+}
+
+function ProjectPlaceRowView({ view: { target, thumbnail, title, detail, state, end }, row }: { readonly view: PlaceView; readonly row: ReviewProjectRow }) {
+  return <ProjectRow target={target} thumbnail={thumbnail} title={title} detail={detail} status={<><ProjectThreadCounts threads={row.threads} />{state}</>} end={end} />;
 }
