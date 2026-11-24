@@ -141,6 +141,8 @@ public enum StudioAppState: Equatable, Sendable {
   case unhealthy(detail: String?)
   /// Something that isn't the studio's app holds its port; `detail` names it.
   case foreign(detail: String?)
+  /// `studio app status` itself failed; the next menu opening asks again.
+  case unavailable(reason: String)
   case starting
   case stopping
 }
@@ -471,7 +473,7 @@ extension RecorderState {
       return []
     case (.studioAppStatusUnavailable(let reason, let asked), _):
       guard asked == studioAppAsked else { return [] }
-      studioApp = .unknown
+      studioApp = .unavailable(reason: reason)
       return [.log("couldn't ask after the studio app: \(reason)")]
     case (.studioAppStartRequested, _) where !studioAppBusy:
       studioAppAsked += 1

@@ -2,13 +2,13 @@
 // stopped only by `studio app stop`. Callers return once it answers.
 //
 // The state file is evidence, not proof: a process is signalled only once `ps` shows it running our entry with the
-// file's instance id, so a reused pid can't aim a kill elsewhere. A per-port lock serializes starts and stops.
+// file's instance id, so a reused pid can't aim a kill elsewhere. A per-port kernel lock serializes starts and stops.
 //
 // Freshness: HMR reloads web/, but the plugins vite.config.ts imports natively stay as they loaded, so a start
 // restarts an instance whose code fingerprint moved. `status` only looks.
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, constants as fsConstants, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -16,7 +16,10 @@ import { STUDIO_ROOT } from '#lib/platform/project/engine/studio-project.ts';
 import { askStudioAppIdentity, studioAppReadinessFailure } from './studio-app-server.ts';
 
 const STUDIO_APP_STATE_DIR = join(homedir(), 'Library/Application Support/media-studio/studio-app');
-const STUDIO_APP_ENTRY = join(import.meta.dirname, 'studio-app-daemon-entry.ts');
+/** The entry's path inside a checkout: an instance is recognised by the entry under its own recorded root. */
+const STUDIO_APP_ENTRY_IN_ROOT = 'lib/platform/web/engine/studio-app-daemon-entry.ts';
+/** BSD's open-time exclusive lock (sys/fcntl.h), which Node passes through but doesn't name. */
+const O_EXLOCK = 0x20;
 /** Vite's first start optimizes the player's dependencies, and the first page compiles routes. */
 const STUDIO_APP_START_TIMEOUT_MS = 120_000;
 const STUDIO_APP_STOP_TIMEOUT_MS = 10_000;
@@ -70,7 +73,7 @@ export function studioCodeFingerprint(root: string): string {
   return hash.digest('hex').slice(0, 16);
 }
 
-/** True only while `pid` runs our entry for this instance id: a reused pid runs something else. */
+/** True only while `pid` runs the entry under the instance's root with its id: a reused pid runs something else. */
 function isStudioAppProcess(instance: StudioAppInstance): boolean {
   let command: string;
   try {
@@ -79,7 +82,7 @@ function isStudioAppProcess(instance: StudioAppInstance): boolean {
     // ps exits 1 when there's no such process.
     return false;
   }
-  return command.includes(STUDIO_APP_ENTRY) && command.includes(`--instance ${instance.instanceId}`);
+  return command.includes(join(instance.root, STUDIO_APP_ENTRY_IN_ROOT)) && command.includes(`--instance ${instance.instanceId}`);
 }
 
 /** The pid and command listening on `port`, for an error to name what to stop; null when lsof finds none. */
@@ -92,41 +95,31 @@ function portHolder(port: number): string | null {
   }
 }
 
-/** Runs `work` holding the port's lock, waiting while another live process holds it. */
+/**
+ * Runs `work` holding the port's lock, waiting while another process holds it. The kernel releases the lock when its
+ * holder dies, so there is never a stale one to reclaim. The file itself stays: deleting it would let two processes
+ * lock two different files.
+ */
 async function withStudioAppLock<T>(port: number, work: () => Promise<T>): Promise<T> {
   mkdirSync(STUDIO_APP_STATE_DIR, { recursive: true });
-  await takeStudioAppLock(port, Date.now() + STUDIO_APP_START_TIMEOUT_MS + STUDIO_APP_STOP_TIMEOUT_MS);
+  const fd = await takeStudioAppLock(port, Date.now() + STUDIO_APP_START_TIMEOUT_MS + STUDIO_APP_STOP_TIMEOUT_MS);
   try {
     return await work();
   } finally {
-    unlinkSync(lockPath(port));
+    closeSync(fd);
   }
 }
 
-async function takeStudioAppLock(port: number, deadline: number): Promise<void> {
+async function takeStudioAppLock(port: number, deadline: number): Promise<number> {
   try {
-    writeFileSync(lockPath(port), String(process.pid), { flag: 'wx' });
-    return;
+    return openSync(lockPath(port), fsConstants.O_RDWR | fsConstants.O_CREAT | fsConstants.O_NONBLOCK | O_EXLOCK);
   } catch (error) {
     // SAFETY: node:fs throws ErrnoExceptions.
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    if ((error as NodeJS.ErrnoException).code !== 'EAGAIN') throw error;
   }
-  const holder = Number(readFileSync(lockPath(port), 'utf8'));
-  // An empty file is a holder between creating and writing it; a dead holder's lock is reclaimed.
-  if (holder && !isAlive(holder)) unlinkSync(lockPath(port));
-  else if (Date.now() > deadline) throw new Error(`the studio app's lock (${lockPath(port)}) is held by pid ${holder}, which is still starting or stopping it`);
-  else await sleep(200);
+  if (Date.now() > deadline) throw new Error(`another \`studio app\` is still starting or stopping the studio app on port ${port}`);
+  await sleep(200);
   return takeStudioAppLock(port, deadline);
-}
-
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    // SAFETY: process.kill throws ErrnoExceptions.
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
-  }
 }
 
 /** How the app on `port` stands. Only looks: it never starts, stops or rewrites anything. */
@@ -134,8 +127,10 @@ export async function studioAppStatus(port: number): Promise<StudioAppStatus> {
   const log = studioAppLogPath(port);
   const stopped: StudioAppStatus = { state: 'stopped', url: null, pid: null, startedAt: null, stale: false, detail: null, log };
   const instance = readStudioAppInstance(port);
-  const ours = instance !== null && isStudioAppProcess(instance) ? instance : null;
+  const live = instance !== null && isStudioAppProcess(instance) ? instance : null;
   const holder = await askStudioAppIdentity(port);
+  if (live && live.root !== STUDIO_ROOT) return { ...stopped, state: 'foreign', detail: `port ${port} is held by the studio app of ${live.root}` };
+  const ours = live;
   if (!ours) {
     if (holder.kind === 'nothing') return stopped;
     const what = holder.kind === 'studio' ? `a studio app of ${holder.root} not started by \`studio app\`` : holder.detail;
@@ -183,16 +178,33 @@ export function stopStudioApp(port: number): Promise<boolean> {
       forgetStudioAppInstance(port, instance.instanceId);
       return false;
     }
-    await stopStudioAppInstance(instance);
-    return true;
+    if (instance.root !== STUDIO_ROOT) throw new Error(`port ${port} is held by the studio app of ${instance.root}: stop it from there`);
+    return stopStudioAppInstance(instance);
   });
 }
 
-async function stopStudioAppInstance(instance: StudioAppInstance): Promise<void> {
-  process.kill(instance.pid, 'SIGTERM');
-  const gone = await pollStudioApp(STUDIO_APP_STOP_TIMEOUT_MS, 100, () => Promise.resolve(isStudioAppProcess(instance) ? null : true));
-  if (!gone) process.kill(instance.pid, 'SIGKILL');
+/** Stops the instance and forgets it; false when it had already gone. Each signal follows a fresh identity check. */
+async function stopStudioAppInstance(instance: StudioAppInstance): Promise<boolean> {
+  const stillOurs = () => Promise.resolve(isStudioAppProcess(instance) ? null : true);
+  const signalled = signalStudioAppProcess(instance, 'SIGTERM');
+  if (signalled && !(await pollStudioApp(STUDIO_APP_STOP_TIMEOUT_MS, 100, stillOurs)) && signalStudioAppProcess(instance, 'SIGKILL')) {
+    if (!(await pollStudioApp(5000, 100, stillOurs))) throw new Error(`the studio app (pid ${instance.pid}) survived SIGKILL`);
+  }
   forgetStudioAppInstance(instance.port, instance.instanceId);
+  return signalled;
+}
+
+/** Signals the instance's process if it is still that instance; false when it has gone. */
+function signalStudioAppProcess(instance: StudioAppInstance, signal: NodeJS.Signals): boolean {
+  if (!isStudioAppProcess(instance)) return false;
+  try {
+    process.kill(instance.pid, signal);
+    return true;
+  } catch (error) {
+    // SAFETY: process.kill throws ErrnoExceptions; ESRCH is a process that exited since the check.
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+    throw error;
+  }
 }
 
 /** Asks `check` every `everyMs` until it answers non-null or `withinMs` pass; null on timing out. */
@@ -212,7 +224,7 @@ async function spawnStudioAppInstance(port: number): Promise<void> {
   writeFileSync(logFd, `\n${new Date().toISOString()} starting the studio app ${instanceId} on port ${port}\n`);
   // Detached, with its output in its own log and no pipe back here: a caller (the recorder reads its commands' pipes
   // to their end) returns once it answers, not once it exits.
-  const child = spawn(process.execPath, [...process.execArgv, STUDIO_APP_ENTRY, '--port', String(port), '--instance', instanceId], {
+  const child = spawn(process.execPath, [...process.execArgv, join(STUDIO_ROOT, STUDIO_APP_ENTRY_IN_ROOT), '--port', String(port), '--instance', instanceId], {
     cwd: STUDIO_ROOT,
     detached: true,
     stdio: ['ignore', logFd, logFd],

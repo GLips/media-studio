@@ -100,6 +100,7 @@ export type StudioAppInProcess = { url: string; startedHere: boolean };
  * the port that isn't this checkout's app is refused rather than shown files that aren't these.
  */
 export async function serveStudioAppInProcess({ port }: { port: number }): Promise<StudioAppInProcess> {
+  if (port === STUDIO_APP_MAIN_PORT) throw new Error(`port ${STUDIO_APP_MAIN_PORT} is the main checkout's studio app's, even while it is stopped: leave out --port to use this worktree's own`);
   const url = `http://localhost:${port}`;
   const holder = await askStudioAppIdentity(port);
   if (holder.kind === 'studio' && holder.root === STUDIO_ROOT) return { url, startedHere: false };

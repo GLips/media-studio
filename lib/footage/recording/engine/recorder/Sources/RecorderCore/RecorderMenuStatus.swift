@@ -98,6 +98,7 @@ extension RecorderMenuStatus.StudioAppItems {
     case .stopped: ("Stopped", nil, .start)
     case .unhealthy(let detail): ("Not responding", detail, .stop)
     case .foreign(let detail): ("Port taken", detail, nil)
+    case .unavailable(let reason): ("Couldn't check", reason, .start)
     case .starting: ("Starting…", nil, nil)
     case .stopping: ("Stopping…", nil, nil)
     }

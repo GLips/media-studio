@@ -1,7 +1,7 @@
 // studio-app-open.ts: where a verb that shows a page (`studio review open`, `studio library open`, `studio app open`)
 // finds the app. The main checkout's is the managed background app, so the verb returns at once; a worktree's is
 // served by the verb itself until Ctrl-C, so an agent's app never outlives its terminal.
-import { spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { ensureStudioAppRunning } from './studio-app-daemon.ts';
 import { defaultStudioAppPort, isStudioMainCheckout, serveStudioAppInProcess } from './studio-app-server.ts';
 
@@ -24,7 +24,7 @@ export function describeStudioAppPlace(place: StudioAppPlace): string {
   return isStudioMainCheckout() ? 'in the studio app (`studio app stop` stops it)' : 'in the studio app already running';
 }
 
-/** Opens `url` in the default browser and returns without waiting on it. */
+/** Opens `url` in the default browser; throws when Launch Services can't. `open` returns once it has handed it over. */
 export function openStudioAppPageInBrowser(url: string): void {
-  spawn('open', [url], { stdio: 'ignore', detached: true }).unref();
+  execFileSync('open', [url], { stdio: ['ignore', 'ignore', 'pipe'] });
 }

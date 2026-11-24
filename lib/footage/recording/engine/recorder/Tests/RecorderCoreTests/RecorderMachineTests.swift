@@ -204,6 +204,10 @@ func recent(_ id: Int, _ place: RecorderRecentTake.Place) -> RecorderRecentTake 
   #expect(names(effects) == ["loadRecentTakes", "loadStudioAppStatus", "start inputCheck"])
   (state, _) = run(state, [.studioAppStatusLoaded(StudioAppStatus(state: .stopped), asked: 1)])
   #expect(RecorderMenuStatus(state, hotkey: "k", appName: "R").studioApp.action == .start)
+  // A check that fails says why rather than reading as one still running.
+  (state, _) = run(state, [.studioAppStatusUnavailable("git: not a repository", asked: 1)])
+  let unavailable = RecorderMenuStatus(state, hotkey: "k", appName: "R").studioApp
+  #expect(unavailable.title == "Studio App: Couldn't check" && unavailable.toolTip == "git: not a repository")
 
   (state, effects) = run(state, [.studioAppStartRequested, .studioAppStartRequested, .studioAppStopRequested, .menuClosed, .menuOpened])
   // The second press and the stop wait on the start, and reopening the menu asks nothing meanwhile.
