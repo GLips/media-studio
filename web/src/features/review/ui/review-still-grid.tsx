@@ -2,7 +2,8 @@ import { Box, Stack, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useRef, useState } from 'react';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
-import { colors, fonts, spacing } from '#web/shared/ui/theme.stylex.ts';
+import { colors, fonts, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
+import { reviewStillShortNames } from './review-still-short-names.ts';
 import type { ReviewStillSibling } from './review-still-siblings.ts';
 import { ReviewStillTile } from './review-still-tile.tsx';
 import { ReviewThreadDots } from './review-thread-dots.tsx';
@@ -14,7 +15,8 @@ const styles = stylex.create({
     display: 'grid', columnGap: spacing.gap, rowGap: spacing.inset, padding: spacing.inset,
     gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
   },
-  cell: { height: '200px' },
+  // Every cell one shape, whatever its picture's: rows line up, and each picture is fitted and centred inside.
+  cell: { aspectRatio: '4 / 3', padding: spacing.gap, borderRadius: radius.control, backgroundColor: colors.panel },
   // Cut in the middle: the head gives way, the tail (where variants differ) and the extension stay.
   name: { display: 'flex', justifyContent: 'center', width: 0, minWidth: '100%', fontFamily: fonts.mono, color: colors.dim, whiteSpace: 'nowrap' },
   head: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
@@ -48,14 +50,16 @@ type ReviewStillGridProps = {
 };
 
 /**
- * The folder's stills at their own aspects, each with its live notes' dots in the corner. The cursor starts on the
- * open still; the arrows move it, `Enter` or a click opens that still on the stage.
+ * The folder's stills on even cells, each fitted with its notes' dots in the corner, labelled by the part of its name
+ * that sets it apart (the whole name on hover). The cursor starts on the open still; the arrows move it, `Enter` or a
+ * click opens that still on the stage.
  */
 export function ReviewStillGrid({ stills, openPath, clear, onOpen }: ReviewStillGridProps) {
   const [ground] = useReviewProofGround();
   const [cursor, setCursor] = useState(() => Math.max(0, stills.findIndex((s) => s.path === openPath)));
   const grid = useRef<HTMLDivElement>(null);
   const at = Math.min(cursor, stills.length - 1);
+  const shortNames = reviewStillShortNames(stills.map((s) => s.name));
   useReviewBoardHotkeys([
     ...reviewTileArrowKeys((step) => setCursor((c) => reviewGridStep(c, step, reviewGridColumnsOf(grid.current), stills.length))),
     { hotkey: 'Enter', name: 'Open', run: () => onOpen(stills[at].path) },
@@ -64,7 +68,7 @@ export function ReviewStillGrid({ stills, openPath, clear, onOpen }: ReviewStill
     <FadeScroll>
       <Box ref={grid} {...stylex.props(styles.grid)}>
         {stills.map(({ path, name, src }, i) => {
-          const { head, tail } = reviewGridNameParts(name);
+          const { head, tail } = reviewGridNameParts(shortNames[i]);
           return (
             <Stack key={path} gap="tight">
               <Box {...stylex.props(styles.cell)}>

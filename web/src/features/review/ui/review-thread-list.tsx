@@ -1,7 +1,7 @@
 import { Box, Group, Stack, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { formatForDisplay } from '@tanstack/react-hotkeys';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { type PlacedReviewThread, reviewThreadFrameOf, reviewThreadsInScope, sortReviewThreadsByPlace } from '#lib/output/review/models/review-placement.ts';
 import { countReviewThreadTones, reviewThreadTone, type ReviewAnchor, type ReviewThreadTone } from '#lib/output/review/models/review-threads.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
@@ -10,11 +10,12 @@ import { Readout } from '#web/shared/ui/readout.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import type { ReviewSearch } from '../controllers/review-search.ts';
 import { useReviewThreadScope, type ReviewThreadScope } from './review-thread-scope.tsx';
-import { ReviewThreadUnplaced } from './review-thread-unplaced.tsx';
+import { ReviewThreadUnplaced, ReviewThreadUnplacedToggle } from './review-thread-unplaced.tsx';
 import type { ReviewThreadActions, useReviewThreadLive } from './use-review-thread-panel.ts';
 
 const styles = stylex.create({
-  list: { flex: 1, minHeight: 0 },
+  list: { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' },
+  scroll: { flex: 1, minHeight: 0 },
   foldRow: {
     height: spacing.row, paddingInlineStart: spacing.inset, paddingInlineEnd: spacing.tight, color: colors.dim,
     backgroundColor: { default: 'transparent', ':hover': colors.raised },
@@ -107,10 +108,18 @@ type ReviewThreadListProps = {
   readonly rowOf: (thread: PlacedReviewThread) => ReactNode;
 };
 
-/** The notes and each delete's Undo in time order, the resolved under their fold row, and the unplaced group last. */
+/**
+ * The notes and each delete's Undo in time order, the resolved under their fold row; the unplaced group's toggle sits
+ * at the foot, outside the scroll, and opens their notes at the list's end.
+ */
 export function ReviewThreadList({ listing, actions, live, rowOf }: ReviewThreadListProps) {
   const { project, setSearch, unplacedLabel } = useReviewThreadScope();
   const { listed, shownResolved, unplaced, counts, filter } = listing;
+  const [unplacedOpen, setUnplacedOpen] = useState(false);
+  // Opened from the foot, the unplaced notes are scrolled to: they land at the list's end, often out of sight.
+  useEffect(() => {
+    if (unplacedOpen) live.viewportRef.current?.querySelector('[data-review-unplaced]')?.scrollIntoView({ block: 'start' });
+  }, [unplacedOpen, live.viewportRef]);
   // Unfolded from its row, the resolved are brought into view: they open under the row, often below the fold.
   const revealResolved = useRef(false);
   const lastResolved = shownResolved.at(-1)?.id;
@@ -124,35 +133,38 @@ export function ReviewThreadList({ listing, actions, live, rowOf }: ReviewThread
   const cleared = actions.deleted.findLast((b) => b.shown && b.resolvedGroup);
   return (
     <Box {...stylex.props(styles.list)} onWheel={live.markManualScroll} onPointerDown={live.markManualScroll}>
-      <FadeScroll viewportRef={live.viewportRef}>
-        <Stack gap={0} role="list">
-          {items.map((item) => (item.kind === 'undo'
-            ? <ReviewThreadUndoRow key={`undo-${item.key}`} ids={item.ids} onUndo={() => actions.restore(item.key)} />
-            : rowOf(item.thread)))}
-          {cleared && <ReviewThreadUndoRow ids={cleared.threads.map((t) => t.thread.id)} onUndo={() => actions.restore(cleared.key)} />}
-          {counts.resolved > 0 && filter !== 'open' && (
-            <Group gap="tight" wrap="nowrap" {...stylex.props(styles.foldRow)}>
-              <UnstyledButton
-                aria-expanded={filter === 'all'}
-                onClick={() => {
-                  revealResolved.current = filter !== 'all';
-                  setSearch({ filter: filter === 'all' ? 'active' : 'all' });
-                }}
-                {...stylex.props(styles.fold)}
-              >
-                <Text component="span" size="sm" inherit>✓ {counts.resolved} resolved {filter === 'all' ? '▾' : '▸'}</Text>
-              </UnstyledButton>
-              <HotkeyTooltip name="Clear resolved" hotkey="Clear resolved">
-                <UnstyledButton onClick={actions.clearResolved} {...stylex.props(styles.clear)}>
-                  <Text component="span" size="sm" inherit>Clear</Text>
+      <Box {...stylex.props(styles.scroll)}>
+        <FadeScroll viewportRef={live.viewportRef}>
+          <Stack gap={0} role="list">
+            {items.map((item) => (item.kind === 'undo'
+              ? <ReviewThreadUndoRow key={`undo-${item.key}`} ids={item.ids} onUndo={() => actions.restore(item.key)} />
+              : rowOf(item.thread)))}
+            {cleared && <ReviewThreadUndoRow ids={cleared.threads.map((t) => t.thread.id)} onUndo={() => actions.restore(cleared.key)} />}
+            {counts.resolved > 0 && filter !== 'open' && (
+              <Group gap="tight" wrap="nowrap" {...stylex.props(styles.foldRow)}>
+                <UnstyledButton
+                  aria-expanded={filter === 'all'}
+                  onClick={() => {
+                    revealResolved.current = filter !== 'all';
+                    setSearch({ filter: filter === 'all' ? 'active' : 'all' });
+                  }}
+                  {...stylex.props(styles.fold)}
+                >
+                  <Text component="span" size="sm" inherit>✓ {counts.resolved} resolved {filter === 'all' ? '▾' : '▸'}</Text>
                 </UnstyledButton>
-              </HotkeyTooltip>
-            </Group>
-          )}
-          {shownResolved.map(rowOf)}
-          <ReviewThreadUnplaced threads={unplaced} project={project} actions={actions} label={unplacedLabel} />
-        </Stack>
-      </FadeScroll>
+                <HotkeyTooltip name="Clear resolved" hotkey="Clear resolved">
+                  <UnstyledButton onClick={actions.clearResolved} {...stylex.props(styles.clear)}>
+                    <Text component="span" size="sm" inherit>Clear</Text>
+                  </UnstyledButton>
+                </HotkeyTooltip>
+              </Group>
+            )}
+            {shownResolved.map(rowOf)}
+            {unplacedOpen && unplaced.length > 0 && <ReviewThreadUnplaced threads={unplaced} project={project} actions={actions} />}
+          </Stack>
+        </FadeScroll>
+      </Box>
+      {unplaced.length > 0 && <ReviewThreadUnplacedToggle open={unplacedOpen} onToggle={() => setUnplacedOpen(!unplacedOpen)} label={unplacedLabel} />}
     </Box>
   );
 }

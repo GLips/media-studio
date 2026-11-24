@@ -32,7 +32,8 @@ const styles = stylex.create({
   // Not clipped: the hover preview rises out of it over the stage. Each lane and the playhead's layer clip themselves.
   lanes: { position: 'relative', display: 'flex', flexDirection: 'column', minWidth: 0, cursor: 'pointer' },
   // Every lane's height, so a gutter glyph lines up with the lane it names.
-  ruler: { height: typography.lineHeight, flexShrink: 0 },
+  // A line for the labels over a tick's height: the playhead's flag, one line tall, sits on the labels, never the ticks.
+  ruler: { height: spacing.rowDense, flexShrink: 0 },
   scenes: { height: spacing.rowDense, flexShrink: 0 },
   marks: { height: typography.lineHeight, flexShrink: 0 },
   notes: { height: typography.lineHeight, flexShrink: 0 },

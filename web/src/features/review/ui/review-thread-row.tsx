@@ -13,7 +13,7 @@ import {
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { Textarea } from '#web/shared/ui/textarea.tsx';
-import { colors, fonts, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
+import { colors, fonts, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { ReviewThreadBody } from './review-thread-body.tsx';
 import { ReviewThreadKindIcon } from './review-thread-kind.tsx';
 import { useReviewThreadScope } from './review-thread-scope.tsx';
@@ -46,7 +46,6 @@ const styles = stylex.create({
   scene: { color: colors.dim, whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0 },
   actions: { marginInlineStart: 'auto', flexShrink: 0 },
   body: { paddingInlineStart: spacing.inset },
-  clamped: { maxHeight: `calc(${typography.lineHeight} * 4)`, overflow: 'hidden' },
   replies: { paddingInlineStart: spacing.inset, paddingTop: spacing.tight },
   author: { color: colors.cream, width: spacing.inset, flexShrink: 0 },
   reply: { minWidth: 0, flex: 1 },
@@ -237,8 +236,8 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
         )}
       </Group>
       {inline?.mode === 'edit' || (
-        <Box {...stylex.props(styles.body, !look.expanded && styles.clamped)}>
-          <ReviewThreadBody text={note.text} dim={thread.state === 'resolved'} />
+        <Box {...stylex.props(styles.body)}>
+          <ReviewThreadBody text={note.text} dim={thread.state === 'resolved'} clamp={!look.expanded} />
         </Box>
       )}
       {NoteAside && <NoteAside thread={thread} />}
@@ -260,8 +259,8 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
                     <Text component="span" size="sm" {...stylex.props(styles[did.style])}>{did.glyph}</Text>
                   </Tooltip>
                 )}
-                <Box {...stylex.props(styles.reply, !look.expanded && styles.clamped)}>
-                  <ReviewThreadBody text={reply.text} />
+                <Box {...stylex.props(styles.reply)}>
+                  <ReviewThreadBody text={reply.text} clamp={!look.expanded} />
                 </Box>
                 {refused && place && <ReviewRefusedSliceLink project={place.project} slice={refused} />}
                 {reply.commit && (
