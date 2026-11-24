@@ -2,12 +2,14 @@ import { Box, Code, Group, Stack, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { AudioLines, File, Film, Mic, Monitor, Video, type LucideIcon } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { formatLibraryLength, librarySourcesOf, type LibrarySourceKind } from '#lib/footage/library/models/library-item.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
+import { StudioCollectionViewToggle } from '#web/shared/ui/studio-collection-view-toggle.tsx';
 import { StudioPageTitle } from '#web/shared/ui/studio-page-title.tsx';
+import { useStudioCollectionView } from '#web/shared/ui/use-studio-collection-view.ts';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
 import { TextInput } from '#web/shared/ui/text-input.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
@@ -125,12 +127,11 @@ export function LibraryShelfPage() {
   useLibraryShelfHotkeys(listRef, searchRef);
   const titles = new Map(shelf.items.map(({ item }) => [item.id, item.title]));
   const count = shelf.items.length;
-  // Stands in for useStudioCollectionView() (web/src/shared/ui/) until it lands: the studio-wide list or grid.
-  const [shelfView] = useState<'grid' | 'list'>('grid');
+  const { view: shelfView } = useStudioCollectionView();
   const listed = shelfView === 'list';
   return (
     <StudioShell>
-      <StudioPageTitle count={count > 0 ? `${count} recording${count > 1 ? 's' : ''}` : undefined}>Library</StudioPageTitle>
+      <StudioPageTitle count={count > 0 ? `${count} recording${count > 1 ? 's' : ''}` : undefined} end={<StudioCollectionViewToggle />}>Library</StudioPageTitle>
       <FadeScroll>
         <Stack ref={listRef} gap={0} {...stylex.props(styles.page, listed && libraryShelfColumns.table, stylex.defaultMarker())}>
           <TextInput
