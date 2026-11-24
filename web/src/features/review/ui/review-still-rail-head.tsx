@@ -26,6 +26,7 @@ export function ReviewStillRailHead() {
       <Text component="span" size="md" {...stylex.props(styles.name)}>{artifact.path.slice(artifact.path.lastIndexOf('/') + 1)}</Text>
       <Group gap="tight" wrap="nowrap">
         {pixels && <Readout>{pixels.w} × {pixels.h}</Readout>}
+        {pixels && stills.length > 1 && <Text component="span" size="sm" {...stylex.props(styles.dim)}>·</Text>}
         {stills.length > 1 && <Text component="span" size="sm" {...stylex.props(styles.dim)}>{here + 1} of {stills.length}</Text>}
       </Group>
     </Stack>

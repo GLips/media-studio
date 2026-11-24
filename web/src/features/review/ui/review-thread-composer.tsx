@@ -20,10 +20,9 @@ import { composeShownReviewFrame } from './review-mark-paint.ts';
 import { shownReviewSlicesOf } from './review-slice-layer.tsx';
 
 const styles = stylex.create({
-  composer: {
-    flexShrink: 0, padding: spacing.gap, backgroundColor: colors.panel,
-    borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line,
-  },
+  composer: { flexShrink: 0, padding: spacing.gap, backgroundColor: colors.panel },
+  foot: { borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line },
+  head: { borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: colors.line },
   on: { marginBottom: spacing.tight, paddingInline: spacing.gap, color: colors.dim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   // On the field's first line, beside the words, as Frame.io sets a comment's timecode.
   pins: { flexShrink: 0, minHeight: '24px' },
@@ -45,7 +44,7 @@ const styles = stylex.create({
     borderRadius: radius.control, borderWidth: '1px', borderStyle: 'solid', backgroundColor: colors.ground,
     borderColor: { default: colors.line, ':hover': colors.dim }, color: colors.dim,
   },
-  foot: { marginTop: spacing.tight },
+  actions: { marginTop: spacing.tight },
   kinds: { borderRadius: radius.control, borderWidth: '1px', borderStyle: 'solid', borderColor: colors.line, padding: '1px' },
   kind: {
     display: 'inline-flex', alignItems: 'center', gap: spacing.tight, paddingInline: spacing.tight, height: spacing.rowDense,
@@ -97,11 +96,11 @@ function anchorOfDraft({ subject, media, draft, timeNow }: ReviewThreadScope): N
 export const REVIEW_COMPOSER_ATTRIBUTE = 'data-review-composer';
 
 /**
- * The draft's field, docked at the thread's foot so the list never jumps. A click picks the kind and `Tab` cycles it,
- * either one the next note's too; `Enter` (or `Mod+Enter`) saves with the frame as seen, `Shift+Enter` breaks the
- * line, `Escape` leaves the draft standing (its pin dims on the stage) and discards only an empty one.
+ * The draft's field, at the thread's foot so the list never jumps (a still's, under its facts). A click picks the
+ * kind and `Tab` cycles it, either one the next note's too; `Enter` saves with the frame as seen, `Shift+Enter`
+ * breaks the line, `Escape` leaves the draft standing (its pin dims on the stage) and discards only an empty one.
  */
-export function ReviewThreadComposer() {
+export function ReviewThreadComposer({ docked }: { readonly docked: 'head' | 'foot' }) {
   const scope = useReviewThreadScope();
   const { media, draft, ops } = scope;
   const composerRef = useRef<HTMLDivElement>(null);
@@ -157,7 +156,7 @@ export function ReviewThreadComposer() {
 
   if (collapsed) {
     return (
-      <Box ref={composerRef} {...{ [REVIEW_COMPOSER_ATTRIBUTE]: true }} {...stylex.props(styles.composer)}>
+      <Box ref={composerRef} {...{ [REVIEW_COMPOSER_ATTRIBUTE]: true }} {...stylex.props(styles.composer, styles[docked])}>
         <UnstyledButton onClick={openOnStill} {...stylex.props(styles.prompt)}>
           <Text component="span" size="md" inherit>{placeholder}</Text>
           <Readout>N</Readout>
@@ -166,7 +165,7 @@ export function ReviewThreadComposer() {
     );
   }
   return (
-    <Box ref={composerRef} {...{ [REVIEW_COMPOSER_ATTRIBUTE]: true }} {...stylex.props(styles.composer)}>
+    <Box ref={composerRef} {...{ [REVIEW_COMPOSER_ATTRIBUTE]: true }} {...stylex.props(styles.composer, styles[docked])}>
       {onLabel !== undefined && <Text size="sm" {...stylex.props(styles.on)}>{onLabel}</Text>}
       <Box {...stylex.props(styles.field)}>
         {pins && (
@@ -193,7 +192,7 @@ export function ReviewThreadComposer() {
           {...stylex.props(styles.text)}
         />
       </Box>
-      <Group gap="tight" wrap="nowrap" justify="space-between" {...stylex.props(styles.foot)}>
+      <Group gap="tight" wrap="nowrap" justify="space-between" {...stylex.props(styles.actions)}>
         <Group gap={0} wrap="nowrap" role="radiogroup" aria-label="Kind" {...stylex.props(styles.kinds)}>
           {REVIEW_THREAD_KINDS.map((kind) => (
             <HotkeyTooltip key={kind} name="Kind" hotkey="Kind">

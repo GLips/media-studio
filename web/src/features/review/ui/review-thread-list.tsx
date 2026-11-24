@@ -154,7 +154,7 @@ export function ReviewThreadList({ listing, actions, live, rowOf }: ReviewThread
                 </UnstyledButton>
                 <HotkeyTooltip name="Clear resolved" hotkey="Clear resolved">
                   <UnstyledButton onClick={actions.clearResolved} {...stylex.props(styles.clear)}>
-                    <Text component="span" size="sm" inherit>Clear</Text>
+                    <Text component="span" size="sm" inherit>Clear resolved</Text>
                   </UnstyledButton>
                 </HotkeyTooltip>
               </Group>

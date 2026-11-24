@@ -11,6 +11,7 @@ import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { reviewReplacementHashOf } from '../controllers/review-queries.ts';
 import { useReviewOps } from '../controllers/use-review-ops.ts';
 import { ReviewRenderMenu } from './review-render-menu.tsx';
+import { useReviewStillSiblings } from './review-still-siblings.ts';
 import { useReviewScreen } from './review-screen-context.tsx';
 import { reviewVersionLabelOf, useReviewRenderVersions } from './use-review-render-versions.ts';
 
@@ -58,13 +59,17 @@ export function ReviewHeader({ onLoadReplacement }: { readonly onLoadReplacement
   const { versions } = useReviewRenderVersions();
   const { files, rendering } = pulse;
   const replacement = reviewReplacementHashOf(pulse, artifact, search.r);
+  // The grid shows the folder, so the crumb names it; the open still is named in the rail.
+  const stills = useReviewStillSiblings();
+  const folderShown = search.view === 'grid' && stills.length > 1;
+  const crumbPath = folderShown ? artifact.path.slice(0, artifact.path.lastIndexOf('/')) : artifact.path;
   return (
     <Group justify="space-between" wrap="nowrap" gap="gap" {...stylex.props(styles.header)}>
       <Group gap="tight" wrap="nowrap">
         <Menu position="bottom-start" withinPortal>
           <Menu.Target>
             <UnstyledButton {...stylex.props(styles.crumb)}>
-              <Text component="span" size="sm"><Text component="span" inherit {...stylex.props(styles.project)}>{project} / </Text>{artifact.path} ▾</Text>
+              <Text component="span" size="sm"><Text component="span" inherit {...stylex.props(styles.project)}>{project} / </Text>{crumbPath} ▾</Text>
             </UnstyledButton>
           </Menu.Target>
           <Menu.Dropdown>

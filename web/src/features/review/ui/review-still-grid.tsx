@@ -2,7 +2,7 @@ import { Box, Stack, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useRef, useState } from 'react';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
-import { colors, fonts, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
+import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { reviewStillShortNames } from './review-still-short-names.ts';
 import type { ReviewStillSibling } from './review-still-siblings.ts';
 import { ReviewStillTile } from './review-still-tile.tsx';
@@ -13,12 +13,10 @@ import { useReviewProofGround } from './use-review-proof-ground.ts';
 const styles = stylex.create({
   grid: {
     display: 'grid', columnGap: spacing.gap, rowGap: spacing.inset, padding: spacing.inset,
-    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', alignItems: 'end',
   },
-  // Every cell one shape, whatever its picture's: rows line up, and each picture is fitted and centred inside.
-  cell: { aspectRatio: '4 / 3', padding: spacing.gap, borderRadius: radius.control, backgroundColor: colors.panel },
   // Cut in the middle: the head gives way, the tail (where variants differ) and the extension stay.
-  name: { display: 'flex', justifyContent: 'center', width: 0, minWidth: '100%', fontFamily: fonts.mono, color: colors.dim, whiteSpace: 'nowrap' },
+  name: { display: 'flex', justifyContent: 'center', width: 0, minWidth: '100%', color: colors.dim, whiteSpace: 'nowrap' },
   head: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
   tail: { flexShrink: 0 },
   current: { color: colors.cream },
@@ -71,11 +69,9 @@ export function ReviewStillGrid({ stills, openPath, clear, onOpen }: ReviewStill
           const { head, tail } = reviewGridNameParts(shortNames[i]);
           return (
             <Stack key={path} gap="tight">
-              <Box {...stylex.props(styles.cell)}>
-                <ReviewStillTile src={src} label={name} aspect={null} fill="cell" ground={clear.has(path) ? ground : null}
-                  selected={i === at} onClick={() => onOpen(path)} corner={<ReviewThreadDots path={path} />} />
-              </Box>
-              <Text component="span" size="xs" title={name} {...stylex.props(styles.name, path === openPath && styles.current)}>
+              <ReviewStillTile src={src} label={name} aspect={null} fill="column" ground={clear.has(path) ? ground : null}
+                selected={i === at} open={path === openPath} onClick={() => onOpen(path)} corner={<ReviewThreadDots path={path} />} />
+              <Text component="span" size="sm" title={name} {...stylex.props(styles.name, path === openPath && styles.current)}>
                 <Box component="span" {...stylex.props(styles.head)}>{head}</Box>
                 <Box component="span" {...stylex.props(styles.tail)}>{tail}</Box>
               </Text>

@@ -24,7 +24,7 @@ const flashIn = stylex.keyframes({ from: { backgroundColor: colors.flash }, to: 
 
 const styles = stylex.create({
   row: {
-    position: 'relative', paddingBlock: spacing.tight, paddingInlineStart: spacing.inset, paddingInlineEnd: spacing.gap,
+    position: 'relative', paddingBlock: spacing.gap, paddingInlineStart: spacing.inset, paddingInlineEnd: spacing.gap,
     cursor: 'pointer', backgroundColor: { default: 'transparent', ':hover': colors.raised },
     borderLeftWidth: '2px', borderLeftStyle: 'solid', borderLeftColor: 'transparent',
     outlineColor: colors.cream, outlineStyle: 'solid', outlineWidth: { default: 0, ':focus-visible': '1px' }, outlineOffset: '-1px',
@@ -46,7 +46,9 @@ const styles = stylex.create({
   scene: { color: colors.dim, whiteSpace: 'nowrap', overflow: 'hidden', minWidth: 0 },
   actions: { marginInlineStart: 'auto', flexShrink: 0 },
   body: { paddingInlineStart: spacing.inset },
-  replies: { paddingInlineStart: spacing.inset, paddingTop: spacing.tight },
+  // A gap after the label line and a wider one before the replies, so a note's three parts don't read as one block.
+  words: { paddingTop: spacing.tight },
+  replies: { paddingInlineStart: spacing.inset, paddingTop: spacing.gap },
   author: { color: colors.cream, width: spacing.inset, flexShrink: 0 },
   reply: { minWidth: 0, flex: 1 },
   commit: {
@@ -236,7 +238,7 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
         )}
       </Group>
       {inline?.mode === 'edit' || (
-        <Box {...stylex.props(styles.body)}>
+        <Box {...stylex.props(styles.body, styles.words)}>
           <ReviewThreadBody text={note.text} dim={thread.state === 'resolved'} clamp={!look.expanded} />
         </Box>
       )}

@@ -7,7 +7,7 @@ import { formatReviewClock } from '#lib/output/review/models/review-timeline-geo
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { useLinkedMediaTick } from '#web/shared/ui/linked-media-clock.ts';
 import { Readout } from '#web/shared/ui/readout.tsx';
-import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
+import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { ReviewCompareMenu } from './review-compare-menu.tsx';
 import { toggleReviewDraw } from './review-draft-pin.ts';
 import { ReviewProofGroundControl } from './review-proof-ground-control.tsx';
@@ -24,6 +24,11 @@ const styles = stylex.create({
     borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line,
   },
   rule: { width: '1px', alignSelf: 'stretch', marginBlock: spacing.tight, backgroundColor: colors.line },
+  // The stage's tools as one set at the bar's end, apart from playback: what they do is look at the frame, not play it.
+  tools: {
+    marginInlineStart: 'auto', padding: '1px', borderRadius: radius.control,
+    borderWidth: '1px', borderStyle: 'solid', borderColor: colors.line,
+  },
   // Over the dock's lanes (past its gutter), so the notch stands where the dock's playhead does. A notch in the bar's
   // top edge only: any deeper and it strikes through the buttons under it.
   edge: { position: 'absolute', top: '-1px', left: spacing.laneGutter, right: 0, height: spacing.tight, overflow: 'hidden', pointerEvents: 'none', zIndex: 1 },
@@ -53,7 +58,7 @@ function useReviewPlayingReadouts(playback: ReviewPlayback, playing: boolean, fp
 }
 
 /**
- * `▶ 0:04.53 f136 ⟲ ♪ │ compare │ ✎ ⌗ ⊡ ▦`: the transport between the stage and the dock, with the playhead's notch on the
+ * `▶ 0:04.53 f136 ⟲ ♪ │ compare        [✎ ⌗ ⊡ ▦]`: the transport between the stage and the dock, with the playhead's notch on the
  * stage's edge. While playing, the time is written straight into its nodes, as the playhead is, so the bar re-renders
  * only when the clock settles.
  */
@@ -85,13 +90,19 @@ export function ReviewTransportBar() {
       <IconButton name="Mute" active={state.muted} onClick={() => playback.setMuted(!state.muted)}>{state.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}</IconButton>
       <Box {...stylex.props(styles.rule)} />
       <ReviewCompareMenu />
-      <Box {...stylex.props(styles.rule)} />
-      {screen.artifact.transparent && <ReviewProofGroundControl />}
-      <IconButton name="Draw" active={mode === 'draw'} onClick={() => toggleReviewDraw(screen)}><Pencil size={14} /></IconButton>
-      <IconButton name="Guides" active={guides !== null} onClick={() => setGuides(nextReviewGuideSet)}><Grid3x3 size={14} /></IconButton>
-      {guides && <Readout bright>{guides}</Readout>}
-      <IconButton name="Fit / 1:1" active={search.z === 1} onClick={() => setSearch({ z: search.z === 1 ? undefined : 1 })}><Scan size={14} /></IconButton>
-      <IconButton name="Board" active={mode === 'board'} onClick={() => setMode(mode === 'board' ? 'stage' : 'board')}><LayoutGrid size={14} /></IconButton>
+      {screen.artifact.transparent && (
+        <>
+          <Box {...stylex.props(styles.rule)} />
+          <ReviewProofGroundControl />
+        </>
+      )}
+      <Group gap={0} wrap="nowrap" role="group" aria-label="Stage tools" {...stylex.props(styles.tools)}>
+        <IconButton name="Draw on the frame" hotkey="Draw" active={mode === 'draw'} onClick={() => toggleReviewDraw(screen)}><Pencil size={14} /></IconButton>
+        <IconButton name="Safe-area guides" hotkey="Guides" active={guides !== null} onClick={() => setGuides(nextReviewGuideSet)}><Grid3x3 size={14} /></IconButton>
+        {guides && <Readout bright>{guides}</Readout>}
+        <IconButton name="Fit or actual size" hotkey="Fit / 1:1" active={search.z === 1} onClick={() => setSearch({ z: search.z === 1 ? undefined : 1 })}><Scan size={14} /></IconButton>
+        <IconButton name="Board of scene frames" hotkey="Board" active={mode === 'board'} onClick={() => setMode(mode === 'board' ? 'stage' : 'board')}><LayoutGrid size={14} /></IconButton>
+      </Group>
     </Group>
   );
 }
