@@ -8,7 +8,7 @@ import { useStudioCollectionView } from '#web/shared/ui/use-studio-collection-vi
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { ProjectName } from './project-name.tsx';
 import { projectListStyles } from './project-row.tsx';
-import { projectTileGridStyles } from './project-tile.tsx';
+import { PROJECT_TILE_GUESSED_ASPECT, projectTileGridStyles } from './project-tile-grid.tsx';
 
 const styles = stylex.create({
   row: { gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: spacing.inset, height: '44px', paddingInline: spacing.gap },
@@ -16,7 +16,7 @@ const styles = stylex.create({
   title: { width: '240px', height: '12px', borderRadius: radius.control, backgroundColor: colors.skeleton },
   // A tile's picture cell and name line (ProjectTile), empty.
   tile: { display: 'flex', flexDirection: 'column', gap: spacing.tight, padding: spacing.tight },
-  picture: { width: '100%', aspectRatio: '4 / 3', borderRadius: radius.control, backgroundColor: colors.skeleton },
+  picture: { width: '100%', aspectRatio: '16 / 9', borderRadius: radius.control, backgroundColor: colors.skeleton },
   name: { width: '70%', height: '12px', borderRadius: radius.control, backgroundColor: colors.skeleton },
 });
 
@@ -40,7 +40,7 @@ export function ProjectRowsPending() {
         : <StudioPageTitle end={<StudioCollectionViewToggle />}><ProjectName project={project} /></StudioPageTitle>}
       {project !== undefined && view === 'grid' ? (
         <Box aria-busy {...stylex.props(projectListStyles.list)}>
-          <Box {...stylex.props(projectTileGridStyles.grid)}>
+          <Box {...stylex.props(projectTileGridStyles.grid(PROJECT_TILE_GUESSED_ASPECT))}>
             {Array.from({ length: PENDING_TILES }, (_, i) => (
               <Box key={i} {...stylex.props(styles.tile)}><Box {...stylex.props(styles.picture)} /><Box {...stylex.props(styles.name)} /></Box>
             ))}

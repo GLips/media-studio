@@ -1,10 +1,12 @@
 import { Group, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import type { ReactNode } from 'react';
+import type { ReviewProjectRow } from '#lib/output/review/models/review-dashboard.ts';
+import { StudioSiblingName } from '#web/shared/ui/studio-sibling-name.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
-import { ProjectTargetLink, type ProjectRowTarget } from './project-target-link.tsx';
-import type { ReviewProjectThumbnail } from '#lib/output/review/models/review-dashboard.ts';
-import { ProjectThumbnail } from './project-thumbnail.tsx';
+import { ProjectAge } from './project-age.tsx';
+import { ProjectTargetLink } from './project-target-link.tsx';
+import { ProjectThreadCounts } from './project-thread-counts.tsx';
+import { ProjectThumbnail, type ProjectTileCell } from './project-thumbnail.tsx';
 
 const styles = stylex.create({
   tile: {
@@ -18,45 +20,40 @@ const styles = stylex.create({
     },
     outlineColor: colors.cream, outlineStyle: 'solid', outlineOffset: '-1px', outlineWidth: { default: 0, ':focus-visible': '1px' },
   },
-  cell: { minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  name: { fontWeight: 600 },
-  // Always a line high, so tiles with no status keep their names on one baseline down a grid row.
-  status: { minHeight: spacing.row, minWidth: 0 },
+  name: { minWidth: 0, fontWeight: 600 },
+  // One line under the name: the state at its start, the age at its end.
+  meta: { minWidth: 0, minHeight: spacing.row },
   end: { marginInlineStart: 'auto', flexShrink: 0 },
 });
 
-export const projectTileGridStyles = stylex.create({
-  // Inside the page's list, across every column, its tiles' edges under the rows' pictures.
-  grid: {
-    gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', alignItems: 'start',
-    gap: spacing.gap, paddingBlockEnd: spacing.gap,
-  },
-});
+type FileRow = Extract<ReviewProjectRow, { on: 'file' }>;
 
 type ProjectTileProps = {
-  readonly target: ProjectRowTarget;
   readonly project: string;
-  /** The file's picture: a still's own bytes or a render's frame. */
-  readonly thumbnail: ReviewProjectThumbnail;
-  readonly title: ReactNode;
-  /** Its state in plain words: `1 open note`, `1 to verify`. */
-  readonly status?: ReactNode;
-  /** Its age, at the status line's end. */
-  readonly end?: ReactNode;
+  readonly row: FileRow;
+  /** When the summary was read, which the age counts back from. */
+  readonly now: number;
+  /** Its path under its section's heading (`stills/`'s `detail.jpg`), and its siblings' likewise. */
+  readonly name: string;
+  readonly siblings: readonly string[];
+  readonly cell: ProjectTileCell;
 };
 
 /**
- * A project page's grid item: a file's picture centred in a uniform cell, its name and its state under it. It opens
- * what its row would. Only files with pictures are tiles; the plan, decisions and notes stay rows in the grid view.
+ * A project page's grid item: a file's picture filling a cell of its grid's shape, the part of its name that tells it
+ * from its siblings, then its state and its age on one line. It opens what its row would.
  */
-export function ProjectTile({ target, project, thumbnail, title, status, end }: ProjectTileProps) {
+export function ProjectTile({ project, row, now, name, siblings, cell }: ProjectTileProps) {
+  const { artifact } = row;
   return (
-    <ProjectTargetLink target={target} xstyle={styles.tile}>
-      <ProjectThumbnail project={project} thumbnail={thumbnail} tile />
-      <Text component="span" size="md" {...stylex.props(styles.cell, styles.name)}>{title}</Text>
-      <Group gap="gap" wrap="nowrap" {...stylex.props(styles.status)}>
-        {status}
-        <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>{end}</Group>
+    <ProjectTargetLink target={{ project, on: 'file', path: artifact.path }} xstyle={styles.tile}>
+      <ProjectThumbnail project={project} thumbnail={row.thumbnail} tile={cell} />
+      <Text component="span" size="md" {...stylex.props(styles.name)}><StudioSiblingName name={name} siblings={siblings} /></Text>
+      <Group gap="gap" wrap="nowrap" {...stylex.props(styles.meta)}>
+        <ProjectThreadCounts threads={row.threads} />
+        <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>
+          <ProjectAge now={now} at={artifact.modified} what={artifact.kind === 'video' ? 'rendered' : 'made'} />
+        </Group>
       </Group>
     </ProjectTargetLink>
   );

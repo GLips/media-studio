@@ -11,7 +11,6 @@ import { ProjectRow } from './project-row.tsx';
 import type { ProjectRowTarget } from './project-target-link.tsx';
 import { ProjectThreadCounts } from './project-thread-counts.tsx';
 import { ProjectThumbnail, type ProjectThumbnailSource } from './project-thumbnail.tsx';
-import { ProjectTile } from './project-tile.tsx';
 
 const styles = stylex.create({
   dim: { color: colors.dim },
@@ -109,25 +108,21 @@ type ProjectPlaceProps = {
   readonly now: number;
   /** The file's folder is labelled over its run, so the item shows the file's name alone. */
   readonly folderLabelled?: boolean;
-  /** A row in a list's shared columns, or for a file with a picture, a tile in a grid (projectTileGridStyles). */
-  readonly layout?: 'row' | 'tile';
 };
 
 /** A file, decision, the plan or the project's own notes, as a project's page and the dashboard's awaiting list show it. */
-export function ProjectPlace({ summary, row, now, folderLabelled = false, layout = 'row' }: ProjectPlaceProps) {
-  if (row.on === 'plan') return <ProjectPlanPlace project={summary.project} row={row} now={now} layout={layout} />;
-  return <ProjectPlaceView view={placeViewOf(summary, row, now, folderLabelled)} row={row} layout={layout} />;
+export function ProjectPlace({ summary, row, now, folderLabelled = false }: ProjectPlaceProps) {
+  if (row.on === 'plan') return <ProjectPlanPlace project={summary.project} row={row} now={now} />;
+  return <ProjectPlaceView view={placeViewOf(summary, row, now, folderLabelled)} row={row} />;
 }
 
-function ProjectPlanPlace({ project, row, now, layout }: { readonly project: string; readonly row: PlanRow; readonly now: number; readonly layout: 'row' | 'tile' }) {
-  return <ProjectPlaceView view={planViewOf(project, row, useProjectPlanSignoffs(project, row.signoffs), now)} row={row} layout={layout} />;
+function ProjectPlanPlace({ project, row, now }: { readonly project: string; readonly row: PlanRow; readonly now: number }) {
+  return <ProjectPlaceView view={planViewOf(project, row, useProjectPlanSignoffs(project, row.signoffs), now)} row={row} />;
 }
 
-type ProjectPlaceViewProps = { readonly view: PlaceView; readonly row: ReviewProjectRow; readonly layout: 'row' | 'tile' };
+type ProjectPlaceViewProps = { readonly view: PlaceView; readonly row: ReviewProjectRow };
 
-function ProjectPlaceView({ view: { target, thumbnail, title, detail, state, end }, row, layout }: ProjectPlaceViewProps) {
+function ProjectPlaceView({ view: { target, thumbnail, title, detail, state, end }, row }: ProjectPlaceViewProps) {
   const status = <><ProjectThreadCounts threads={row.threads} />{state}</>;
-  // Only a picture makes a tile; anything else asked for as one is a row (ProjectPageItems keeps them apart).
-  if (layout === 'tile' && thumbnail.thumbnail) return <ProjectTile project={thumbnail.project} thumbnail={thumbnail.thumbnail} target={target} title={title} status={status} end={end} />;
   return <ProjectRow target={target} thumbnail={<ProjectThumbnail {...thumbnail} />} title={title} detail={detail} status={status} end={end} />;
 }
