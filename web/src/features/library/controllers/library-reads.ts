@@ -2,6 +2,7 @@
 // so all of them work with the media folder offline.
 import { createServerFn } from '@tanstack/react-start';
 import { Schema } from 'effect';
+import { LibraryFlag } from '#lib/footage/library/models/library-flags.ts';
 import { changeLibraryFlags, readLibraryFlags, readLibraryItemView, readLibraryShelf, searchStudioLibrary } from '#web/infrastructure/studio-engine.server.ts';
 
 export type { LibraryItemView, LibraryShelf, LibraryShelfItem } from '#web/infrastructure/studio-engine.server.ts';
@@ -13,6 +14,7 @@ const LibraryFlagOpInput = Schema.Union([
   Schema.Struct({ op: Schema.Literal('flag.add'), start: Schema.Finite, end: Schema.Finite, note: Schema.optionalKey(Schema.String) }),
   Schema.Struct({ op: Schema.Literal('flag.note'), id: Schema.Finite, note: Schema.String }),
   Schema.Struct({ op: Schema.Literal('flag.remove'), id: Schema.Finite }),
+  Schema.Struct({ op: Schema.Literal('flag.restore'), flag: LibraryFlag }),
 ]);
 export type LibraryFlagOpInput = typeof LibraryFlagOpInput.Type;
 

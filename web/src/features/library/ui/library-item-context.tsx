@@ -4,6 +4,7 @@ import type { TranscriptLine } from '#lib/footage/transcript/models/footage-tran
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 import type { LibraryFlagOpInput, LibraryItemView } from '../controllers/library-reads.ts';
 import type { LibraryItemPlayback } from './library-item-playback.ts';
+import type { LibraryFlagUndo } from './use-library-flag-undo.ts';
 
 /** A range of the item marked to flag: by I and O, a drag on the timeline, or words selected in the transcript. */
 export type LibraryMarkedRange = { start: number; end: number };
@@ -11,7 +12,7 @@ export type LibraryMarkedRange = { start: number; end: number };
 /** What the composer writes: a new flag's note over the marked range, or a flag's note changed. */
 export type LibraryComposing = { kind: 'new'; range: LibraryMarkedRange } | { kind: 'note'; flag: number };
 
-export type LibraryItemScreenValue = {
+export type LibraryItemScreenValue = LibraryFlagUndo & {
   view: LibraryItemView;
   playback: LibraryItemPlayback;
   /** Every word said, on item time; none before the item's transcript is made. */

@@ -18,14 +18,15 @@ import { createLibraryItemPlayback, LIBRARY_CLOCK_FPS } from './library-item-pla
 import { LibraryRecordingMedia } from './library-recording-media.tsx';
 import { LibraryTimeline } from './library-timeline.tsx';
 import { LibraryTranscript } from './library-transcript.tsx';
+import { useLibraryFlagUndo } from './use-library-flag-undo.ts';
 import { useLibraryItemHotkeys } from './use-library-item-hotkeys.ts';
 
 const styles = stylex.create({
   body: {
     display: 'grid', height: '100%', minHeight: 0,
-    // The transcript a reading column, the flags as tall as they are, and the picture whatever's left, fitted whole.
-    gridTemplateColumns: 'minmax(0, 1fr) 400px', gridTemplateRows: 'minmax(0, 1fr) auto auto',
-    gridTemplateAreas: '"picture transcript" "timeline transcript" "flags transcript"',
+    // The picture and its transport own the left; the rail on the right holds the flags over the transcript.
+    gridTemplateColumns: 'minmax(0, 1fr) 400px', gridTemplateRows: 'minmax(0, 1fr) auto',
+    gridTemplateAreas: '"picture rail" "timeline rail"',
   },
   picture: { gridArea: 'picture', minHeight: 0, position: 'relative' },
   offline: {
@@ -33,8 +34,12 @@ const styles = stylex.create({
     backgroundColor: colors.screen, textAlign: 'center',
   },
   timeline: { gridArea: 'timeline', minWidth: 0 },
-  flags: { gridArea: 'flags', minHeight: 0, borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line },
-  transcript: { gridArea: 'transcript', minHeight: 0, borderLeftWidth: '1px', borderLeftStyle: 'solid', borderLeftColor: colors.line },
+  // The flags as tall as they are, to under half the rail, past which they scroll; the transcript has the rest.
+  rail: {
+    gridArea: 'rail', minHeight: 0, display: 'grid', gridTemplateRows: 'fit-content(45%) minmax(0, 1fr)',
+    borderLeftWidth: '1px', borderLeftStyle: 'solid', borderLeftColor: colors.line,
+  },
+  transcript: { minHeight: 0, borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line },
 });
 
 /** A flag played over and over while it's on show: an instant flag gets a moment around it to hear. */
@@ -67,7 +72,13 @@ function LibraryItemScreenBody({ view }: { readonly view: LibraryItemView }) {
     playback.setLoop(loopStart === undefined || loopEnd === undefined ? null : { start: loopStart, end: loopEnd });
   }, [playback, loopStart, loopEnd]);
 
+  const undo = useLibraryFlagUndo((op) => {
+    ops.reset();
+    ops.apply(op);
+  });
+
   const screen: LibraryItemScreenValue = {
+    ...undo,
     view, playback, words, lines, flags, queue, filter, setFilter, focused, marked, setMarked, composing,
     // A composer opened or left starts with no refusal from before on show.
     setComposing: (next) => {
@@ -104,8 +115,10 @@ function LibraryItemScreenBody({ view }: { readonly view: LibraryItemView }) {
             )}
           </Box>
           <Box {...stylex.props(styles.timeline)}><LibraryTimeline reach={reach} /></Box>
-          <Box {...stylex.props(styles.flags)}><LibraryFlagPanel /></Box>
-          <Box {...stylex.props(styles.transcript)}><LibraryTranscript /></Box>
+          <Box {...stylex.props(styles.rail)}>
+            <LibraryFlagPanel />
+            <Box {...stylex.props(styles.transcript)}><LibraryTranscript /></Box>
+          </Box>
         </Box>
       </StudioShell>
     </LibraryItemScreenProvider>

@@ -33,11 +33,12 @@ export type LibraryFlagsFile = typeof LibraryFlagsFile.Type;
 
 export const emptyLibraryFlagsFile = (): LibraryFlagsFile => ({ version: LIBRARY_FLAGS_VERSION, revision: 0, nextId: 1, flags: [] });
 
-/** A change to an item's flags. `note: ''` clears a note. */
+/** A change to an item's flags. `note: ''` clears a note. `flag.restore` puts back a flag removed, as it was: the undo. */
 export type LibraryFlagOp =
   | { op: 'flag.add'; start: number; end: number; note?: string }
   | { op: 'flag.note'; id: number; note: string }
-  | { op: 'flag.remove'; id: number };
+  | { op: 'flag.remove'; id: number }
+  | { op: 'flag.restore'; flag: LibraryFlag };
 
 /** A flags file with a change applied, and the flag it touched. */
 export type LibraryFlagChange = { file: LibraryFlagsFile; flag: LibraryFlag };
@@ -52,6 +53,15 @@ export function applyLibraryFlagOp(file: LibraryFlagsFile, op: LibraryFlagOp, { 
     const note = op.note?.trim();
     const flag: LibraryFlag = { id: file.nextId, start: op.start, end: op.end, ...(note && { note }), by, at: now, rev };
     return Result.succeed({ file: { ...file, revision: rev, nextId: file.nextId + 1, flags: [...file.flags, flag] }, flag });
+  }
+  if (op.op === 'flag.restore') {
+    const back = op.flag;
+    // Only a flag this file issued and no longer holds: a restore can't mint an id or stand twice.
+    if (back.id >= file.nextId || file.flags.some((f) => f.id === back.id)) {
+      return Result.fail(new LibraryFlagRefused({ reason: `flag #${back.id} isn't one removed from this item, so it can't be put back` }));
+    }
+    const restored: LibraryFlag = { ...back, rev };
+    return Result.succeed({ file: { ...file, revision: rev, flags: [...file.flags, restored] }, flag: restored });
   }
   const flag = file.flags.find((f) => f.id === op.id);
   if (!flag) return Result.fail(new LibraryFlagRefused({ reason: `there's no flag #${op.id}; ${file.flags.length ? `the flags are ${file.flags.map((f) => `#${f.id}`).join(', ')}` : 'the item has none'}` }));

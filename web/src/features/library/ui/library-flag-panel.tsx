@@ -1,8 +1,9 @@
 import { Box, Button, Group, Stack, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
+import { formatForDisplay } from '@tanstack/react-hotkeys';
 import { Flag, Pencil, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { LibraryFlag, LibraryFlagFilter } from '#lib/footage/library/models/library-flags.ts';
+import { libraryFlagsInOrder, type LibraryFlag, type LibraryFlagFilter } from '#lib/footage/library/models/library-flags.ts';
 import { formatReviewClockRange } from '#lib/output/review/models/review-timeline-geometry.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
@@ -16,14 +17,19 @@ import { useLibraryItemScreen, type LibraryComposing } from './library-item-cont
 const FLAG_ROW_HEIGHT = '28px';
 
 const styles = stylex.create({
-  // As tall as its flags, to a third of the window, past which they scroll; the list keeps at least one flag's row, so
-  // an open composer never hides every flag.
-  panel: { display: 'grid', gridTemplateRows: `${spacing.row} minmax(${FLAG_ROW_HEIGHT}, auto) auto`, maxHeight: '33dvh' },
-  head: { paddingInline: spacing.gap, borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: colors.line },
+  // The rail's top section, as tall as the rail's row lets it (library-item-screen.tsx): the heading, the way to flag a
+  // range, then the list, which keeps at least one flag's row so an open composer never hides every flag.
+  panel: { display: 'grid', gridTemplateRows: `auto auto minmax(${FLAG_ROW_HEIGHT}, 1fr) auto`, height: '100%', minHeight: 0 },
+  head: { height: spacing.bar, paddingInline: spacing.inset },
+  heading: { color: colors.cream, fontWeight: 600 },
+  count: { color: colors.dim, marginInlineEnd: 'auto' },
+  action: {
+    paddingInline: spacing.inset, paddingBlockEnd: spacing.gap,
+    borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: colors.line,
+  },
   chip: { paddingInline: spacing.tight, borderRadius: radius.control, color: colors.dim, backgroundColor: { default: 'transparent', ':hover': colors.raised } },
   chipOn: { color: colors.cream, backgroundColor: colors.raised },
-  step: { color: colors.dim, marginInlineStart: 'auto', minWidth: 0, display: 'flex', alignItems: 'center', gap: spacing.gap },
-  hint: { minWidth: 0, color: colors.dim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  hint: { minWidth: 0, flex: 1, color: colors.dim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   // The row's tools sit beside its button, not in it: a button can't hold buttons.
   row: {
     display: 'flex', alignItems: 'center', gap: spacing.tight, paddingInlineEnd: spacing.tight,
@@ -32,7 +38,7 @@ const styles = stylex.create({
   },
   focused: { backgroundColor: colors.raised, borderInlineStartColor: colors.cream },
   open: {
-    flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: '28px 120px minmax(0, 1fr)', columnGap: spacing.gap, alignItems: 'baseline',
+    flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: '28px auto minmax(0, 1fr)', columnGap: spacing.gap, alignItems: 'baseline',
     paddingInlineStart: spacing.gap, paddingBlock: spacing.tight, textAlign: 'start',
     outlineColor: colors.cream, outlineStyle: 'solid', outlineOffset: '-1px', outlineWidth: { default: 0, ':focus-visible': '1px' },
   },
@@ -51,7 +57,12 @@ const styles = stylex.create({
   // A disabled button takes no pointer, so its hint's tooltip hangs on this wrapper.
   hinted: { display: 'inline-flex' },
   refusal: { color: colors.danger },
+  undoRow: { paddingInline: spacing.inset, paddingBlock: spacing.tight, color: colors.dim, backgroundColor: { default: 'transparent', ':hover': colors.raised }, width: '100%', textAlign: 'start' },
+  undo: { color: colors.cream },
 });
+
+/** Written out, not read from the registry, as the render review's Undo row does: the key shows before it binds. */
+const LIBRARY_UNDO_KEYS = formatForDisplay('Mod+Z');
 
 const FILTER_LABELS: Record<LibraryFlagFilter, string> = { all: 'all', agent: 'agent', reviewer: 'yours' };
 
@@ -96,8 +107,19 @@ function LibraryFlagComposer({ composing }: { readonly composing: LibraryComposi
   );
 }
 
+/** `Removed #3 · Undo ⌘Z`, in the removed flag's place for a few seconds. */
+function LibraryFlagUndoRow({ flag, onUndo }: { readonly flag: LibraryFlag; readonly onUndo: () => void }) {
+  return (
+    <UnstyledButton onClick={onUndo} {...stylex.props(styles.undoRow)}>
+      <Text component="span" size="sm" inherit>
+        Removed #{flag.id} · <Text component="span" inherit {...stylex.props(styles.undo)}>Undo</Text> <Readout>{LIBRARY_UNDO_KEYS}</Readout>
+      </Text>
+    </UnstyledButton>
+  );
+}
+
 function LibraryFlagRow({ flag }: { readonly flag: LibraryFlag }) {
-  const { focused, focusFlag, setComposing, changeFlags } = useLibraryItemScreen();
+  const { focused, focusFlag, setComposing, removeFlag } = useLibraryItemScreen();
   const on = focused?.id === flag.id;
   const row = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -115,50 +137,61 @@ function LibraryFlagRow({ flag }: { readonly flag: LibraryFlag }) {
       </UnstyledButton>
       <Group gap={0} wrap="nowrap" {...stylex.props(styles.tools)}>
         <IconButton name="Edit note" onClick={() => setComposing({ kind: 'note', flag: flag.id })}><Pencil size={12} /></IconButton>
-        <IconButton name="Remove flag" onClick={() => changeFlags({ op: 'flag.remove', id: flag.id })}><Trash2 size={12} /></IconButton>
+        <IconButton name="Remove flag" onClick={() => removeFlag(flag)}><Trash2 size={12} /></IconButton>
       </Group>
     </Box>
   );
 }
 
 /**
- * The item's flags in order, everyone's or one author's: the queue N steps through, each opened looping. A row's
- * click opens it; a double click edits its note. The composer below writes a new flag's note or edits one.
+ * The rail's flags: a heading with their count and whose to show, the way to flag a range, then the flags in the
+ * order N steps through. A row's click opens it looping; a double click edits its note; a removed one offers Undo in
+ * its place. The composer below writes a new flag's note or edits one.
  */
 export function LibraryFlagPanel() {
-  const { flags, queue, filter, setFilter, focused, marked, composing, setComposing } = useLibraryItemScreen();
+  const { flags, queue, filter, setFilter, focused, marked, composing, setComposing, removedShown, undoRemove } = useLibraryItemScreen();
   const at = focused ? queue.findIndex((f) => f.id === focused.id) : -1;
+  // The removed flag's Undo stands where it stood in the queue, so the rows under the pointer don't shift.
+  const undoAt = removedShown && libraryFlagsInOrder([...queue, removedShown], filter).indexOf(removedShown);
+  const rows = queue.map((flag) => <LibraryFlagRow key={flag.id} flag={flag} />);
+  if (removedShown && undoRemove && undoAt !== undefined && undoAt >= 0) {
+    rows.splice(undoAt, 0, <LibraryFlagUndoRow key={`removed ${removedShown.id}`} flag={removedShown} onUndo={undoRemove} />);
+  }
   return (
     <Box {...stylex.props(styles.panel)}>
-      <Group gap="tight" wrap="nowrap" {...stylex.props(styles.head)}>
-        <Flag size={12} />
-        {(['all', 'agent', 'reviewer'] as const).map((by) => (
-          <HotkeyTooltip key={by} name={`Flags: ${FILTER_LABELS[by]}`} hotkey="Whose flags">
-            <UnstyledButton aria-pressed={filter === by} onClick={() => setFilter(by)} {...stylex.props(styles.chip, filter === by && styles.chipOn)}>
-              <Text component="span" size="sm" inherit>{FILTER_LABELS[by]}</Text>
-            </UnstyledButton>
-          </HotkeyTooltip>
-        ))}
-        {at >= 0 && <Readout>{at + 1} of {queue.length}</Readout>}
-        <Box {...stylex.props(styles.step)}>
-          {!marked && <Text component="span" size="sm" {...stylex.props(styles.hint)}>Drag on the timeline or select words to mark a range</Text>}
-          <HotkeyTooltip name={marked ? 'Flag the marked range' : 'Or mark one with I and O as it plays'} hotkey="Flag range">
-            <Box component="span" {...stylex.props(styles.hinted)}>
-              <Button size="compact-xs" leftSection={<Flag size={12} />} disabled={!marked || composing !== null}
-                onClick={() => marked && setComposing({ kind: 'new', range: marked })}>
-                Flag range
-              </Button>
-            </Box>
-          </HotkeyTooltip>
-        </Box>
+      <Group gap="gap" wrap="nowrap" {...stylex.props(styles.head)}>
+        <Text component="h2" size="sm" m={0} {...stylex.props(styles.heading)}>Flags</Text>
+        <Text component="span" size="sm" {...stylex.props(styles.count)}>{at >= 0 ? `${at + 1} of ${queue.length}` : flags.flags.length || ''}</Text>
+        <Group gap="hairline" wrap="nowrap">
+          {(['all', 'agent', 'reviewer'] as const).map((by) => (
+            <HotkeyTooltip key={by} name={`Flags: ${FILTER_LABELS[by]}`} hotkey="Whose flags">
+              <UnstyledButton aria-pressed={filter === by} onClick={() => setFilter(by)} {...stylex.props(styles.chip, filter === by && styles.chipOn)}>
+                <Text component="span" size="sm" inherit>{FILTER_LABELS[by]}</Text>
+              </UnstyledButton>
+            </HotkeyTooltip>
+          ))}
+        </Group>
+      </Group>
+      <Group gap="gap" wrap="nowrap" {...stylex.props(styles.action)}>
+        <Text component="span" size="sm" {...stylex.props(styles.hint)}>
+          {marked ? 'F flags the marked range' : 'Drag on the timeline or select words to mark a range'}
+        </Text>
+        <HotkeyTooltip name={marked ? 'Flag the marked range' : 'Or mark one with I and O as it plays'} hotkey="Flag range">
+          <Box component="span" {...stylex.props(styles.hinted)}>
+            <Button size="compact-xs" leftSection={<Flag size={12} />} disabled={!marked || composing !== null}
+              onClick={() => marked && setComposing({ kind: 'new', range: marked })}>
+              Flag range
+            </Button>
+          </Box>
+        </HotkeyTooltip>
       </Group>
       <FadeScroll>
-        {queue.length === 0 && (
+        {queue.length === 0 && !removedShown && (
           <Text size="sm" {...stylex.props(styles.empty)}>
-            {flags.flags.length ? 'None of these.' : 'No flags. Drag on the timeline, or select words, then F flags the range.'}
+            {flags.flags.length ? 'None of these.' : 'No flags yet.'}
           </Text>
         )}
-        {queue.map((flag) => <LibraryFlagRow key={flag.id} flag={flag} />)}
+        {rows}
       </FadeScroll>
       {composing && <LibraryFlagComposer key={composing.kind === 'note' ? composing.flag : 'new'} composing={composing} />}
     </Box>
