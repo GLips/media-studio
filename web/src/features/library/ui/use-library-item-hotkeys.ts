@@ -1,6 +1,7 @@
 import { useHotkeys, type UseHotkeyDefinition } from '@tanstack/react-hotkeys';
 import { libraryFlagBeside, type LibraryFlagFilter } from '#lib/footage/library/models/library-flags.ts';
 import type { LibraryItemScreenValue } from './library-item-context.tsx';
+import { LIBRARY_VOLUME_STEP } from './library-item-playback.ts';
 
 const libraryKey = (hotkey: UseHotkeyDefinition['hotkey'], name: string, callback: () => void, ignoreInputs?: boolean): UseHotkeyDefinition =>
   ({ hotkey, callback, options: { ...(ignoreInputs !== undefined && { ignoreInputs }), meta: { group: 'library', name } } });
@@ -11,7 +12,7 @@ const FILTER_CYCLE: readonly LibraryFlagFilter[] = ['all', 'agent', 'reviewer'];
 const LIBRARY_NUDGE_SECONDS = 2, LIBRARY_JUMP_SECONDS = 10;
 
 /**
- * The item screen's keys: Space plays, ← → move; I and O mark a range, F flags it; N and Shift+N step through the
+ * The item screen's keys: Space plays, ← → move, M mutes and Alt+↑ ↓ set the volume; I and O mark a range, F flags it; N and Shift+N step through the
  * queue, each flag looping; E edits its note, Mod+Backspace removes it; A cycles whose flags the queue holds; Esc lets
  * go of the flag, then the range.
  */
@@ -33,6 +34,9 @@ export function useLibraryItemHotkeys(screen: LibraryItemScreenValue) {
     libraryKey('ArrowRight', 'On 2 s', () => playback.seek(playback.timeNow() + LIBRARY_NUDGE_SECONDS)),
     libraryKey('Shift+ArrowLeft', 'Back 10 s', () => playback.seek(playback.timeNow() - LIBRARY_JUMP_SECONDS)),
     libraryKey('Shift+ArrowRight', 'On 10 s', () => playback.seek(playback.timeNow() + LIBRARY_JUMP_SECONDS)),
+    libraryKey('M', 'Mute', () => playback.setMuted(!playback.getState().muted)),
+    libraryKey('Alt+ArrowUp', 'Louder', () => playback.setVolume(playback.getState().volume + LIBRARY_VOLUME_STEP)),
+    libraryKey('Alt+ArrowDown', 'Quieter', () => playback.setVolume(playback.getState().volume - LIBRARY_VOLUME_STEP)),
     libraryKey('I', 'Mark in', mark('start')),
     libraryKey('O', 'Mark out', mark('end')),
     libraryKey('N', 'Next flag', step(1)),

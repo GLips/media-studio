@@ -3,8 +3,7 @@ import * as stylex from '@stylexjs/stylex';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { AudioLines, File, Film, Mic, Monitor, Video, type LucideIcon } from 'lucide-react';
 import { useRef } from 'react';
-import { libraryItemHasRecorderTitle, librarySourcesOf, type LibrarySourceKind } from '#lib/footage/library/models/library-item.ts';
-import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
+import { formatLibraryLength, libraryItemHasRecorderTitle, librarySourcesOf, type LibrarySourceKind } from '#lib/footage/library/models/library-item.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
@@ -39,7 +38,11 @@ const styles = stylex.create({
   name: { minWidth: 0, display: 'flex', flexDirection: 'column', gap: spacing.hairline },
   titleLine: { minWidth: 0, display: 'flex', alignItems: 'baseline', gap: spacing.gap },
   text: { minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  said: { color: colors.dim },
+  // The second line keeps to a measure a line of speech reads at.
+  second: { maxWidth: '72ch' },
+  // What the take opens by saying reads above the dates and column names.
+  said: { color: `color-mix(in srgb, ${colors.cream} 70%, transparent)` },
+  dim: { color: colors.dim },
   mark: { color: colors.caution, whiteSpace: 'nowrap' },
   sources: { color: colors.dim, width: 'fit-content' },
 });
@@ -61,14 +64,18 @@ function LibraryShelfItemName({ shelved: { item, opening } }: { readonly shelved
   const interrupted = item.source.kind === 'studio-recorder' && item.source.status === 'interrupted';
   const date = formatLibraryDate(item.recordedAt ?? item.addedAt);
   const dated = libraryItemHasRecorderTitle(item);
-  const second = [!dated && date, opening].filter(Boolean).join(' · ');
   return (
     <Box {...stylex.props(styles.name)}>
       <Box {...stylex.props(styles.titleLine)}>
         <Text component="span" size="md" title={item.title} {...stylex.props(styles.text)}>{dated ? date : item.title}</Text>
         {interrupted && <Text component="span" size="sm" {...stylex.props(styles.mark)}>interrupted</Text>}
       </Box>
-      {second && <Text component="span" size="sm" {...stylex.props(styles.text, styles.said)}>{second}</Text>}
+      {(!dated || opening) && (
+        <Text component="span" size="sm" {...stylex.props(styles.text, styles.second)}>
+          {!dated && <Text component="span" inherit {...stylex.props(styles.dim)}>{date}{opening && ' · '}</Text>}
+          <Text component="span" inherit {...stylex.props(styles.said)}>{opening}</Text>
+        </Text>
+      )}
     </Box>
   );
 }
@@ -89,7 +96,7 @@ function LibraryShelfItemRow({ shelved, online }: { readonly shelved: LibraryShe
           })}
         </Group>
       </HotkeyTooltip>
-      <Box {...stylex.props(libraryShelfColumns.end)}><Readout>{formatReviewClock(item.durationSeconds)}</Readout></Box>
+      <Box {...stylex.props(libraryShelfColumns.end)}><Readout>{formatLibraryLength(item.durationSeconds)}</Readout></Box>
       <Box {...stylex.props(libraryShelfColumns.end)}>{flags > 0 && <Text component="span" size="sm">{flags} flag{flags > 1 ? 's' : ''}</Text>}</Box>
     </LibraryShelfRow>
   );

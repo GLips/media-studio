@@ -20,15 +20,18 @@ const LIBRARY_FOLLOW_PAUSE_MS = 4000;
 const styles = stylex.create({
   body: { padding: spacing.inset, display: 'flex', flexDirection: 'column', gap: spacing.gap },
   empty: { padding: spacing.inset, color: colors.dim },
-  line: { display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr)', columnGap: spacing.gap, alignItems: 'baseline' },
+  // A flag marks its lines with a rule down their edge, in its author's colour, so the lit word is the one mark in the text.
+  line: {
+    display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr)', columnGap: spacing.gap, alignItems: 'baseline',
+    borderInlineStartWidth: '2px', borderInlineStartStyle: 'solid', borderInlineStartColor: 'transparent',
+  },
+  agentLine: { borderInlineStartColor: colors.caution },
+  reviewerLine: { borderInlineStartColor: colors.cobalt },
   stamp: {
     textAlign: 'start', paddingInline: spacing.tight, borderRadius: radius.control, backgroundColor: { default: 'transparent', ':hover': colors.raised },
   },
   words: { margin: 0, color: colors.cream, lineHeight: typography.proseLeading },
-  word: {
-    position: 'relative', isolation: 'isolate', cursor: 'pointer', borderRadius: radius.control,
-    textUnderlineOffset: '5px', textDecorationThickness: '2px',
-  },
+  word: { position: 'relative', isolation: 'isolate', cursor: 'pointer', borderRadius: radius.control },
   // The word being said: lit in cobalt from its start to its end, pure CSS on the time variable, as the plan lights it.
   wash: {
     position: 'absolute', insetInline: `calc(-1 * ${spacing.hairline})`, insetBlock: 0, backgroundColor: colors.cobalt,
@@ -38,10 +41,9 @@ const styles = stylex.create({
     opacity: `calc(0.8 * min(clamp(0, calc((${TIME} - ${from}) * 100000 + 1), 1), clamp(0, calc((${to} - ${TIME}) * 100000), 1)))`,
   }),
   marked: { backgroundColor: colors.rangeWash },
-  flagged: { textDecorationLine: 'underline' },
-  agent: { textDecorationColor: colors.caution },
-  reviewer: { textDecorationColor: colors.cobalt },
 });
+
+const LINE_RULES = { agent: styles.agentLine, reviewer: styles.reviewerLine } as const;
 
 /** The line spoken at `seconds`: the last to start by then. -1 before the first. */
 function lineIndexAt(lines: readonly TranscriptLine[], seconds: number): number {
@@ -106,13 +108,17 @@ function useLibraryTranscriptFollow() {
 
 /**
  * What's said, line by line, the word being said lit and the page following it while it plays. A word's click plays
- * from it; a line's time plays from the line. Words selected become the range to flag. Flagged words are underlined
- * in their author's colour.
+ * from it; a line's time plays from the line. Words selected become the range to flag. A flag's lines carry a
+ * rule in its author's colour.
  */
 export function LibraryTranscript() {
   const { view, playback, words, lines, flags, marked, setMarked } = useLibraryItemScreen();
   const { root, readerScrolled, shownLine } = useLibraryTranscriptFollow();
-  const marks = useMemo(() => flaggedWords(words, flags.flags), [words, flags.flags]);
+  // By line, the newest flag over any of its words.
+  const lineFlags = useMemo(() => {
+    const marks = flaggedWords(words, flags.flags);
+    return lines.map((line) => Array.from({ length: line.wordCount }, (_, k) => marks.get(line.firstWord + k)).findLast(Boolean));
+  }, [words, lines, flags.flags]);
 
   if (!words.length) {
     const why = view.item.speech ? 'No transcript yet: `studio library finish` makes it.' : 'Nothing in this item has sound to transcribe.';
@@ -135,17 +141,18 @@ export function LibraryTranscript() {
         {...stylex.props(styles.body)}
       >
         {lines.map((line, n) => (
-          <Box key={line.firstWord} data-line={n} aria-current={n === shownLine || undefined} {...stylex.props(styles.line)}>
+          <Box key={line.firstWord} data-line={n} aria-current={n === shownLine || undefined}
+            {...stylex.props(styles.line, lineFlags[n] && LINE_RULES[lineFlags[n].by])}>
             <UnstyledButton onClick={() => playback.seek(line.start)} {...stylex.props(styles.stamp)}><Readout>{formatReviewClock(line.start)}</Readout></UnstyledButton>
             <Text component="p" size="md" {...stylex.props(styles.words)}>
               {words.slice(line.firstWord, line.firstWord + line.wordCount).map((word, k) => {
-                const i = line.firstWord + k, flag = marks.get(i), middle = (word.start + word.end) / 2;
+                const i = line.firstWord + k, middle = (word.start + word.end) / 2;
                 const inMarked = marked !== null && marked.start <= middle && middle <= marked.end;
                 return (
                   <Fragment key={i}>
                     {k > 0 && ' '}
                     <Text component="span" inherit data-word={i} onClick={() => seekTo(word.start)}
-                      {...stylex.props(styles.word, inMarked && styles.marked, flag && styles.flagged, flag && styles[flag.by])}>
+                      {...stylex.props(styles.word, inMarked && styles.marked)}>
                       <Box component="span" aria-hidden {...stylex.props(styles.wash, styles.washOn(word.start, word.end))} />
                       {word.text}
                     </Text>

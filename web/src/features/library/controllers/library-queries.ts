@@ -68,5 +68,9 @@ export function useLibraryFlagOps(item: string, durationSeconds: number) {
     // Itself still counted while it settles: 1 is the last of the queue.
     onSettled: () => (client.isMutating({ mutationKey: ['library-flag-ops', item] }) === 1 ? client.invalidateQueries({ queryKey }) : undefined),
   });
-  return { apply: (op: LibraryFlagOpInput) => send.mutate(op), error: send.error, reset: send.reset };
+  return {
+    /** `onSaved` hears the server take it; a refusal leaves `error` holding why. */
+    apply: (op: LibraryFlagOpInput, onSaved?: () => void) => send.mutate(op, onSaved && { onSuccess: onSaved }),
+    error: send.error, reset: send.reset, saving: send.isPending,
+  };
 }

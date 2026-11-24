@@ -16,8 +16,9 @@ import { useLibraryItemScreen, type LibraryComposing } from './library-item-cont
 const FLAG_ROW_HEIGHT = '28px';
 
 const styles = stylex.create({
-  // The list keeps at least one flag's row, so an open composer on a short window never hides every flag.
-  panel: { display: 'grid', gridTemplateRows: `${spacing.row} minmax(${FLAG_ROW_HEIGHT}, 1fr) auto`, height: '100%', minHeight: 0 },
+  // As tall as its flags, to a third of the window, past which they scroll; the list keeps at least one flag's row, so
+  // an open composer never hides every flag.
+  panel: { display: 'grid', gridTemplateRows: `${spacing.row} minmax(${FLAG_ROW_HEIGHT}, auto) auto`, maxHeight: '33dvh' },
   head: { paddingInline: spacing.gap, borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: colors.line },
   chip: { paddingInline: spacing.tight, borderRadius: radius.control, color: colors.dim, backgroundColor: { default: 'transparent', ':hover': colors.raised } },
   chipOn: { color: colors.cream, backgroundColor: colors.raised },
@@ -57,20 +58,25 @@ const FILTER_LABELS: Record<LibraryFlagFilter, string> = { all: 'all', agent: 'a
 /** Who set a flag, as its row says it. */
 const BY_GLYPHS: Record<LibraryFlag['by'], { glyph: string; word: string }> = { agent: { glyph: '◆', word: 'an agent' }, reviewer: { glyph: '●', word: 'you' } };
 
-/** The composer: a new flag's note over the marked range, or a flag's note changed. Enter saves, Esc leaves it. */
+/**
+ * The composer: a new flag's note over the marked range, or a flag's note changed. Enter saves, Esc leaves it. It
+ * closes once the server has the change; a refused save keeps it open with the draft and says why.
+ */
 function LibraryFlagComposer({ composing }: { readonly composing: LibraryComposing }) {
-  const { flags, changeFlags, setComposing, setMarked, refusal } = useLibraryItemScreen();
+  const { flags, changeFlags, setComposing, setMarked, refusal, saving } = useLibraryItemScreen();
   const editing = composing.kind === 'note' ? flags.flags.find((f) => f.id === composing.flag) : undefined;
   const [text, setText] = useState(editing?.note ?? '');
   const field = useRef<HTMLTextAreaElement>(null);
   useEffect(() => focusNoteFieldAtEnd(field.current), []);
   const range = composing.kind === 'new' ? composing.range : editing;
   const save = () => {
+    if (saving) return;
     if (composing.kind === 'new') {
-      changeFlags({ op: 'flag.add', start: composing.range.start, end: composing.range.end, ...(text.trim() && { note: text }) });
-      setMarked(null);
-    } else changeFlags({ op: 'flag.note', id: composing.flag, note: text });
-    setComposing(null);
+      changeFlags({ op: 'flag.add', start: composing.range.start, end: composing.range.end, ...(text.trim() && { note: text }) }, () => {
+        setMarked(null);
+        setComposing(null);
+      });
+    } else changeFlags({ op: 'flag.note', id: composing.flag, note: text }, () => setComposing(null));
   };
   return (
     <Stack gap="tight" {...stylex.props(styles.composer)}>
@@ -80,11 +86,11 @@ function LibraryFlagComposer({ composing }: { readonly composing: LibraryComposi
       <Textarea ref={field} value={text} onChange={(event) => setText(event.currentTarget.value)} onEnter={save} onEscape={() => setComposing(null)}
         placeholder="What it is: a good take, a line to use, a stretch to cut (or nothing)" autosize minRows={1} maxRows={4} aria-label="Flag note"
         classNames={{ input: stylex.props(styles.field).className }} />
-      {refusal && <Text size="sm" {...stylex.props(styles.refusal)}>{refusal}</Text>}
+      {refusal && <Text size="sm" role="alert" {...stylex.props(styles.refusal)}>Not saved: {refusal}</Text>}
       <Group gap="gap" wrap="nowrap">
         <Text component="span" size="sm" {...stylex.props(styles.keys)}>Enter saves, Esc cancels</Text>
         <Button onClick={() => setComposing(null)}>Cancel</Button>
-        <Button onClick={save} {...stylex.props(styles.save)}>Save</Button>
+        <Button onClick={save} loading={saving} {...stylex.props(styles.save)}>{refusal ? 'Try again' : 'Save'}</Button>
       </Group>
     </Stack>
   );
@@ -122,7 +128,6 @@ function LibraryFlagRow({ flag }: { readonly flag: LibraryFlag }) {
 export function LibraryFlagPanel() {
   const { flags, queue, filter, setFilter, focused, marked, composing, setComposing } = useLibraryItemScreen();
   const at = focused ? queue.findIndex((f) => f.id === focused.id) : -1;
-  const count = (by: LibraryFlagFilter) => flags.flags.filter((f) => by === 'all' || f.by === by).length;
   return (
     <Box {...stylex.props(styles.panel)}>
       <Group gap="tight" wrap="nowrap" {...stylex.props(styles.head)}>
@@ -130,7 +135,7 @@ export function LibraryFlagPanel() {
         {(['all', 'agent', 'reviewer'] as const).map((by) => (
           <HotkeyTooltip key={by} name={`Flags: ${FILTER_LABELS[by]}`} hotkey="Whose flags">
             <UnstyledButton aria-pressed={filter === by} onClick={() => setFilter(by)} {...stylex.props(styles.chip, filter === by && styles.chipOn)}>
-              <Text component="span" size="sm" inherit>{FILTER_LABELS[by]} {count(by) > 0 && count(by)}</Text>
+              <Text component="span" size="sm" inherit>{FILTER_LABELS[by]}</Text>
             </UnstyledButton>
           </HotkeyTooltip>
         ))}

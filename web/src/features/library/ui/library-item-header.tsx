@@ -1,8 +1,7 @@
 import { Group, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { Fragment, type ReactNode } from 'react';
-import { librarySourcesOf } from '#lib/footage/library/models/library-item.ts';
-import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
+import { formatLibraryLength, librarySourcesOf } from '#lib/footage/library/models/library-item.ts';
 import { AnchorLink } from '#web/shared/ui/anchor-link.tsx';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
@@ -12,11 +11,9 @@ import { useLibraryItemScreen } from './library-item-context.tsx';
 const styles = stylex.create({
   header: { flex: 1, minWidth: 0 },
   crumb: { color: colors.dim, paddingInline: spacing.tight, whiteSpace: 'nowrap' },
-  title: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: colors.cream, fontWeight: 700 },
-  facts: {
-    height: spacing.row, paddingInline: spacing.inset, minWidth: 0, overflow: 'hidden', color: colors.dim,
-    borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: colors.line,
-  },
+  // The title keeps its room before the facts give up theirs; a long one gives way at half the bar.
+  title: { flexShrink: 0, maxWidth: '50%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: colors.cream, fontWeight: 700 },
+  facts: { flex: 1, minWidth: 0, overflow: 'hidden', color: colors.dim, paddingInlineStart: spacing.tight },
   fact: { whiteSpace: 'nowrap' },
   link: { color: colors.dim, textDecorationColor: colors.mark },
   offline: { color: colors.caution, whiteSpace: 'nowrap', cursor: 'default' },
@@ -25,29 +22,16 @@ const styles = stylex.create({
 /** The day and time footage began, as Graham reads it. */
 const recordedOn = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
-/** The item's part of the bar: `library /` and its title. */
-export function LibraryItemHeader() {
-  const { view: { item } } = useLibraryItemScreen();
-  return (
-    <Group gap="gap" wrap="nowrap" {...stylex.props(styles.header)}>
-      <Text component="span" size="sm" {...stylex.props(styles.crumb)}>
-        <AnchorLink to="/library" inherit underline="never" c="inherit">Library</AnchorLink> /
-      </Text>
-      <Text component="span" size="md" title={item.title} {...stylex.props(styles.title)}>{item.title}</Text>
-    </Group>
-  );
-}
-
 /**
- * The quiet line under the bar: when the item was recorded, its length, its sources, the window its screen recorded,
+ * The quiet run after the title: when the item was recorded, its length, its sources, the window its screen recorded,
  * the projects that use it, and whether its media is there.
  */
-export function LibraryItemFacts() {
+function LibraryItemFacts() {
   const { view } = useLibraryItemScreen();
   const { item, usedBy, media } = view;
   const facts: { key: string; node: ReactNode }[] = [
     { key: 'recorded', node: recordedOn(item.recordedAt ?? item.addedAt) },
-    { key: 'length', node: <Readout>{formatReviewClock(item.durationSeconds)}</Readout> },
+    { key: 'length', node: <Readout>{formatLibraryLength(item.durationSeconds)}</Readout> },
     { key: 'sources', node: librarySourcesOf(item).map(({ label }) => label).join(', ') },
     ...Object.values(item.tracks).flatMap(({ window }) => (window ? [window] : [])).map(({ title, app }) => ({
       key: `window ${app} ${title}`,
@@ -75,6 +59,20 @@ export function LibraryItemFacts() {
           <Text component="span" size="sm" {...stylex.props(styles.offline)}>· media offline</Text>
         </HotkeyTooltip>
       )}
+    </Group>
+  );
+}
+
+/** The item's part of the bar: `library /`, its title, and its facts, dim after it. */
+export function LibraryItemHeader() {
+  const { view: { item } } = useLibraryItemScreen();
+  return (
+    <Group gap="gap" wrap="nowrap" {...stylex.props(styles.header)}>
+      <Text component="span" size="sm" {...stylex.props(styles.crumb)}>
+        <AnchorLink to="/library" inherit underline="never" c="inherit">Library</AnchorLink> /
+      </Text>
+      <Text component="span" size="md" title={item.title} {...stylex.props(styles.title)}>{item.title}</Text>
+      <LibraryItemFacts />
     </Group>
   );
 }
