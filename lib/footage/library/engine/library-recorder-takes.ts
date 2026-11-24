@@ -51,7 +51,8 @@ export const listLibraryRecorderTakes = Effect.fn('LibraryRecorderTakes.list')(f
     const known = new Set(added.map(({ folder }) => path.basename(folder)));
     for (const name of (yield* fs.readDirectory(inbox)).toSorted()) {
       const folder = path.join(inbox, name);
-      if (known.has(name) || !(yield* fs.exists(path.join(folder, 'recording.json')))) continue;
+      // The Finder leaves .DS_Store here, and asking after a file inside a file fails rather than answering no.
+      if (known.has(name) || (yield* fs.stat(folder)).type !== 'Directory' || !(yield* fs.exists(path.join(folder, 'recording.json')))) continue;
       const read = yield* readRecorderTakeFolder(folder, folder).pipe(
         Effect.map(Option.some),
         Effect.catchTags({

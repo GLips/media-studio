@@ -133,6 +133,8 @@ test("the recorder's takes are listed wherever they went, and a take thrown away
   const failed = writeTake(root, { status: 'complete', stillFor: 0, input: CLICK, name: '2026-11-22 19.00.00' });
   writeTake(root, { status: 'recording', stillFor: 0, input: CLICK, name: '2026-11-22 19.30.00' });
   const inbox = join(root, 'Studio Recordings');
+  // The Finder's file beside the takes is no take.
+  writeFileSync(join(inbox, '.DS_Store'), '');
 
   const takes = await runStudioEffect(listLibraryRecorderTakes({ inbox }), libraryAt(root));
   // The live take is left out: the recorder is still writing it.
