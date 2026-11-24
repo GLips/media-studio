@@ -109,7 +109,7 @@ type ProjectPlaceProps = {
   readonly now: number;
   /** The file's folder is labelled over its run, so the item shows the file's name alone. */
   readonly folderLabelled?: boolean;
-  /** A row in a list's shared columns, or a tile in a grid (projectTileGridStyles). */
+  /** A row in a list's shared columns, or for a file with a picture, a tile in a grid (projectTileGridStyles). */
   readonly layout?: 'row' | 'tile';
 };
 
@@ -127,6 +127,7 @@ type ProjectPlaceViewProps = { readonly view: PlaceView; readonly row: ReviewPro
 
 function ProjectPlaceView({ view: { target, thumbnail, title, detail, state, end }, row, layout }: ProjectPlaceViewProps) {
   const status = <><ProjectThreadCounts threads={row.threads} />{state}</>;
-  if (layout === 'tile') return <ProjectTile target={target} thumbnail={thumbnail} title={title} detail={detail} status={status} end={end} />;
+  // Only a picture makes a tile; anything else asked for as one is a row (ProjectPageItems keeps them apart).
+  if (layout === 'tile' && thumbnail.thumbnail) return <ProjectTile project={thumbnail.project} thumbnail={thumbnail.thumbnail} target={target} title={title} status={status} end={end} />;
   return <ProjectRow target={target} thumbnail={<ProjectThumbnail {...thumbnail} />} title={title} detail={detail} status={status} end={end} />;
 }

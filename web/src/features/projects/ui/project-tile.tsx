@@ -1,9 +1,10 @@
-import { Box, Group, Text } from '@mantine/core';
+import { Group, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import type { ReactNode } from 'react';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { ProjectTargetLink, type ProjectRowTarget } from './project-target-link.tsx';
-import { ProjectThumbnail, type ProjectThumbnailSource } from './project-thumbnail.tsx';
+import type { ReviewProjectThumbnail } from '#lib/output/review/models/review-dashboard.ts';
+import { ProjectThumbnail } from './project-thumbnail.tsx';
 
 const styles = stylex.create({
   tile: {
@@ -17,11 +18,8 @@ const styles = stylex.create({
     },
     outlineColor: colors.cream, outlineStyle: 'solid', outlineOffset: '-1px', outlineWidth: { default: 0, ':focus-visible': '1px' },
   },
-  // The plan, a decision or the project's notes has no picture: a card edged in a seam, its glyph beside its name.
-  card: { borderWidth: '1px', borderStyle: 'solid', borderColor: colors.line, padding: spacing.gap },
   cell: { minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   name: { fontWeight: 600 },
-  glyph: { display: 'flex', flexShrink: 0, color: colors.dim },
   // Always a line high, so tiles with no status keep their names on one baseline down a grid row.
   status: { minHeight: spacing.row, minWidth: 0 },
   end: { marginInlineStart: 'auto', flexShrink: 0 },
@@ -37,10 +35,10 @@ export const projectTileGridStyles = stylex.create({
 
 type ProjectTileProps = {
   readonly target: ProjectRowTarget;
-  readonly thumbnail: ProjectThumbnailSource;
+  readonly project: string;
+  /** The file's picture: a still's own bytes or a render's frame. */
+  readonly thumbnail: ReviewProjectThumbnail;
   readonly title: ReactNode;
-  /** Under the name on a card: what a decision asks. */
-  readonly detail?: ReactNode;
   /** Its state in plain words: `1 open note`, `1 to verify`. */
   readonly status?: ReactNode;
   /** Its age, at the status line's end. */
@@ -48,33 +46,18 @@ type ProjectTileProps = {
 };
 
 /**
- * A project page's grid item: a file as its picture in a uniform cell, its name and state under it; the plan, a
- * decision or the notes as a compact card. It opens what a row would.
+ * A project page's grid item: a file's picture centred in a uniform cell, its name and its state under it. It opens
+ * what its row would. Only files with pictures are tiles; the plan, decisions and notes stay rows in the grid view.
  */
-export function ProjectTile({ target, thumbnail, title, detail, status, end }: ProjectTileProps) {
-  const statusLine = (
-    <Group gap="gap" wrap="nowrap" {...stylex.props(styles.status)}>
-      {status}
-      <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>{end}</Group>
-    </Group>
-  );
-  if (!thumbnail.thumbnail) {
-    return (
-      <ProjectTargetLink target={target} xstyle={[styles.tile, styles.card]}>
-        <Group gap="gap" wrap="nowrap">
-          <Box component="span" {...stylex.props(styles.glyph)}>{thumbnail.glyph}</Box>
-          <Text component="span" size="md" {...stylex.props(styles.cell, styles.name)}>{title}</Text>
-        </Group>
-        {detail !== undefined && <Text component="span" size="sm" {...stylex.props(styles.cell)}>{detail}</Text>}
-        {statusLine}
-      </ProjectTargetLink>
-    );
-  }
+export function ProjectTile({ target, project, thumbnail, title, status, end }: ProjectTileProps) {
   return (
     <ProjectTargetLink target={target} xstyle={styles.tile}>
-      <ProjectThumbnail {...thumbnail} tile />
+      <ProjectThumbnail project={project} thumbnail={thumbnail} tile />
       <Text component="span" size="md" {...stylex.props(styles.cell, styles.name)}>{title}</Text>
-      {statusLine}
+      <Group gap="gap" wrap="nowrap" {...stylex.props(styles.status)}>
+        {status}
+        <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>{end}</Group>
+      </Group>
     </ProjectTargetLink>
   );
 }

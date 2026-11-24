@@ -63,13 +63,13 @@ function projectPageRungs(rows: readonly ReviewProjectRow[]): { shown: ProjectPa
 }
 
 /**
- * The grid's sections: the cards (plan, decisions, the project's notes) side by side, then the loose files as one grid,
- * then each folder. A rung of one item would stand alone in a row of empty grid, so only folders get a section each.
+ * The grid's sections: what's to review (plan, decisions, the project's notes) as rows, then the loose files as one
+ * grid, then each folder. A rung of one item would stand alone in a row of empty grid, so only folders get a section.
  */
 function projectPageGridSections(shown: readonly ProjectPageRung[]): ProjectPageRung[] {
   const loose = shown.filter((rung) => !rung.folders).flatMap((rung) => rung.rows);
   return [
-    { key: 'cards', rows: loose.filter((row) => row.on !== 'file') },
+    { key: 'review', rows: loose.filter((row) => row.on !== 'file') },
     { key: 'files', rows: loose.filter((row) => row.on === 'file') },
     ...shown.filter((rung) => rung.folders),
   ].filter((section) => section.rows.length > 0);
@@ -105,10 +105,21 @@ type ProjectRowsProps = {
   readonly view: StudioCollectionView;
 };
 
-/** A run's items: rows in the list's columns, or tiles in a grid of their own across it. */
+/**
+ * A run's items as rows in the list's columns. In the grid view only pictures become tiles, in a grid of their own
+ * across the list: the plan, decisions and notes are things to read and act on, and stay rows above them.
+ */
 function ProjectPageItems({ summary, now, rows, folderLabelled, view }: Omit<ProjectRowsProps, 'folders'> & { readonly folderLabelled: boolean }) {
-  const items = rows.map((row) => <ProjectPlace key={projectPlaceKeyOf(row)} summary={summary} row={row} now={now} folderLabelled={folderLabelled} layout={view === 'grid' ? 'tile' : 'row'} />);
-  return view === 'grid' ? <Box {...stylex.props(projectTileGridStyles.grid)}>{items}</Box> : items;
+  const place = (row: ReviewProjectRow, layout: 'row' | 'tile') =>
+    <ProjectPlace key={projectPlaceKeyOf(row)} summary={summary} row={row} now={now} folderLabelled={folderLabelled} layout={layout} />;
+  if (view === 'list') return rows.map((row) => place(row, 'row'));
+  const files = rows.filter((row) => row.on === 'file');
+  return (
+    <>
+      {rows.filter((row) => row.on !== 'file').map((row) => place(row, 'row'))}
+      {files.length > 0 && <Box {...stylex.props(projectTileGridStyles.grid)}>{files.map((row) => place(row, 'tile'))}</Box>}
+    </>
+  );
 }
 
 function ProjectPageRows({ summary, now, rows, folders, view }: ProjectRowsProps) {
