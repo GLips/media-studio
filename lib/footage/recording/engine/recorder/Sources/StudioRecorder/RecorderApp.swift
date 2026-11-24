@@ -18,8 +18,6 @@ final class RecorderApp {
   var inputMenu: InputMenu?
   /// The timers of the activities that tick: the track watch, the take's clock and the permission poll.
   private var timers: [RecorderActivity: Timer] = [:]
-  /// The library adds running, by their take's folder, for a throw-away to stop.
-  private var libraryAdds: [URL: Process] = [:]
   private lazy var screenPicker = ScreenPicker { [weak self] event in self?.send(event) }
 
   init(config: RecorderConfig, configURL: URL, launch: RecorderStep<Recording>, oneTakeSeconds: Double = 0) {
@@ -86,17 +84,12 @@ final class RecorderApp {
         send(.takeEnded(durationSeconds: await take.end(problems: problems)))
       }
     case .handOffToLibrary(let folder):
-      libraryAdds[folder] = handOffToLibrary(folder) { [weak self] failure in
-        self?.libraryAdds[folder] = nil
-        self?.send(.libraryAddEnded(folder, failure: failure))
-      }
-    case .stopLibraryAdd(let folder):
-      libraryAdds[folder]?.terminate()
+      handOffToLibrary(folder) { [weak self] failure in self?.send(.libraryAddEnded(folder, failure: failure)) }
     case .loadRecentTakes(let asked):
       let recordings = config.recordingsURL
       Task {
         do throws(StudioCommandFailure) {
-          let listed = try await runStudioCommand("StudioLibraryRecordings", folder: recordings)
+          let listed = try await runStudioCommand("StudioLibraryRecordings", [recordings.path])
           do {
             send(.recentTakesLoaded(try RecorderRecentTake.listed(fromJSON: listed), asked: asked))
           } catch {
@@ -107,26 +100,30 @@ final class RecorderApp {
         }
       }
     case .openLibraryItem(let item):
-      openLibraryItem(item)
+      runStudioAppCommand(.openItem, "StudioLibraryOpen", [item])
+    case .loadStudioAppStatus(let asked):
+      Task {
+        do throws(StudioCommandFailure) {
+          let said = try await runStudioCommand("StudioAppStatus")
+          do {
+            send(.studioAppStatusLoaded(try StudioAppStatus.parsed(fromJSON: said), asked: asked))
+          } catch {
+            send(.studioAppStatusUnavailable("studio app status printed what the recorder can't read: \(error)", asked: asked))
+          }
+        } catch {
+          send(.studioAppStatusUnavailable(error.description, asked: asked))
+        }
+      }
+    case .startStudioApp:
+      runStudioAppCommand(.start, "StudioAppStart")
+    case .stopStudioApp:
+      runStudioAppCommand(.stop, "StudioAppStop")
+    case .openStudioApp:
+      runStudioAppCommand(.open, "StudioAppOpen")
     case .reveal(let folder):
       // A take being added has left its folder part way: the recordings folder shows where it was.
       let shown = FileManager.default.fileExists(atPath: folder.path) ? folder : folder.deletingLastPathComponent()
       NSWorkspace.shared.open(shown)
-    case .confirmThrowAway(let take):
-      // After this transition's effects: the alert's modal loop runs timers and tasks, which send events of their own.
-      DispatchQueue.main.async { [weak self] in
-        guard let self, self.confirmThrowAway(take) else { return }
-        self.send(.throwAwayConfirmed(take.folder))
-      }
-    case .throwAway(let folder):
-      Task {
-        do throws(StudioCommandFailure) {
-          _ = try await runStudioCommand("StudioLibraryRemoveTake", folder: folder)
-          send(.takeThrownAway(folder))
-        } catch {
-          send(.throwAwayFailed(folder, reason: error.description))
-        }
-      }
     case .saveInputPick(let pick):
       saveInputPick(pick)
     case .presentScreenPicker:
@@ -174,18 +171,16 @@ final class RecorderApp {
     return timer
   }
 
-  /// Asks once before a take is thrown away; true on Throw Away.
-  private func confirmThrowAway(_ take: RecorderRecentTake) -> Bool {
-    let alert = NSAlert()
-    let item = RecorderMenuStatus.RecentTakeItem.title(of: take)
-    alert.messageText = "Throw away the take from \(item)?"
-    alert.informativeText = "It's removed from the library with its media and transcript, for good."
-    alert.alertStyle = .warning
-    let throwAway = alert.addButton(withTitle: "Throw Away")
-    throwAway.hasDestructiveAction = true
-    alert.addButton(withTitle: "Cancel")
-    NSApp.activate()
-    return alert.runModal() == .alertFirstButtonReturn
+  /// Runs a studio app command to its end, then says how it went.
+  private func runStudioAppCommand(_ command: StudioAppCommand, _ key: String, _ arguments: [String] = []) {
+    Task {
+      do throws(StudioCommandFailure) {
+        _ = try await runStudioCommand(key, arguments)
+        send(.studioAppCommandEnded(command, failure: nil))
+      } catch {
+        send(.studioAppCommandEnded(command, failure: error.description))
+      }
+    }
   }
 
   /// Applies the pick to config.json as it stands now, so edits made there since launch are kept, and take effect,

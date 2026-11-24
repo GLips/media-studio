@@ -42,12 +42,13 @@ func names(_ effects: [Effect]) -> [String] {
     case .alertTrackProblem: "alert"
     case .endTake: "endTake"
     case .handOffToLibrary: "handOff"
-    case .stopLibraryAdd: "stopLibraryAdd"
     case .loadRecentTakes: "loadRecentTakes"
     case .reveal(let folder): "reveal \(folder.path)"
     case .openLibraryItem(let item): "openLibraryItem \(item)"
-    case .confirmThrowAway: "confirmThrowAway"
-    case .throwAway: "throwAway"
+    case .loadStudioAppStatus: "loadStudioAppStatus"
+    case .startStudioApp: "startStudioApp"
+    case .stopStudioApp: "stopStudioApp"
+    case .openStudioApp: "openStudioApp"
     case .saveInputPick: "saveInputPick"
     case .presentScreenPicker: "presentScreenPicker"
     case .dismissScreenPicker: "dismissScreenPicker"
@@ -65,7 +66,7 @@ var atIdle: RecorderStep<FakeTake> { State.launch(missing: []) }
   var (state, effects) = run(atIdle, [.menuOpened, .toggleRequested, .toggleRequested])
   #expect(state.phase.name == .starting)
   // The check lets go of the devices before the take opens them, and the second press starts nothing.
-  #expect(names(effects) == ["loadRecentTakes", "start inputCheck", "stop inputCheck", "beginTake"])
+  #expect(names(effects) == ["loadRecentTakes", "loadStudioAppStatus", "start inputCheck", "stop inputCheck", "beginTake"])
 
   (state, effects) = run(state, [.takeStarted(take), .toggleRequested, .takeEnded(durationSeconds: 12)])
   #expect(state.phase.name == .idle)
@@ -189,53 +190,59 @@ func recent(_ id: Int, _ place: RecorderRecentTake.Place) -> RecorderRecentTake 
   #expect(names(effects) == ["openLibraryItem two"])
 }
 
-@Test func theTakeRecordingNowIsNeverListedSoNeverThrownAway() {
-  let (state, effects) = run(atIdle, [
+@Test func theTakeRecordingNowIsNeverListed() {
+  let (state, _) = run(atIdle, [
     .toggleRequested, .takeStarted(FakeTake(id: 3)),
     // A still screen-only take looks killed to the library.
     .recentTakesLoaded([recent(3, .inRecordings), recent(1, .inLibrary(item: "one", mediaFolder: nil))], asked: 1),
-    .throwAwayRequested,
   ])
   #expect(state.recentTakes.map(\.folder) == [FakeTake(id: 1).folder])
-  guard case .confirmThrowAway(let asked)? = effects.last else {
-    Issue.record("no confirmation asked")
-    return
-  }
-  #expect(asked.folder == FakeTake(id: 1).folder)
 }
 
-@Test func throwingAwayATakeStillBeingAddedStopsTheAddFirst() {
-  let take = FakeTake(id: 1)
-  var (state, effects) = run(atIdle, [.toggleRequested, .takeStarted(take), .toggleRequested, .takeEnded(durationSeconds: 5), .throwAwayRequested])
-  guard case .confirmThrowAway(let asked)? = effects.last else {
-    Issue.record("no confirmation asked")
-    return
-  }
-  #expect(asked.folder == take.folder)
-  (state, effects) = run(state, [.throwAwayConfirmed(take.folder), .throwAwayRequested])
-  // A second Throw Away while it goes asks nothing.
-  #expect(names(effects) == ["log", "stopLibraryAdd"])
-  #expect(RecorderMenuStatus(state, hotkey: "k", appName: "R").throwAwayTitle == nil)
+@Test func openingTheMenuOnlyAsksAfterTheStudioAppAndStartStopRunOneAtATime() {
+  var (state, effects) = run(atIdle, [.menuOpened])
+  #expect(names(effects) == ["loadRecentTakes", "loadStudioAppStatus", "start inputCheck"])
+  (state, _) = run(state, [.studioAppStatusLoaded(StudioAppStatus(state: .stopped), asked: 1)])
+  #expect(RecorderMenuStatus(state, hotkey: "k", appName: "R").studioApp.action == .start)
 
-  // The stopped add exits non-zero: that's the throw-away going ahead, not a failed add.
-  (state, effects) = run(state, [.libraryAddEnded(take.folder, failure: .exited(status: 143))])
-  #expect(names(effects) == ["throwAway"])
-  #expect(state.libraryFailure == nil)
-  (state, effects) = run(state, [.takeThrownAway(take.folder)])
-  #expect(state.recentTakes.isEmpty)
-  #expect(names(effects) == ["log", "loadRecentTakes"])
+  (state, effects) = run(state, [.studioAppStartRequested, .studioAppStartRequested, .studioAppStopRequested, .menuClosed, .menuOpened])
+  // The second press and the stop wait on the start, and reopening the menu asks nothing meanwhile.
+  #expect(names(effects) == ["startStudioApp", "stop inputCheck", "start inputCheck"])
+  let starting = RecorderMenuStatus(state, hotkey: "k", appName: "R").studioApp
+  #expect(starting.title == "Studio App: Starting…" && starting.action == nil)
+
+  (state, effects) = run(state, [.studioAppCommandEnded(.start, failure: nil)])
+  #expect(names(effects) == ["loadStudioAppStatus"])
+  // A status asked before the start ended is out of date.
+  (state, _) = run(state, [.studioAppStatusLoaded(StudioAppStatus(state: .stopped), asked: 1)])
+  #expect(state.studioApp == .starting)
+  (state, _) = run(state, [.studioAppStatusLoaded(StudioAppStatus(state: .running(url: nil, stale: false)), asked: state.studioAppAsked)])
+  #expect(RecorderMenuStatus(state, hotkey: "k", appName: "R").studioApp.action == .stop)
 }
 
-@Test func aThrowAwayTheLibraryRefusesIsShownAndTheTakeRelisted() {
-  let (state, effects) = run(atIdle, [
+@Test func aFailedOpenIsAWarningUntilAnOpenWorks() {
+  var (state, effects) = run(atIdle, [
     .recentTakesLoaded([recent(1, .inLibrary(item: "one", mediaFolder: nil))], asked: 1),
-    .throwAwayConfirmed(FakeTake(id: 1).folder),
-    .throwAwayFailed(FakeTake(id: 1).folder, reason: "one is used by demo"),
+    .openRecentTakeRequested(FakeTake(id: 1).folder),
   ])
-  #expect(names(effects) == ["loadRecentTakes", "log", "throwAway", "log", "loadRecentTakes"])
+  #expect(names(effects) == ["loadRecentTakes", "openLibraryItem one"])
+  #expect(state.studioApp == .starting)
+  (state, effects) = run(state, [.studioAppCommandEnded(.openItem, failure: "port 4317 is taken by something other than the studio app")])
+  #expect(names(effects) == ["log", "loadStudioAppStatus"])
   let status = RecorderMenuStatus(state, hotkey: "k", appName: "R")
-  #expect(status.warnings == ["⚠︎ Throw away failed: one is used by demo"])
+  #expect(status.warnings == ["⚠︎ Open failed: port 4317 is taken by something other than the studio app"])
   #expect(status.glyph == .needsAttention)
+
+  (state, _) = run(state, [.studioAppOpenRequested, .studioAppCommandEnded(.open, failure: nil)])
+  #expect(RecorderMenuStatus(state, hotkey: "k", appName: "R").warnings.isEmpty)
+}
+
+@Test func studioAppStatusReadsStudioAppStatusJson() throws {
+  let running = try StudioAppStatus.parsed(fromJSON: Data(#"{"state":"running","url":"http://localhost:4317","pid":12,"startedAt":"2026-11-23T20:00:00Z","stale":true,"detail":null,"log":"/l"}"#.utf8))
+  #expect(running.state == .running(url: URL(string: "http://localhost:4317"), stale: true))
+  let foreign = try StudioAppStatus.parsed(fromJSON: Data(#"{"state":"foreign","url":null,"pid":null,"startedAt":null,"stale":false,"detail":"another checkout's app","log":"/l"}"#.utf8))
+  #expect(RecorderMenuStatus.StudioAppItems(foreign.state) == RecorderMenuStatus.StudioAppItems(.foreign(detail: "another checkout's app")))
+  #expect(RecorderMenuStatus.StudioAppItems(foreign.state).title == "Studio App: Port taken")
 }
 
 @Test func recentTakesReadStudioLibraryRecordingsJson() throws {
@@ -279,10 +286,10 @@ func randomEvent(_ rng: inout SeededGenerator) -> Event {
     .takeClockTicked(seconds: Double.random(in: 0...100, using: &rng)),
     .libraryAddEnded(FakeTake(id: Int.random(in: 1...3, using: &rng)).folder, failure: Bool.random(using: &rng) ? nil : .exited(status: 1)),
     .recentTakesLoaded([recent(Int.random(in: 1...3, using: &rng), .inRecordings)], asked: Int.random(in: 1...4, using: &rng)),
-    .throwAwayRequested,
-    .throwAwayConfirmed(FakeTake(id: Int.random(in: 1...3, using: &rng)).folder),
-    .takeThrownAway(FakeTake(id: Int.random(in: 1...3, using: &rng)).folder),
-    .throwAwayFailed(FakeTake(id: Int.random(in: 1...3, using: &rng)).folder, reason: "no"),
+    .openRecentTakeRequested(FakeTake(id: Int.random(in: 1...3, using: &rng)).folder),
+    .studioAppStatusLoaded(StudioAppStatus(state: [.stopped, .running(url: nil, stale: false), .unhealthy(detail: nil)].randomElement(using: &rng)!), asked: Int.random(in: 1...4, using: &rng)),
+    .studioAppStartRequested, .studioAppStopRequested, .studioAppOpenRequested,
+    .studioAppCommandEnded([.start, .stop, .open, .openItem].randomElement(using: &rng)!, failure: Bool.random(using: &rng) ? nil : "no"),
     .menuOpened, .menuClosed,
     .inputPicked(.mic("Scarlett")),
     .screenPickerRequested, .screenPickerRequested,

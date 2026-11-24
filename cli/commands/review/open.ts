@@ -1,6 +1,5 @@
 // studio review open: the studio app on a project's renders and stills, where the reviewer pins notes, or on its plan,
-// handed over. It opens the app already serving this checkout, or serves it here. See
-// lib/platform/web/engine/studio-app-server.ts.
+// handed over. It reaches the app through lib/platform/web/engine/studio-app-open.ts.
 import { defineCommand, type ArgsDef } from 'citty';
 import { refuseUnknownCommandFlags } from '../../command-flags.ts';
 
@@ -45,7 +44,7 @@ async function resolveStudioReviewTarget(target: string, plan: boolean): Promise
 const reviewOpenArgs = {
   target: { type: 'positional', required: true, description: 'A project, or a render or still inside one (.mp4, .webm, .mov, .png, .jpg, .webp), as a path or from the project: <p>/out/video.mp4' },
   plan: { type: 'boolean', description: "Hand the project's plan (storyboard.ts) over for review and open its page: until then its unsigned scenes wait on no one" },
-  port: { type: 'string', default: '4317', description: 'Port the studio app is on, or is served on' },
+  port: { type: 'string', description: "Port of the studio app: the main checkout's 4317, or one fixed per worktree, by default" },
   open: { type: 'boolean', default: true, description: 'Open it in the browser (--no-open to just serve)' },
 } as const satisfies ArgsDef;
 
@@ -58,20 +57,17 @@ export const reviewOpenCommand = defineCommand({
   args: reviewOpenArgs,
   async run({ args, rawArgs }) {
     refuseUnknownCommandFlags(rawArgs.filter((arg) => arg !== '--no-open'), reviewOpenArgs);
-    const { openStudioAppServer } = await import('#lib/platform/web/engine/studio-app-server.ts');
+    const { describeStudioAppPlace, openStudioAppPageInBrowser, reachStudioApp } = await import('#lib/platform/web/engine/studio-app-open.ts');
+    // The app is reached before the target resolves: --plan hands the plan over, which a refused port mustn't do.
+    const app = await reachStudioApp(args.port === undefined ? {} : { port: Number(args.port) });
     const target = await resolveStudioReviewTarget(args.target, args.plan === true);
-    const app = await openStudioAppServer({ port: Number(args.port) });
     const url = `${app.url}${target.route}`;
     process.stderr.write([
-      `reviewing ${target.project} on ${url}${app.startedHere ? ' (Ctrl-C to stop)' : ', in the studio app already running'}`,
+      `reviewing ${target.project} on ${url}, ${describeStudioAppPlace(app)}`,
       ...(target.artifacts.length ? ['its renders and stills, newest first:', ...target.artifacts.map((a) => `  ${a.modified}  ${a.path}`)] : [`${target.project} has made nothing to review yet`]),
       `an agent follows the notes with: studio review watch ${target.project} --follow (under a line-waking monitor), or without --follow, run again after each wake`,
     ].join('\n') + '\n');
-    if (args.open) {
-      const { spawn } = await import('node:child_process');
-      spawn('open', [url], { stdio: 'ignore', detached: true }).unref();
-    }
-    // Serve until interrupted.
-    if (app.startedHere) await new Promise(() => {});
+    if (args.open) openStudioAppPageInBrowser(url);
+    if (app.servingHere) await new Promise(() => {});
   },
 });

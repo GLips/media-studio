@@ -1,5 +1,6 @@
 // The menu-bar item and its menu, drawn from the recorder's state (RecorderMenuStatus) after every change: the glyph
-// with the take's clock beside it while recording, and the menu's warnings, Start/Stop, recent takes and inputs.
+// with the take's clock beside it while recording, and the menu's warnings, Start/Stop, recent takes, inputs and the
+// studio app.
 import AppKit
 import RecorderCore
 
@@ -15,10 +16,14 @@ final class MenuBarDot: NSObject, NSMenuDelegate {
   private let menu = NSMenu()
   /// The warnings and Allow items at the top of the menu, replaced on each redraw.
   private var statusItems: [NSMenuItem] = []
-  /// The recent takes and Throw Away, after `recentTakesAfter`, replaced on each redraw.
+  /// The recent takes, after `recentTakesAfter`, replaced on each redraw.
   private var recentTakeItems: [NSMenuItem] = []
   private let recentTakesAfter = NSMenuItem.separator()
   private let inputMenu: InputMenu
+  /// The studio app's section, after the inputs: where it stands, Start or Stop, and Open Studio.
+  private let studioAppStateItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+  private let studioAppActionItem = NSMenuItem(title: "", action: #selector(studioAppAction), keyEquivalent: "")
+  private let studioAppOpenItem = NSMenuItem(title: "Open Studio", action: #selector(openStudio), keyEquivalent: "")
 
   init(app: RecorderApp) {
     self.app = app
@@ -32,6 +37,10 @@ final class MenuBarDot: NSObject, NSMenuDelegate {
     menu.addItem(open)
     menu.addItem(recentTakesAfter)
     for inputItem in inputMenu.items { menu.addItem(inputItem) }
+    menu.addItem(.separator())
+    studioAppActionItem.target = self
+    studioAppOpenItem.target = self
+    for studioAppItem in [studioAppStateItem, studioAppActionItem, studioAppOpenItem] { menu.addItem(studioAppItem) }
     menu.addItem(.separator())
     let about = NSMenuItem(title: "About \(recorderDisplayName)", action: #selector(showAbout), keyEquivalent: "")
     about.target = self
@@ -51,6 +60,7 @@ final class MenuBarDot: NSObject, NSMenuDelegate {
     item.button?.imagePosition = status.clock == nil ? .imageOnly : .imageLeading
     item.button?.toolTip = status.toolTip
     renderRecentTakes(status)
+    renderStudioApp(status.studioApp)
     for old in statusItems { menu.removeItem(old) }
     statusItems = status.warnings.map { NSMenuItem(title: $0, action: nil, keyEquivalent: "") } + status.allow.map { permission in
       let item = NSMenuItem(title: "Allow \(permission.title)…", action: #selector(allow(_:)), keyEquivalent: "")
@@ -73,20 +83,24 @@ final class MenuBarDot: NSObject, NSMenuDelegate {
     guard !status.recentTakes.isEmpty else { return }
     recentTakeItems.append(NSMenuItem(title: "Recent Takes", action: nil, keyEquivalent: ""))
     for take in status.recentTakes {
-      let takeItem = NSMenuItem(title: take.title, action: take.enabled ? #selector(openRecentTake(_:)) : nil, keyEquivalent: "")
+      let takeItem = NSMenuItem(title: take.title, action: #selector(openRecentTake(_:)), keyEquivalent: "")
       takeItem.target = self
       takeItem.representedObject = take.folder
       takeItem.toolTip = take.toolTip
       recentTakeItems.append(takeItem)
     }
-    if let throwAwayTitle = status.throwAwayTitle {
-      let throwAway = NSMenuItem(title: throwAwayTitle, action: #selector(throwAwayLastTake), keyEquivalent: "")
-      throwAway.target = self
-      recentTakeItems.append(throwAway)
-    }
     recentTakeItems.append(.separator())
     let at = menu.index(of: recentTakesAfter) + 1
     for (offset, takeItem) in recentTakeItems.enumerated() { menu.insertItem(takeItem, at: at + offset) }
+  }
+
+  private func renderStudioApp(_ studioApp: RecorderMenuStatus.StudioAppItems) {
+    studioAppStateItem.title = studioApp.title
+    studioAppStateItem.toolTip = studioApp.toolTip
+    studioAppActionItem.isHidden = studioApp.action == nil
+    studioAppActionItem.title = studioApp.action == .stop ? "Stop Studio App" : "Start Studio App"
+    // A menu item with no action is drawn disabled: Open Studio greys out while the app stops.
+    studioAppOpenItem.action = studioApp.openEnabled ? #selector(openStudio) : nil
   }
 
   func menuWillOpen(_ menu: NSMenu) { app.send(.menuOpened) }
@@ -97,7 +111,14 @@ final class MenuBarDot: NSObject, NSMenuDelegate {
     guard let folder = sender.representedObject as? URL else { return }
     app.send(.openRecentTakeRequested(folder))
   }
-  @objc private func throwAwayLastTake() { app.send(.throwAwayRequested) }
+  @objc private func studioAppAction() {
+    switch RecorderMenuStatus(app.state, hotkey: app.config.hotkey, appName: recorderDisplayName).studioApp.action {
+    case .start: app.send(.studioAppStartRequested)
+    case .stop: app.send(.studioAppStopRequested)
+    case nil: break
+    }
+  }
+  @objc private func openStudio() { app.send(.studioAppOpenRequested) }
   @objc private func showAbout() {
     NSApp.activate()
     NSApp.orderFrontStandardAboutPanel(nil)

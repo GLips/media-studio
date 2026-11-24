@@ -1,5 +1,5 @@
-// What the menu-bar item says about the recorder's state: its glyph and clock, tooltip, warnings, Start/Stop title
-// and recent takes.
+// What the menu-bar item says about the recorder's state: its glyph and clock, tooltip, warnings, Start/Stop title,
+// recent takes and the studio app.
 import Foundation
 
 public struct RecorderMenuStatus: Equatable {
@@ -22,15 +22,23 @@ public struct RecorderMenuStatus: Equatable {
   /// Beside the glyph while recording: how much of the take is written. None at rest, leaving the glyph alone.
   public let clock: String?
   public let recentTakes: [RecentTakeItem]
-  /// The Throw Away item for the newest take; none while there's no take to throw away.
-  public let throwAwayTitle: String?
+  public let studioApp: StudioAppItems
+
+  /// The menu's studio app section: a line saying where it stands, then what can be done with it.
+  public struct StudioAppItems: Equatable {
+    public enum Action: Equatable { case start, stop }
+
+    public let title: String
+    public let toolTip: String?
+    /// Start or Stop; none while one is under way, or while something else holds the port.
+    public let action: Action?
+    public let openEnabled: Bool
+  }
 
   /// A recent take's menu item: what it says, and the folder its click names.
   public struct RecentTakeItem: Equatable {
     public let title: String
     public let folder: URL
-    /// False while it's being thrown away.
-    public let enabled: Bool
     /// What a click does: open its page in the library, or show its folder.
     public let toolTip: String
 
@@ -43,7 +51,6 @@ public struct RecorderMenuStatus: Equatable {
       case .inLibrary(_, mediaFolder: nil): "media offline"
       case .inLibrary, .added: nil
       case .inRecordings: "not in the library"
-      case .throwingAway: "throwing away…"
       }
       return ([when, length] + (place.map { [$0] } ?? [])).joined(separator: " · ")
     }
@@ -54,7 +61,7 @@ public struct RecorderMenuStatus: Equatable {
     let missing = state.missingPermissions
     let problems = (state.trackProblems.map { ($0.key.rawValue, $0.value) }
       + (state.libraryFailure.map { [("library", $0.description)] } ?? [])
-      + (state.throwAwayFailure.map { [("throw away", "failed: \($0)")] } ?? []))
+      + (state.studioAppFailure.map { [studioAppProblem($0.command, $0.reason)] } ?? []))
       .sorted { $0.0 < $1.0 }
     glyph = switch state.phase {
     case .needsPermission, .relaunching: .needsAttention
@@ -75,14 +82,38 @@ public struct RecorderMenuStatus: Equatable {
       clock = nil
     }
     recentTakes = state.recentTakes.map { take in
-      let enabled = if case .throwingAway = take.place { false } else { true }
       let toolTip = if case .inLibrary = take.place { "Open it in the studio's library" } else { "Show it in the Finder" }
-      return RecentTakeItem(title: RecentTakeItem.title(of: take, now: now, calendar: calendar), folder: take.folder, enabled: enabled, toolTip: toolTip)
+      return RecentTakeItem(title: RecentTakeItem.title(of: take, now: now, calendar: calendar), folder: take.folder, toolTip: toolTip)
     }
-    throwAwayTitle = state.recentTakes.first.flatMap { newest in
-      if case .throwingAway = newest.place { return nil }
-      return "Throw Away Last Take…"
+    studioApp = StudioAppItems(state.studioApp)
+  }
+}
+
+extension RecorderMenuStatus.StudioAppItems {
+  public init(_ state: StudioAppState) {
+    let (said, toolTip, action): (String, String?, Action?) = switch state {
+    case .unknown: ("Checking…", nil, .start)
+    case .running(let url, let stale):
+      ("Running", [url?.absoluteString, stale ? "the code changed since it started: the next open restarts it" : nil].compactMap(\.self).joined(separator: "; "), .stop)
+    case .stopped: ("Stopped", nil, .start)
+    case .unhealthy(let detail): ("Not responding", detail, .stop)
+    case .foreign(let detail): ("Port taken", detail, nil)
+    case .starting: ("Starting…", nil, nil)
+    case .stopping: ("Stopping…", nil, nil)
     }
+    title = "Studio App: \(said)"
+    self.toolTip = toolTip.flatMap { $0.isEmpty ? nil : $0 }
+    self.action = action
+    openEnabled = state != .stopping
+  }
+}
+
+/// A failed studio app command as a warning's (key, text): `⚠︎ Open failed: port 4317 is taken…`.
+private func studioAppProblem(_ command: StudioAppCommand, _ reason: String) -> (String, String) {
+  switch command {
+  case .start: ("studio app", "didn't start: \(reason)")
+  case .stop: ("studio app", "didn't stop: \(reason)")
+  case .open, .openItem: ("open", "failed: \(reason)")
   }
 }
 

@@ -2,8 +2,8 @@
 // that owns every change, returning the next state and the effects to perform. The app performs the effects and
 // feeds what happens back as events; nothing else writes the state. What runs alongside a phase (the menu's input
 // check, the track watch, the take's clock, the permission poll) is derived from the state, and started and stopped
-// by the diff. Beside the phase it keeps the recent takes the menu lists, each where it is now: being added to the
-// library, in it, left in the recordings folder, or being thrown away.
+// by the diff. Beside the phase it keeps the recent takes the menu lists, each where it is now (being added to the
+// library, in it, or left in the recordings folder), and the studio app as last asked (`studio app status`).
 import Foundation
 
 /// A take as the machine sees it: its folder, when it began, and what was already wrong as it began (a picked
@@ -107,8 +107,6 @@ public struct RecorderRecentTake: Equatable, Sendable {
     case inLibrary(item: String, mediaFolder: URL?)
     /// Still in the recordings folder: its add failed, or the recorder was killed in it.
     case inRecordings
-    /// Being thrown away; `afterAdd` while its add is stopped first, so nothing it moves is left behind.
-    case throwingAway(afterAdd: Bool)
   }
 
   public let folder: URL
@@ -132,6 +130,53 @@ public struct RecorderRecentTake: Equatable, Sendable {
 /// How many recent takes the menu lists; `studio library recordings` is asked for as many.
 public let recorderRecentTakeCount = 5
 
+/// The studio app as the menu knows it: what `studio app status` last said, or what a command the menu ran is doing.
+public enum StudioAppState: Equatable, Sendable {
+  /// Not asked yet.
+  case unknown
+  /// `stale`: the code changed since it started, so the next start or open restarts it.
+  case running(url: URL?, stale: Bool)
+  case stopped
+  /// The studio's own app, not answering as it should; `detail` says how.
+  case unhealthy(detail: String?)
+  /// Something that isn't the studio's app holds its port; `detail` names it.
+  case foreign(detail: String?)
+  case starting
+  case stopping
+}
+
+/// What the menu asks `studio app` to do, and so what a failure is named in the menu.
+public enum StudioAppCommand: Sendable {
+  case start, stop, open
+  /// `studio library open`, from a recent take: it starts the app too when it's down.
+  case openItem
+}
+
+/// `studio app status --json`'s answer.
+public struct StudioAppStatus: Equatable, Sendable {
+  public let state: StudioAppState
+
+  public init(state: StudioAppState) { self.state = state }
+
+  public static func parsed(fromJSON data: Data) throws -> StudioAppStatus {
+    struct Listed: Decodable {
+      let state: String
+      let url: String?
+      let stale: Bool?
+      let detail: String?
+    }
+    let listed = try JSONDecoder().decode(Listed.self, from: data)
+    let state: StudioAppState = switch listed.state {
+    case "running": .running(url: listed.url.flatMap(URL.init(string:)), stale: listed.stale ?? false)
+    case "stopped": .stopped
+    case "foreign": .foreign(detail: listed.detail)
+    case "unhealthy": .unhealthy(detail: listed.detail)
+    default: throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "unknown state \(listed.state)"))
+    }
+    return StudioAppStatus(state: state)
+  }
+}
+
 public struct RecorderState<Take: RecorderTake> {
   public fileprivate(set) var phase: RecorderPhase<Take>
   /// The current or latest take's track problems: kept after it stops so the menu still shows them, cleared when
@@ -141,10 +186,13 @@ public struct RecorderState<Take: RecorderTake> {
   public fileprivate(set) var libraryFailure: LibraryHandoffFailure?
   /// The newest takes first, at most `recorderRecentTakeCount`.
   public fileprivate(set) var recentTakes: [RecorderRecentTake] = []
-  /// Why the last throw-away failed; shown until the next take starts.
-  public fileprivate(set) var throwAwayFailure: String?
-  /// The latest listing asked for: an earlier one may have read the library before a throw-away, so it's ignored.
+  /// The latest listing asked for: an earlier one may have read the library before an add finished, so it's ignored.
   public fileprivate(set) var recentTakesAsked = 0
+  public fileprivate(set) var studioApp: StudioAppState = .unknown
+  /// The latest status asked for, or command run: a status asked before it is out of date, so it's ignored.
+  public fileprivate(set) var studioAppAsked = 0
+  /// Why the last studio app command the menu ran failed, as the menu says it; cleared when one next succeeds.
+  public fileprivate(set) var studioAppFailure: (command: StudioAppCommand, reason: String)?
   public fileprivate(set) var menuOpen = false
   /// The command-line take (`--record-seconds`): one take, stopped after its length, then the process exits, 0 if
   /// it recorded and 1 if it never started. It skips permissions (it runs under the terminal's) and the library.
@@ -232,12 +280,14 @@ public enum RecorderEvent<Take: RecorderTake> {
   case recentTakesUnavailable(String)
   /// A recent take's menu item.
   case openRecentTakeRequested(URL)
-  /// The menu's Throw Away item, for the newest take; it asks first.
-  case throwAwayRequested
-  /// Graham said yes to throwing away the take at this folder.
-  case throwAwayConfirmed(URL)
-  case takeThrownAway(URL)
-  case throwAwayFailed(URL, reason: String)
+  case studioAppStatusLoaded(StudioAppStatus, asked: Int)
+  case studioAppStatusUnavailable(String, asked: Int)
+  /// The menu's Studio App items.
+  case studioAppStartRequested
+  case studioAppStopRequested
+  case studioAppOpenRequested
+  /// A `studio app` or `studio library open` the menu ran exited: done, or with why not.
+  case studioAppCommandEnded(StudioAppCommand, failure: String?)
   case menuOpened
   case menuClosed
   case inputPicked(RecorderInputPick)
@@ -276,19 +326,19 @@ public enum RecorderEffect<Take: RecorderTake> {
   case endTake(Take, problems: [RecorderTrack: String])
   /// Runs the bundle's library add on the take's folder, detached; sends `.libraryAddEnded` when it exits.
   case handOffToLibrary(URL)
-  /// Stops the library add running on the take's folder, which undoes what it hadn't finished; it still sends
-  /// `.libraryAddEnded`.
-  case stopLibraryAdd(URL)
   /// Asks `studio library recordings` for the recent takes; sends `.recentTakesLoaded` or `.recentTakesUnavailable`.
   case loadRecentTakes(asked: Int)
   /// Shows a take's folder in the recordings folder in the Finder.
   case reveal(URL)
-  /// Opens a library item's page in the studio app (`studio library open`), serving the app if it isn't running.
+  /// Opens a library item's page in the studio app (`studio library open`), starting the app if it's down; sends
+  /// `.studioAppCommandEnded(.openItem, …)`.
   case openLibraryItem(String)
-  /// Asks before throwing the take away; sends `.throwAwayConfirmed` on yes.
-  case confirmThrowAway(RecorderRecentTake)
-  /// Removes the take wherever it went (`studio library remove --take`); sends `.takeThrownAway` or `.throwAwayFailed`.
-  case throwAway(URL)
+  /// Asks `studio app status`; sends `.studioAppStatusLoaded` or `.studioAppStatusUnavailable`.
+  case loadStudioAppStatus(asked: Int)
+  /// `studio app start`, `stop` and `open`; each sends `.studioAppCommandEnded` when it exits.
+  case startStudioApp
+  case stopStudioApp
+  case openStudioApp
   /// Writes the pick to config.json, for the next take.
   case saveInputPick(RecorderInputPick)
   /// Shows the system's window and display picker; sends `.screenPickerChose` or `.screenPickerClosed`.
@@ -360,7 +410,6 @@ extension RecorderState {
     case (.takeStarted(let take), .starting(let then)):
       trackProblems = take.startProblems
       libraryFailure = nil
-      throwAwayFailure = nil
       // A take that began wrong sounds the alert a problem mid-take does: Graham hears it before he starts talking.
       let started: [RecorderEffect<Take>] = [.log("recording to \(take.folder.path)")]
         + take.startProblems.sorted { $0.key < $1.key }.map { .log("\($0.key.rawValue) \($0.value)") }
@@ -395,12 +444,7 @@ extension RecorderState {
       return [.log("recorded \(take.folder.path)"), .handOffToLibrary(take.folder)] + (quitAfter ? [.replyToQuit] : [])
 
     case (.libraryAddEnded(let folder, let failure), _):
-      let index = recentTakes.firstIndex { $0.folder == folder }
-      if let index, recentTakes[index].place == .throwingAway(afterAdd: true) {
-        recentTakes[index].place = .throwingAway(afterAdd: false)
-        return [.throwAway(folder)]
-      }
-      if let index { recentTakes[index].place = failure == nil ? .added : .inRecordings }
+      if let index = recentTakes.firstIndex(where: { $0.folder == folder }) { recentTakes[index].place = failure == nil ? .added : .inRecordings }
       guard let failure else { return [askForRecentTakes()] }
       libraryFailure = failure
       return []
@@ -415,33 +459,40 @@ extension RecorderState {
     case (.openRecentTakeRequested(let folder), _):
       guard let take = recentTakes.first(where: { $0.folder == folder }) else { return [] }
       // The page reads the item's metadata, so it opens with the media offline too.
-      if case .inLibrary(let item, _) = take.place { return [.openLibraryItem(item)] }
+      if case .inLibrary(let item, _) = take.place {
+        startingStudioAppIfDown()
+        return [.openLibraryItem(item)]
+      }
       return [.reveal(take.folder)]
 
-    case (.throwAwayRequested, _):
-      guard let newest = recentTakes.first, !newest.isBeingThrownAway else { return [] }
-      return [.confirmThrowAway(newest)]
-    case (.throwAwayConfirmed(let folder), _):
-      guard let index = recentTakes.firstIndex(where: { $0.folder == folder }), !recentTakes[index].isBeingThrownAway else { return [] }
-      throwAwayFailure = nil
-      if recentTakes[index].place == .addingToLibrary {
-        recentTakes[index].place = .throwingAway(afterAdd: true)
-        return [.log("throwing away \(folder.lastPathComponent): stopping its library add"), .stopLibraryAdd(folder)]
-      }
-      recentTakes[index].place = .throwingAway(afterAdd: false)
-      return [.log("throwing away \(folder.lastPathComponent)"), .throwAway(folder)]
-    case (.takeThrownAway(let folder), _):
-      recentTakes.removeAll { $0.folder == folder }
-      return [.log("threw away \(folder.lastPathComponent)"), askForRecentTakes()]
-    case (.throwAwayFailed(let folder, let reason), _):
-      throwAwayFailure = reason
-      // Where it is now is the library's to say: what failed may have removed part of it.
-      recentTakes.removeAll { $0.folder == folder }
-      return [.log("couldn't throw away \(folder.lastPathComponent): \(reason)"), askForRecentTakes()]
+    case (.studioAppStatusLoaded(let status, let asked), _):
+      guard asked == studioAppAsked else { return [] }
+      studioApp = status.state
+      return []
+    case (.studioAppStatusUnavailable(let reason, let asked), _):
+      guard asked == studioAppAsked else { return [] }
+      studioApp = .unknown
+      return [.log("couldn't ask after the studio app: \(reason)")]
+    case (.studioAppStartRequested, _) where !studioAppBusy:
+      studioAppAsked += 1
+      studioApp = .starting
+      return [.startStudioApp]
+    case (.studioAppStopRequested, _) where !studioAppBusy:
+      studioAppAsked += 1
+      studioApp = .stopping
+      return [.stopStudioApp]
+    case (.studioAppOpenRequested, _) where studioApp != .stopping:
+      startingStudioAppIfDown()
+      return [.openStudioApp]
+    case (.studioAppCommandEnded(let command, let failure), _):
+      studioAppFailure = failure.map { (command, $0) }
+      return (failure.map { [.log("studio app \(command) failed: \($0)")] } ?? []) + [askForStudioAppStatus()]
 
     case (.menuOpened, _):
       menuOpen = true
-      return []
+      // Asked as the menu opens, never acted on: opening the menu doesn't start the app. A command under way says
+      // where it stands once it ends.
+      return studioAppBusy ? [] : [askForStudioAppStatus()]
     case (.menuClosed, _):
       menuOpen = false
       return []
@@ -484,17 +535,8 @@ extension RecorderState {
 }
 
 extension RecorderRecentTake {
-  fileprivate var isBeingThrownAway: Bool {
-    if case .throwingAway = place { true } else { false }
-  }
-
   /// Where the recorder itself is moving the take: what a listing says of it can't be newer.
-  fileprivate var inFlight: Bool {
-    switch place {
-    case .addingToLibrary, .throwingAway: true
-    case .added, .inLibrary, .inRecordings: false
-    }
-  }
+  fileprivate var inFlight: Bool { place == .addingToLibrary }
 }
 
 extension RecorderState {
@@ -504,6 +546,21 @@ extension RecorderState {
     // The take recording now: a still screen writes nothing for long enough that the library judges it killed.
     let kept = Set(inFlight.map(\.name) + (phase.take.map { [$0.folder.lastPathComponent] } ?? []))
     keepNewest(inFlight + listed.filter { !kept.contains($0.name) })
+  }
+
+  /// A start or stop the menu ran is under way.
+  fileprivate var studioAppBusy: Bool { studioApp == .starting || studioApp == .stopping }
+
+  fileprivate mutating func askForStudioAppStatus() -> RecorderEffect<Take> {
+    studioAppAsked += 1
+    return .loadStudioAppStatus(asked: studioAppAsked)
+  }
+
+  /// An open starts the app when it's down: the menu says so until the open ends. A status asked meanwhile is stale.
+  fileprivate mutating func startingStudioAppIfDown() {
+    studioAppAsked += 1
+    if case .running = studioApp { return }
+    if !studioAppBusy { studioApp = .starting }
   }
 
   fileprivate mutating func askForRecentTakes() -> RecorderEffect<Take> {

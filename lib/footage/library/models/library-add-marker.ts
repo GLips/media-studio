@@ -1,5 +1,5 @@
 // library-add-marker.ts: what an add of a recorder take leaves in its item's media folder while it runs: the take, and
-// the process adding it. An add stopped part way (a throw-away's SIGTERM gives it seconds to undo a copy that may
+// the process adding it. An add stopped part way (a SIGTERM gives it seconds to undo a copy that may
 // take minutes) can leave media no item.json names; the marker says whose it is. Pure.
 import { Schema } from 'effect';
 

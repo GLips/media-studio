@@ -17,7 +17,7 @@ export interface RecorderInstallHost {
 }
 
 /**
- * The studio commands the recorder runs, by their Info.plist key; each is run with one folder or item id appended. They run this
+ * The studio commands the recorder runs, by their Info.plist key, with a folder or item id appended where noted. They run this
  * checkout's CLI under this node, with this shell's PATH, since an app launchd starts has no ffmpeg on its own PATH.
  * Reinstall after moving the checkout.
  */
@@ -29,10 +29,13 @@ export const recorderStudioCommands = (host: RecorderInstallHost) => {
     StudioLibraryAdd: [...studio, 'library', 'add', '--move', '--no-proxies'],
     // The recordings folder: the menu's recent takes, wherever they went.
     StudioLibraryRecordings: [...studio, 'library', 'recordings', '--json', '--limit', '5', '--inbox'],
-    // A take's folder: the menu's Throw Away removes it from the library and the recordings folder.
-    StudioLibraryRemoveTake: [...studio, 'library', 'remove', '--take'],
     // An item id: the menu opens a recent take that's in the library on its page in the studio app.
     StudioLibraryOpen: [...studio, 'library', 'open'],
+    // The menu's Studio App section, with nothing appended: where the app stands as the menu opens, and its items.
+    StudioAppStatus: [...studio, 'app', 'status', '--json'],
+    StudioAppStart: [...studio, 'app', 'start'],
+    StudioAppStop: [...studio, 'app', 'stop'],
+    StudioAppOpen: [...studio, 'app', 'open'],
   } satisfies Readonly<Record<string, readonly string[]>>;
 };
 

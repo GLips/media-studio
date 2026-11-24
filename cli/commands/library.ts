@@ -338,25 +338,22 @@ const openCommand = defineCommand({
   meta: {
     name: 'open',
     description: "Open an item's page in the studio app, to watch, read and flag it.",
-    about: 'Opens the app already serving this checkout, or serves it here until Ctrl-C. Studio Recorder opens a recent take this way. Reads committed metadata, so the page opens with the media offline; it says so where it would play.',
+    about: 'Starts the studio app in the background if it isn\'t running (`studio app --help`) and returns; in a worktree it serves the app here until Ctrl-C. Studio Recorder opens a recent take this way. Reads committed metadata, so the page opens with the media offline; it says so where it would play.',
   },
-  args: { item: libraryItemArg, port: { type: 'string', default: '4317', description: 'Port the studio app is on, or is served on' } },
+  args: { item: libraryItemArg, port: { type: 'string', description: "Port of the studio app: the main checkout's 4317, or one fixed per worktree, by default" } },
   async run({ args }) {
     const { Effect } = await import('effect');
-    const { ChildProcess, ChildProcessSpawner } = await import('effect/process');
     const { LibraryStore } = await import('#lib/footage/library/engine/library-store.ts');
-    const { openStudioAppServer } = await import('#lib/platform/web/engine/studio-app-server.ts');
-    const { STUDIO_CHILD_PROCESS } = await import('#lib/platform/process/engine/studio-child-process.ts');
-    const app = await runLibraryProgram(Effect.gen(function* () {
-      const id = yield* (yield* LibraryStore).resolveItemId(args.item);
-      const server = yield* Effect.promise(() => openStudioAppServer({ port: Number(args.port) }));
-      const url = `${server.url}/library/${encodeURIComponent(id)}`;
-      yield* Effect.sync(() => process.stderr.write(`${id} on ${url}${server.startedHere ? ' (Ctrl-C to stop)' : ', in the studio app already running'}\n`));
-      yield* (yield* ChildProcessSpawner.ChildProcessSpawner).exitCode(ChildProcess.make('open', [url], STUDIO_CHILD_PROCESS));
-      return server;
+    const { describeStudioAppPlace, openStudioAppPageInBrowser, reachStudioApp } = await import('#lib/platform/web/engine/studio-app-open.ts');
+    // The item is resolved before the app is reached, so a wrong id fails without starting it.
+    const id = await runLibraryProgram(Effect.gen(function* () {
+      return yield* (yield* LibraryStore).resolveItemId(args.item);
     }));
-    // Serve until interrupted.
-    if (app.startedHere) await new Promise(() => {});
+    const app = await reachStudioApp(args.port === undefined ? {} : { port: Number(args.port) });
+    const url = `${app.url}/library/${encodeURIComponent(id)}`;
+    openStudioAppPageInBrowser(url);
+    process.stderr.write(`${id} on ${url}, ${describeStudioAppPlace(app)}\n`);
+    if (app.servingHere) await new Promise(() => {});
   },
 });
 

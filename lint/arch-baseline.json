@@ -1042,9 +1042,6 @@
     "lib/platform/gpu/models/gpu-uniform-layout.ts": {
       "typeof value": 1
     },
-    "lib/platform/web/engine/studio-app-server.ts": {
-      "typeof body.root": 1
-    },
     "lint/oxlint/lib/rule-options.ts": {
       "typeof option": 1,
       "typeof value": 1
