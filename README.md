@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/header.jpg" alt="media-studio: a media studio for you and your agents. The clapperboard mascot beside a watercolour lake at sunset, painted by the studio's own paint engine" width="100%">
+  <img src="docs/images/header.jpg" alt="media-studio: a media studio for you and your agents. A cheerful clapperboard mascot holding a pinned note, on a cobalt panel" width="100%">
 </p>
 
 # media-studio
