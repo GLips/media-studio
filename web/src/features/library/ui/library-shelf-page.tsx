@@ -8,6 +8,7 @@ import { formatReviewClock } from '#lib/output/review/models/review-timeline-geo
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
+import { StudioPageTitle } from '#web/shared/ui/studio-page-title.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
 import { TextInput } from '#web/shared/ui/text-input.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
@@ -21,12 +22,9 @@ import { useLibraryShelfQuery } from './use-library-shelf-query.ts';
 
 const styles = stylex.create({
   // Fills whatever width it's given: a row's columns spread with it, so its figures line up under their names.
-  page: { paddingInline: spacing.row, paddingBlock: spacing.row },
-  // The title row's right end stays clear: on sidebar pages the bar's quick-open and keys move there.
-  title: { display: 'flex', alignItems: 'baseline', gap: spacing.gap, paddingInline: spacing.gap, paddingBlockEnd: spacing.inset },
-  // Stands in for the shared page-title token (synthesis 2, fix 3) until web/src/shared/ui/ has it: swap it in here.
-  heading: { lineHeight: spacing.bar, fontWeight: 700, color: colors.cream, margin: 0 },
-  count: { color: colors.dim },
+  // Each row pads itself by a gap, so the page pads the rest: the search field, the column names and the posters all
+  // start at the page title's inset (StudioPageTitle).
+  page: { paddingInline: `calc(${spacing.row} - ${spacing.gap})`, paddingBlockStart: spacing.gap, paddingBlockEnd: spacing.row },
   search: { paddingInline: spacing.gap, paddingBlockEnd: spacing.inset },
   // An outline on the ground, as the page is, rather than a filled box.
   searchField: {
@@ -125,12 +123,9 @@ export function LibraryShelfPage() {
   const count = shelf.items.length;
   return (
     <StudioShell>
+      <StudioPageTitle count={count > 0 ? `${count} recording${count > 1 ? 's' : ''}` : undefined}>Library</StudioPageTitle>
       <FadeScroll>
         <Stack ref={listRef} gap={0} {...stylex.props(styles.page, stylex.defaultMarker())}>
-          <Box {...stylex.props(styles.title)}>
-            <Text component="h1" size="line" {...stylex.props(styles.heading)}>Library</Text>
-            {count > 0 && <Text component="span" size="sm" {...stylex.props(styles.count)}>{count} recording{count > 1 ? 's' : ''}</Text>}
-          </Box>
           <TextInput
             ref={searchRef}
             aria-label="Search the library"

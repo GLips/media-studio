@@ -30,9 +30,10 @@ const styles = stylex.create({
   },
   facts: { gridArea: 'facts', minWidth: 0 },
   picture: { gridArea: 'picture', minHeight: 0, position: 'relative' },
-  // The column's width, unless that's too tall to leave the transport and a few flags in view (the bar, the facts
-  // line and the transport take about 140px, and the flags keep 120px): then narrower, centred on the ground.
-  shape: (ratio: number) => ({ aspectRatio: ratio, justifySelf: 'center', width: `min(100%, calc((100dvh - 260px) * ${ratio}))` }),
+  // The column's width, unless that's too tall to leave the transport and the flags in view (the bar, the facts line
+  // and the transport take about 140px; the flags keep 160px, room for their head, a flag and an open composer): then
+  // narrower, centred on the ground.
+  shape: (ratio: number) => ({ aspectRatio: ratio, justifySelf: 'center', width: `min(100%, calc((100dvh - 300px) * ${ratio}))` }),
   offline: {
     position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: spacing.inset, color: colors.dim,
     backgroundColor: colors.screen, textAlign: 'center',

@@ -12,8 +12,12 @@ import { focusNoteFieldAtEnd, Textarea } from '#web/shared/ui/textarea.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { useLibraryItemScreen, type LibraryComposing } from './library-item-context.tsx';
 
+/** One flag's row: a line of note over the button's block padding. */
+const FLAG_ROW_HEIGHT = '28px';
+
 const styles = stylex.create({
-  panel: { display: 'grid', gridTemplateRows: `${spacing.row} minmax(0, 1fr) auto`, height: '100%', minHeight: 0 },
+  // The list keeps at least one flag's row, so an open composer on a short window never hides every flag.
+  panel: { display: 'grid', gridTemplateRows: `${spacing.row} minmax(${FLAG_ROW_HEIGHT}, 1fr) auto`, height: '100%', minHeight: 0 },
   head: { paddingInline: spacing.gap, borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: colors.line },
   chip: { paddingInline: spacing.tight, borderRadius: radius.control, color: colors.dim, backgroundColor: { default: 'transparent', ':hover': colors.raised } },
   chipOn: { color: colors.cream, backgroundColor: colors.raised },
