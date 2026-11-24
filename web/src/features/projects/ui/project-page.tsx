@@ -1,18 +1,23 @@
-import { Box, Code, Text } from '@mantine/core';
+import { Box, Code, Group, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Fragment, useRef, useState } from 'react';
 import { projectPageRungOf, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
+import { StudioCollectionViewToggle } from '#web/shared/ui/studio-collection-view-toggle.tsx';
+import { StudioPageTitle } from '#web/shared/ui/studio-page-title.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
+import { useStudioCollectionView, type StudioCollectionView } from '#web/shared/ui/use-studio-collection-view.ts';
 import { useProjectSummary } from '../controllers/project-queries.ts';
 import { ProjectThreadCounts } from './project-thread-counts.tsx';
-import { ProjectPlaceRow, projectFileFolderOf, projectPlaceKeyOf } from './project-place-row.tsx';
+import { ProjectName } from './project-name.tsx';
+import { ProjectPlace, projectFileFolderOf, projectPlaceKeyOf } from './project-place.tsx';
 import { ProjectStillsFolderRow } from './project-stills-folder-row.tsx';
 import { projectListStyles, ProjectRowButton } from './project-row.tsx';
 import { ProjectRowGroupLabel } from './project-row-group-label.tsx';
 import { ProjectThumbnail } from './project-thumbnail.tsx';
+import { projectTileGridStyles } from './project-tile.tsx';
 import { useProjectRowHotkeys } from './use-project-row-hotkeys.ts';
 
 const styles = stylex.create({
@@ -57,6 +62,19 @@ function projectPageRungs(rows: readonly ReviewProjectRow[]): { shown: ProjectPa
   return { shown: shown.filter((rung) => rung.rows.length > 0), folded: rest.filter((row) => rowThreadsWaiting(row) === 0) };
 }
 
+/**
+ * The grid's sections: the cards (plan, decisions, the project's notes) side by side, then the loose files as one grid,
+ * then each folder. A rung of one item would stand alone in a row of empty grid, so only folders get a section each.
+ */
+function projectPageGridSections(shown: readonly ProjectPageRung[]): ProjectPageRung[] {
+  const loose = shown.filter((rung) => !rung.folders).flatMap((rung) => rung.rows);
+  return [
+    { key: 'cards', rows: loose.filter((row) => row.on !== 'file') },
+    { key: 'files', rows: loose.filter((row) => row.on === 'file') },
+    ...shown.filter((rung) => rung.folders),
+  ].filter((section) => section.rows.length > 0);
+}
+
 /** `14 older work files`, and the settled decisions folded with them. */
 function foldedLabelOf(folded: readonly ReviewProjectRow[]): string {
   const files = folded.filter((row) => row.on === 'file').length, decisions = folded.length - files;
@@ -79,39 +97,58 @@ function folderRuns(rows: readonly ReviewProjectRow[]): { label?: string; rows: 
   return [...runs].map(([label, run]) => ({ label, rows: run }));
 }
 
-type ProjectRowsProps = { readonly summary: ReviewProjectSummary; readonly now: number; readonly rows: readonly ReviewProjectRow[]; readonly folders: boolean };
+type ProjectRowsProps = {
+  readonly summary: ReviewProjectSummary;
+  readonly now: number;
+  readonly rows: readonly ReviewProjectRow[];
+  readonly folders: boolean;
+  readonly view: StudioCollectionView;
+};
 
-function ProjectPageRows({ summary, now, rows, folders }: ProjectRowsProps) {
+/** A run's items: rows in the list's columns, or tiles in a grid of their own across it. */
+function ProjectPageItems({ summary, now, rows, folderLabelled, view }: Omit<ProjectRowsProps, 'folders'> & { readonly folderLabelled: boolean }) {
+  const items = rows.map((row) => <ProjectPlace key={projectPlaceKeyOf(row)} summary={summary} row={row} now={now} folderLabelled={folderLabelled} layout={view === 'grid' ? 'tile' : 'row'} />);
+  return view === 'grid' ? <Box {...stylex.props(projectTileGridStyles.grid)}>{items}</Box> : items;
+}
+
+function ProjectPageRows({ summary, now, rows, folders, view }: ProjectRowsProps) {
   const { project } = summary;
-  if (!folders) return rows.map((row) => <ProjectPlaceRow key={projectPlaceKeyOf(row)} summary={summary} row={row} now={now} />);
+  if (!folders) return <ProjectPageItems summary={summary} now={now} rows={rows} folderLabelled={false} view={view} />;
   return folderRuns(rows).map((run) => (
     <Fragment key={run.label ?? ''}>
       {run.label && <ProjectRowGroupLabel>{run.label}</ProjectRowGroupLabel>}
-      {run.label && run.label !== '/' && stillsIn(run.rows) > 1 && <ProjectStillsFolderRow project={project} folder={run.label} stills={stillsIn(run.rows)} />}
-      {run.rows.map((row) => <ProjectPlaceRow key={projectPlaceKeyOf(row)} summary={summary} row={row} now={now} folderLabelled={run.label !== undefined} />)}
+      {/* The grid view shows the folder's stills right here, so the row that opens them as a grid is the list's alone. */}
+      {view === 'list' && run.label && run.label !== '/' && stillsIn(run.rows) > 1 && <ProjectStillsFolderRow project={project} folder={run.label} stills={stillsIn(run.rows)} />}
+      <ProjectPageItems summary={summary} now={now} rows={run.rows} folderLabelled={run.label !== undefined} view={view} />
     </Fragment>
   ));
 }
 
 /**
- * A project's page, by rung (projectPageRungs), a rule between rungs, and its older work folded into one row that
- * opens in place. The header's counts open each state's first thread.
+ * A project's page beside the sidebar, by rung (projectPageRungs), a rule between rungs, and its older work folded into
+ * one row that opens in place: each run as rows or tiles, as the studio's list-or-grid choice says. The title's counts
+ * open each state's first thread.
  */
 export function ProjectPage({ project }: { readonly project: string }) {
   const { summary, now } = useProjectSummary(project);
   const listRef = useRef<HTMLDivElement>(null);
   const [olderShown, setOlderShown] = useState(false);
+  const { view } = useStudioCollectionView();
   useProjectRowHotkeys(listRef);
-  const { shown, folded } = projectPageRungs(summary.rows);
+  const rungs = projectPageRungs(summary.rows), { folded } = rungs;
+  const shown = view === 'grid' ? projectPageGridSections(rungs.shown) : rungs.shown;
   return (
-    <StudioShell start={<><Text size="sm">{project}</Text><ProjectThreadCounts threads={summary.threads} linkedTo={summary} /></>}>
+    <StudioShell>
+      <StudioPageTitle count={<Group component="span" gap="gap" wrap="nowrap"><ProjectThreadCounts threads={summary.threads} linkedTo={summary} /></Group>} end={<StudioCollectionViewToggle />}>
+        <ProjectName project={project} />
+      </StudioPageTitle>
       <FadeScroll>
         <Box ref={listRef} {...stylex.props(projectListStyles.list, stylex.defaultMarker())}>
           {summary.rows.length === 0 && <Text size="sm" {...stylex.props(projectListStyles.span, styles.empty)}><Code>studio render {project}</Code></Text>}
           {shown.map((rung, i) => (
             <Fragment key={rung.key}>
               {i > 0 && <Box aria-hidden {...stylex.props(projectListStyles.span, styles.rule)} />}
-              <ProjectPageRows summary={summary} now={now} rows={rung.rows} folders={rung.folders ?? false} />
+              <ProjectPageRows summary={summary} now={now} rows={rung.rows} folders={rung.folders ?? false} view={view} />
             </Fragment>
           ))}
           {folded.length > 0 && (
@@ -122,7 +159,7 @@ export function ProjectPage({ project }: { readonly project: string }) {
                 thumbnail={<ProjectThumbnail glyph={olderShown ? <ChevronDown size={14} /> : <ChevronRight size={14} />} />}
                 title={<Text component="span" inherit {...stylex.props(styles.dim)}>{foldedLabelOf(folded)}</Text>}
               />
-              {olderShown && <ProjectPageRows summary={summary} now={now} rows={folded} folders />}
+              {olderShown && <ProjectPageRows summary={summary} now={now} rows={folded} folders view={view} />}
             </>
           )}
         </Box>

@@ -1,7 +1,7 @@
 import { Box, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { createLink, type LinkComponent } from '@tanstack/react-router';
-import { createContext, useContext, type AnchorHTMLAttributes, type ReactNode, type Ref } from 'react';
+import { createContext, useContext, useLayoutEffect, useRef, type AnchorHTMLAttributes, type ReactNode, type Ref } from 'react';
 import { FadeScroll } from './fade-scroll.tsx';
 import { colors, radius, spacing, typography } from './theme.stylex.ts';
 
@@ -56,8 +56,8 @@ type StudioSidebarFrameProps = {
 };
 
 /**
- * The index's and the library's frame: the sidebar down the left at full height, the page beside it. The viewers
- * leave it out, as the work there needs the width.
+ * The index's, the library's and a project page's frame: the sidebar down the left at full height, the page beside
+ * it. The viewers leave it out, as the work there needs the width.
  */
 export function StudioSidebarFrame({ sidebar, children }: StudioSidebarFrameProps) {
   return (
@@ -80,12 +80,22 @@ type StudioSidebarBodyProps = {
   readonly list: ReactNode;
 };
 
+/**
+ * Where the list was scrolled to. Each sidebar page is its own route, so moving between them mounts a new sidebar;
+ * it picks up here, so a project clicked far down the list stays where it was.
+ */
+const sidebarListScroll = { top: 0 };
+
 /** The sidebar under its wordmark: what stays put, then the list that scrolls. */
 export function StudioSidebarBody({ head, list }: StudioSidebarBodyProps) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (viewportRef.current) viewportRef.current.scrollTop = sidebarListScroll.top;
+  }, []);
   return (
     <Box component="nav" {...stylex.props(styles.body)}>
       <Box {...stylex.props(styles.head)}>{head}</Box>
-      <FadeScroll>
+      <FadeScroll viewportRef={viewportRef} onScroll={() => { sidebarListScroll.top = viewportRef.current?.scrollTop ?? 0; }}>
         <Box {...stylex.props(styles.nav)}>{list}</Box>
       </FadeScroll>
     </Box>

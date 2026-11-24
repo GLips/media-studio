@@ -1,6 +1,6 @@
 import { useHotkeys } from '@tanstack/react-hotkeys';
 import type { RefObject } from 'react';
-import { PROJECT_ROW_ATTRIBUTE } from './project-row.tsx';
+import { PROJECT_ROW_ATTRIBUTE } from './project-target-link.tsx';
 
 /** Focuses the row `by` steps from the focused one, or the first row when none is focused; the list doesn't wrap. */
 function focusProjectRow(list: HTMLElement | null, by: 1 | -1) {
