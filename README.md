@@ -1,21 +1,25 @@
+<p align="center">
+  <img src="docs/images/header.jpg" alt="media-studio: a media studio for you and your agents. The clapperboard mascot beside a watercolour lake at sunset, painted by the studio's own paint engine" width="100%">
+</p>
+
 # media-studio
+
+<h3>A media studio for you and your agents: code-based tools for making video and images, and a review app where you
+leave specific notes, frame by frame.</h3>
 
 <!-- demo video -->
 
-<h3>A video studio for you and your agents: code-based tools for making video and images, and a review app where you
-leave specific notes, frame by frame.</h3>
-
-Your coding agent drives the `studio` CLI with skills that ship as a Claude Code plugin. It plans the video, captures,
-animates, paints, voices, scores and renders it, and you watch the result in the review app and point at what should
+Your coding agent drives the `studio` CLI with skills that ship as a Claude Code plugin. It plans a video, captures,
+animates, paints, voices, scores and renders it, or makes a still, and you look at the result in the review app and point at what should
 change. The agent takes the drudgery out of the basic tasks, so your attention goes to the parts that matter.
 
-Each video is a project, a folder in `work/` inside your clone, and its plan is `storyboard.ts`: a brief, then a row per
+Each video or set of stills is a project, a folder in `work/` inside your clone. A video's plan is `storyboard.ts`: a brief, then a row per
 scene with its lines and cues. Every frame is code (built on [Remotion](https://www.remotion.dev)), so a note like "hold
 that shot longer" becomes an edit and a re-render.
 
 ## Building blocks for many styles
 
-Your agent builds each video from parts it edits in code: captured UI, motion, 3D blockouts, flat 2D, music-cut timing,
+Your agent builds each video or image from parts it edits in code: captured UI, motion, 3D blockouts, flat 2D, music-cut timing,
 generated footage and your own recordings.
 
 - **It films your web pages itself.** It opens them in a browser, writes the clicks, scrolls and typing for each shot,
@@ -95,7 +99,7 @@ You need a Mac with Node 24, git, ffmpeg and a GPU that Chrome can use.
 
 3. Tell your agent: *"Set up media-studio."* It installs the CLI, makes your workspace and asks about keys.
 
-Then ask for a video from any repo. The plugin loads the skills from your clone, so `git pull` and `npm install` there
+Then ask for a video or a still from any repo. The plugin loads the skills from your clone, so `git pull` and `npm install` there
 update the studio and its skills together. Your projects stay private in `work/`, a git repository of your own.
 
 ## For agents

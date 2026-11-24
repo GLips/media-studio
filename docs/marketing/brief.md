@@ -6,7 +6,7 @@ write must trace to §7 or to the code you're describing. Never invent a number,
 ## 1. Snapshot
 
 ```
-- One-liner: A video studio for you and your agents: code-based tools for making video and images, and a review app where you leave specific notes, frame by frame.
+- One-liner: A media studio for you and your agents: code-based tools for making video and images, and a review app where you leave specific notes, frame by frame.
 - Category: agent-driven video production; "make videos with Claude Code"; code-based motion graphics (Remotion).
 - What it does: A `studio` CLI, a set of Claude Code skills shipped as a plugin, and a local review app. Your agent
   plans, captures, animates, paints, voices, scores and renders a video from building blocks in code; you watch it in
@@ -82,8 +82,9 @@ write must trace to §7 or to the code you're describing. Never invent a number,
 ## 4. Messaging
 
 ```
-- Key message (roof) [LOCKED]: A video studio for you and your agents: code-based tools for making video and
+- Key message (roof) [LOCKED]: A media studio for you and your agents: code-based tools for making video and
   images, and a review app where you leave specific notes, frame by frame.
+  Why "media", from Graham: it's called Media Studio, and it's not just about video: stills and images too.
   Graham's words: "A video studio for you and your agents. Tools to support code-based video and image creation plus
   a review UI for you to provide specific notes frame-by-frame."
 - Pillars:
@@ -123,7 +124,7 @@ write must trace to §7 or to the code you're describing. Never invent a number,
 ```
 - Always use: media-studio (lowercase, hyphen); the `studio` CLI; Studio Recorder; the review app; skills; a
   project; the plan; notes; sign off / sign-off; animatic; building blocks.
-- Term swaps: AI-generated → made by your agent; feedback loop → notes; timeline → the plan; users → you;
+- Term swaps: video studio → media studio; AI-generated → made by your agent; feedback loop → notes; timeline → the plan; users → you;
   "templates" → building blocks.
 - Never use: revolutionize, effortless, magic/magical, seamless (except in Graham's own quote), stunning,
   cinematic-quality, AI-powered, one-click, democratize, supercharge, next-gen.
