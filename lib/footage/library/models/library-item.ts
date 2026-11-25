@@ -55,12 +55,18 @@ export const LibraryTrackLevelled = Schema.Struct({
 });
 export type LibraryTrackLevelled = typeof LibraryTrackLevelled.Type;
 
+/** The DeepFilterNet release a mic's levelled copy is denoised with. */
+export const LIBRARY_DEEP_FILTER_VERSION = '0.5.6';
+
+/** DeepFilterNet's limit on lowering the noise, in dB; Graham picked 25 by ear over the unlimited default. */
+export const LIBRARY_DEEP_FILTER_ATTEN_LIMIT_DB = 25;
+
 /**
  * How spoken track `track`'s levelled copy is made, named so a copy made another way is remade. A mic's room noise
- * drops in and out at every cut, so once levelled an 80 Hz high-pass takes its rumble and RNNoise, at a 0.8 mix, its
- * hiss, leaving a faint floor. The system track is clean, so it's levelled alone.
+ * drops in and out at every cut, so once levelled an 80 Hz high-pass takes its rumble and DeepFilterNet its fan and
+ * hiss. The system track is clean, so it's levelled alone.
  */
-export const libraryLevelledProcessing = (track: string) => (track === 'system' ? 'loudnorm' : 'loudnorm+highpass80+rnnoise-sh-0.8');
+export const libraryLevelledProcessing = (track: string) => (track === 'system' ? 'loudnorm' : `loudnorm+highpass80+deepfilter-${LIBRARY_DEEP_FILTER_VERSION}-atten${LIBRARY_DEEP_FILTER_ATTEN_LIMIT_DB}`);
 
 /** Where a levelled copy is brought to: above the mix's voice level, so the mix only ever lowers it. */
 export const LIBRARY_LEVELLED_LUFS = -16;

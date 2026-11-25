@@ -17,6 +17,7 @@ import { LibraryFileUnreadable } from '../models/library-errors.ts';
 import { libraryFootage, LibraryTranscriptFileText } from '../models/library-footage.ts';
 import { makeRecorderDeviceLatenciesLayer, RecorderDeviceLatencies } from './library-recorder-latencies.ts';
 import { makeLibraryStoreLayer } from './library-store.ts';
+import { LIBRARY_DEEP_FILTER_VERSION, libraryLevelledProcessing } from '../models/library-item.ts';
 
 /**
  * ffprobe as a 10 s screen recording and a mic; loudnorm hears the mic at -30 LUFS and ebur128 its levelled copy at
@@ -42,16 +43,18 @@ const fakeFfmpeg = StudioFfmpeg.of({
 const fakeTranscriber = FootageTranscriber.of({ transcribe: () => Effect.succeed({ duration: 10, words: [{ text: 'Hello', start: 1, end: 1.4 }], pauses: [] }) });
 
 /**
- * The user cache moved into the test's folder, holding a stand-in RNNoise model, so levelling never fetches the real
- * one: ffmpeg is faked, so the model is only ever named, never read.
+ * The user cache moved into the test's folder, holding a stand-in DeepFilterNet that copies its input to its output
+ * folder, so levelling never fetches the real one.
  */
-function cacheWithDenoiseModel(root: string) {
+function cacheWithDenoiser(root: string) {
   process.env.XDG_CACHE_HOME = join(root, 'cache');
-  mkdirSync(join(root, 'cache/media-studio/rnnoise-models'), { recursive: true });
-  writeFileSync(join(root, 'cache/media-studio/rnnoise-models/sh.rnnn'), '');
+  const bin = join(root, `cache/media-studio/deep-filter-${LIBRARY_DEEP_FILTER_VERSION}`);
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, 'deep-filter'), '#!/bin/sh\n# -D -a <limit> -o <dir> <wav>\nmkdir -p "$5" && cp "$6" "$5/"\n');
+  chmodSync(join(bin, 'deep-filter'), 0o755);
 }
 
-const libraryAt = (root: string, latencies = makeRecorderDeviceLatenciesLayer(join(root, 'no-recorder-config.json'))) => (cacheWithDenoiseModel(root), Layer.mergeAll(
+const libraryAt = (root: string, latencies = makeRecorderDeviceLatenciesLayer(join(root, 'no-recorder-config.json'))) => (cacheWithDenoiser(root), Layer.mergeAll(
   makeLibraryStoreLayer({ libraryDir: join(root, 'work/library'), projectsDir: join(root, 'work/projects'), workspaceRequired: false }),
   makeLibraryMediaFolderLayer(join(root, 'work')),
   latencies,
@@ -96,12 +99,12 @@ test('a complete take is moved into the library, transcribed and its speech leve
   assert.equal(existsSync(take), false);
   assert.deepEqual(readdirSync(join(root, 'work/library/media', item.id)).toSorted(), ['input.jsonl', 'mic.m4a', 'proxies', 'recording.json', 'screen.mp4']);
   assert.deepEqual(heardTracks(join(root, 'work/library/items', item.id)), ['mic']);
-  assert.deepEqual(item.tracks.mic.levelled, { file: 'proxies/mic-levelled.wav', lufs: -16.2, processing: 'loudnorm+highpass80+rnnoise-sh-0.8', quiet: [[0.02, 0.07]] });
+  assert.deepEqual(item.tracks.mic.levelled, { file: 'proxies/mic-levelled.wav', lufs: -16.2, processing: libraryLevelledProcessing('mic'), quiet: [[0.02, 0.07]] });
   // A copy levelled before the denoise records no processing, so finish remakes it.
   const itemJson = join(root, 'work/library/items', item.id, 'item.json');
   writeFileSync(itemJson, JSON.stringify({ ...item, tracks: { ...item.tracks, mic: { ...item.tracks.mic, levelled: { file: 'proxies/mic-levelled.wav', lufs: -16.2 } } } }));
   const remade = await runStudioEffect(finishLibraryItem(item.id, { proxies: false }), libraryAt(root));
-  assert.equal(remade.tracks.mic.levelled?.processing, 'loudnorm+highpass80+rnnoise-sh-0.8');
+  assert.equal(remade.tracks.mic.levelled?.processing, libraryLevelledProcessing('mic'));
 }));
 
 test("a take's system audio is never its speech, but is transcribed and levelled beside it, as the other side of a call", () => withStudioTemp('library-add', async (root) => {
