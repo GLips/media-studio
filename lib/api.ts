@@ -131,6 +131,28 @@ export { paintFigurePartPieces, paintFigurePartRegion, type PaintFigurePart, typ
 export { posedFigureShapes, posedPrimitiveFigure, type PaintFigurePose, type PaintFigureView, type PosedPrimitiveFigure } from '#lib/paint/animation/models/figure/posed-primitive-figure.ts';
 export { constructedFigureShapes, figureConstructionChain, type ConstructedFigure, type PaintFigureConstruction } from '#lib/paint/animation/models/figure/constructed-figure.ts';
 export { svgFigureShapes, svgPathRegions, type SvgPathFigure, type SvgPathPlacement } from '#lib/paint/animation/models/figure/svg-path-figure.ts';
+// Subject painting: a subject (what exists and what shows, by semantic id) painted whole by a style's painter, with
+// intents, per-target tunes and hand-painted replacements resolved before it plans.
+export { SUBJECT_HIDDEN, subjectAreaVisibility, subjectPathVisibility, subjectVisible, type SubjectArea, type SubjectLandmarkPoint, type SubjectPath, type SubjectPathRun, type SubjectRing, type Visibility, type Visible } from '#lib/paint/subject/models/subject-geometry.ts';
+export type { FeatureGroupId, FeatureId, FrameId, MaterialId, PartId, SubjectId, SubjectIds, SubjectTag } from '#lib/paint/subject/models/subject-id.ts';
+export { formatSubjectDiagnostics, SubjectDiagnosticError, type SubjectDiagnostic, type SubjectDiagnosticCode, type SubjectResult } from '#lib/paint/subject/models/subject-diagnostic.ts';
+export { subjectKeyPageDirection, type IlluminationEvidence, type SubjectEvidenceKind, type SubjectLight, type SubjectSampleLayout, type SubjectVector3, type SurfaceEvidence } from '#lib/paint/subject/models/subject-evidence.ts';
+export { subjectFramePoint, subjectFrameUnitPx, type SubjectFrame, type SubjectFrameBasis, type SubjectFrameSource, type SubjectFrameStatus } from '#lib/paint/subject/models/subject-frame.ts';
+export {
+  checkSubject, defineSubject, findSubjectFeature, findSubjectFrame, findSubjectMaterial, findSubjectPart, subjectMaterialOf, subjectRefKey,
+  type PaintableRef, type Subject, type SubjectFeature, type SubjectHex, type SubjectInput, type SubjectLineKind, type SubjectMaterial, type SubjectPart, type SubjectRef,
+} from '#lib/paint/subject/models/subject.ts';
+export { selectFeature, selectFeatureGroup, selectMaterial, selectPart, selectTag, type PaintableSelector, type SubjectSelector, type SubjectTarget } from '#lib/paint/subject/models/subject-selector.ts';
+export { requireSubjectEvidence, type SubjectWithEvidence } from '#lib/paint/subject/models/subject-check.ts';
+export {
+  defineSubjectPainter, subjectPaintKey,
+  type ResolvedSubjectIntent, type SubjectContribution, type SubjectEdgeIntent, type SubjectEmphasis, type SubjectIntent, type SubjectPainter, type SubjectPainterContext,
+  type SubjectPainterOptions, type SubjectPainterReport, type SubjectPaintKey, type VisibleSubjectFeature, type VisibleSubjectPart,
+} from '#lib/paint/subject-painting/models/subject-painter.ts';
+export { subjectIntent, subjectReplace, subjectTune, type SubjectOverride, type SubjectReplacementContext } from '#lib/paint/subject-painting/models/subject-overrides.ts';
+export { paintSubject, requireSubjectPainting, type SubjectOverridesFor, type SubjectPainting } from '#lib/paint/subject-painting/models/paint-subject.ts';
+export { subjectKeyProvenance, traceSubjectPaintingProblems, type SubjectPaintingDiagnostic, type SubjectPaintingReport } from '#lib/paint/subject-painting/models/subject-painting-report.ts';
+export { subjectAreaRegion, subjectAreasRegion, subjectPathSubpaths } from '#lib/paint/subject-painting/models/subject-document-geometry.ts';
 // Painted motion (plan 1): nodes over a compiled painting's groups, with pins and how their marks live (a live node
 // registers its poser), clips played through clocks written as parts, evaluated per frame into StampPainting's `frame`.
 export { buildPaintMotion, type PaintMotionBuild } from '#lib/paint/animation/models/paint-motion.ts';
