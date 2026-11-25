@@ -2,7 +2,7 @@
 
 ## Rules
 
-- The goal when adding or changing anything: the engine gives solid primitives, and essentially every creative building block (styles, effects, shaders, ways of rendering a shot) can be made in `work/`, so people express their own ideas within it; the engine's built-ins are examples to import or imitate.
+- The goal when adding or changing anything: the engine gives solid primitives, and whatever kind of piece it ships built-ins of, `work/` can write its own of the same way, so people express their own creative ideas within it. The built-ins are examples to import or imitate; a kind `work/` can't extend is a gap to close.
 - Commands: `npm run check:arch`, `npm run lint`, `npm run typecheck`, `npm test`. Run each on its own; a chained `&&`
   hides every failure after the first. The pre-commit gate (`.githooks/pre-commit`, on after `npm install`) runs
   check:arch and `lint` over the studio, then `typecheck:gate` and `test:gate` (what a clean clone holds, no `work/`)
