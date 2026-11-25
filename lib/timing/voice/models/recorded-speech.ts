@@ -3,26 +3,57 @@
 // captions, cues and the mix take it as they take a voice's clip.
 //
 // A stretch keeps its source in and out: nothing is cut or copied, so a picture laid against it stays in sync, and
-// moving an edge is an edit to the storyboard, not a re-import.
+// moving an edge is an edit to the storyboard, not a re-import. Inside it, the line plays its pieces back to back,
+// leaving out what its cleanup took (fillers, stutters, long pauses), each removal listed for review to restore.
 
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 
+/** A stretch of a library item a line plays, in item seconds. */
+export type SpokenPiece = { from: number; to: number };
+
 /**
- * Where a line's sound is in a library item's media: `file`, from `start` seconds into it, faded in and out over
- * `fade` seconds at its edges, longer where an edge cuts into sound.
+ * Something a line's cleanup took out: its `kind` (`filler`, `repeat`, `retake`, `false start`, `pause`, `cut`, or a
+ * project rule's), what was said (empty for a pause), where it was in the item, and the line second `at` the line
+ * jumps over it. `keepAt` is the item second a line's `keep` names to restore it; `flag` asks review to listen twice.
  */
-export type LibraryVoiceSound = { item: string; file: string; start: number; fade: { in: number; out: number } };
+export type SpokenRemoval = { kind: string; text: string; from: number; to: number; at: number; keepAt: number; flag?: string };
+
+/** Speech whisper wrote no word for, left in the line (item seconds, and the line second it plays at) for review to hear. */
+export type SpokenUnheard = { from: number; to: number; at: number };
+
+/** A stretch of a line turned down to `gain`, in line seconds: a breath (about −8 dB), a click (0). */
+export type SpokenDip = { start: number; end: number; gain: number };
+
+/**
+ * Where a line's sound is in a library item's media: `file`, each piece from its `start` (media seconds) for its
+ * `duration`, at its line second `at`. Pieces cross-fade over `join` seconds; the line fades in and out over `fade`,
+ * longer where an edge cuts into sound, and dips where `dips` say.
+ */
+export type LibraryVoiceSound = {
+  item: string;
+  file: string;
+  pieces: readonly { start: number; at: number; duration: number }[];
+  join: number;
+  fade: { in: number; out: number };
+  dips: readonly SpokenDip[];
+};
 
 /** A line edge in the quiet beside its words (`clean`), or cutting into sound because no quiet came before the next word (`rough`). */
 export type SpokenEdge = 'clean' | 'rough';
 
-/** Where in a library item a line is spoken: its id, and the stretch's edges in item seconds. */
-export type SpokenStretch = { item: string; from: number; to: number };
+/**
+ * Where in a library item a line is spoken: its id, the stretch's edges in item seconds, the pieces it plays inside
+ * them, what it took out, and the unheard speech it left in.
+ */
+export type SpokenStretch = { item: string; from: number; to: number; pieces: readonly SpokenPiece[]; removals: readonly SpokenRemoval[]; unheard: readonly SpokenUnheard[] };
+
+/** How long a stretch plays: its pieces back to back. */
+export const spokenStretchSeconds = ({ pieces }: Pick<SpokenStretch, 'pieces'>) => pieces.reduce((sum, p) => sum + p.to - p.from, 0);
 
 /**
- * A stretch of a library recording a line is spoken in: its item, its edges in item seconds and whether each lands
- * in quiet, what the item's transcript heard in it (from `from`), and its sound: the spoken track levelled for the
- * mix, with its loudness, or null while the item has no levelled copy (`studio library finish` makes it).
+ * A stretch of a library recording a line is spoken in: its edges and whether each lands in quiet, what the
+ * transcript heard in it (on line time, removed words left out), and its sound: the spoken track levelled for the
+ * mix, with its loudness, or null until the item is levelled (`studio library finish`).
  */
 export type RecordedSpeech = SpokenStretch & {
   heard: readonly SpokenWord[];

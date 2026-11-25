@@ -9,6 +9,7 @@
 
 import { defineTimeline, recordedGrid, tempoGrid, type FittedTrack, type SceneMoment, type SceneSpan, type TimelineGrid, type TimelineSpec } from '#lib/timing/timeline/models/timeline.ts';
 import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
+import { spokenStretchSeconds } from '#lib/timing/voice/models/recorded-speech.ts';
 import type { RecordedVoice, RecordedVoiceLine, Voice, VoiceLine } from '#lib/timing/voice/models/voice-manifest.ts';
 import { alignSpokenWords, captionMarkup, estimateSpokenLine, findSpokenPhrase, spokenText } from '#lib/timing/voice/models/voice-words.ts';
 import type { Storyboard, StoryboardBeatLine, StoryboardBeatScene, StoryboardFixedScene, StoryboardLine, StoryboardReadLine, StoryboardScene, StoryboardSpokenLine, StoryboardWordCue, TimelineOfStoryboard } from './storyboard.ts';
@@ -102,7 +103,7 @@ function linesOf(row: StoryboardScene): [string, StoryboardLine][] {
  * words placed on them. Until the item's speech is levelled it can't play, which stops a render.
  */
 function spokenLine(scene: string, id: string, line: StoryboardSpokenLine, diagnostics: StoryboardDiagnostic[]): { line: VoiceLine; read: StoryboardLineRead } {
-  const { speech } = line, duration = speech.to - speech.from;
+  const { speech } = line, duration = spokenStretchSeconds(speech);
   const said = line.text ?? speech.heard.map((w) => w.text).join(' ');
   const text = spokenText(said), caption = captionMarkup(said), paragraph = line.paragraph ?? false;
   if (!(duration > 0)) diagnostics.push({ scene, line: id, message: `its speech runs ${speech.from} to ${speech.to} s of ${speech.item}: give it an end after its start` });
@@ -116,7 +117,7 @@ function spokenLine(scene: string, id: string, line: StoryboardSpokenLine, diagn
     diagnostics.push({ scene, line: id, message: `its ${edge}-point (${at} s of ${speech.item}) cuts into sound, with no quiet ${edge === 'in' ? 'after the word before' : 'before the next word'}: move the edge to a pause, take another take, split the line, or mark it hardEdge` });
   }
   const { lufs, ...src } = speech.sound;
-  return { line: { src, lufs, speech: { item: speech.item, from: speech.from, to: speech.to }, duration, words: alignSpokenWords(text, speech.heard, duration).words, text, caption, paragraph, pauseBefore: null }, read: 'spoken' };
+  return { line: { src, lufs, speech: { item: speech.item, from: speech.from, to: speech.to, pieces: speech.pieces, removals: speech.removals, unheard: speech.unheard }, duration, words: alignSpokenWords(text, speech.heard, duration).words, text, caption, paragraph, pauseBefore: null }, read: 'spoken' };
 }
 
 /** A line's clip while it still says the line, its caption and paragraph always the storyboard's; else an estimate. */
