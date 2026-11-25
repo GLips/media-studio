@@ -12,7 +12,7 @@ import { PROJECT_TILE_GUESSED_ASPECT, projectTileGridStyles } from './project-ti
 
 const styles = stylex.create({
   row: { gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: spacing.inset, height: '44px', paddingInline: spacing.gap },
-  thumbnail: { width: '64px', height: '36px', flexShrink: 0, borderRadius: radius.control, backgroundColor: colors.skeleton },
+  thumbnail: { width: '36px', height: '36px', flexShrink: 0, borderRadius: radius.control, backgroundColor: colors.skeleton },
   title: { width: '240px', height: '12px', borderRadius: radius.control, backgroundColor: colors.skeleton },
   // A tile's picture cell and name line (ProjectTile), empty.
   tile: { display: 'flex', flexDirection: 'column', gap: spacing.tight, padding: spacing.tight },

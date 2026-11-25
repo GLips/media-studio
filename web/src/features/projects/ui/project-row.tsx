@@ -19,8 +19,9 @@ const styles = stylex.create({
     outlineColor: colors.cream, outlineStyle: 'solid', outlineOffset: '-1px', outlineWidth: { default: 0, ':focus-visible': '1px' },
   },
   cell: { minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  // The name holds its weight, not a brighter tone: the question beside it, in the same cream, is what's acted on.
+  // The name leads at 600 in cream; the question after it is a step quieter, supporting it.
   name: { fontWeight: 600 },
+  question: { color: colors.textMuted },
   // A title with no columns after it, free of the name column's cap.
   wide: { gridColumn: '2 / -1' },
   end: { justifySelf: 'end' },
@@ -40,12 +41,12 @@ export const projectListStyles = stylex.create({
 
 type ProjectRowProps = {
   readonly target: ProjectRowTarget;
-  /** The 64px picture, or a glyph in its box (ProjectThumbnail). */
+  /** The 36px picture, or a glyph in its box (ProjectThumbnail). */
   readonly thumbnail: ReactNode;
   readonly title: ReactNode;
   /** Its one state in plain words, after the name (ProjectRowStatus): `not decided`, `1 to verify`, `0 of 6 signed`. */
   readonly status?: ReactNode;
-  /** After the state, in the same cream: what a decision asks. */
+  /** After the state, a step quieter than the name: what a decision asks. */
   readonly detail?: ReactNode;
   /** Readouts, right-aligned: a file's age, where a row leads. */
   readonly end?: ReactNode;
@@ -58,7 +59,7 @@ export function ProjectRow({ target, thumbnail, title, detail, status, end }: Pr
       {thumbnail}
       <Text component="span" size="md" {...stylex.props(styles.cell, styles.name)}>{title}</Text>
       <Group component="span" gap="gap" wrap="nowrap">{status}</Group>
-      <Text component="span" size="md" {...stylex.props(styles.cell)}>{detail}</Text>
+      <Text component="span" size="md" {...stylex.props(styles.cell, styles.question)}>{detail}</Text>
       <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>{end}</Group>
     </ProjectTargetLink>
   );

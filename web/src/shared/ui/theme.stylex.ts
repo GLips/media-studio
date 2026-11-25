@@ -18,6 +18,8 @@ export const colors = stylex.defineVars({
   line: '#2a2a31',
   /** Type, the playhead, the focus ring and the current row's rule. */
   cream: '#f3f0e7',
+  /** Supporting text a step under cream, above dim: a row's question, a take's opening words. Cream at 70%. */
+  textMuted: 'rgba(243,240,231,0.7)',
   /** Secondary type, a resolved note, an absent agent. */
   dim: '#8d8a83',
   /** An open or reopened note, and the one primary action on a screen. */

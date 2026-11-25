@@ -1,7 +1,6 @@
-import { Group, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import type { ReviewProjectRow } from '#lib/output/review/models/review-dashboard.ts';
-import { StudioSiblingName } from '#web/shared/ui/studio-sibling-name.tsx';
+import { StudioTileCaption } from '#web/shared/ui/studio-tile-caption.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { ProjectAge } from './project-age.tsx';
 import { ProjectTargetLink } from './project-target-link.tsx';
@@ -10,7 +9,8 @@ import { ProjectThumbnail, type ProjectTileCell } from './project-thumbnail.tsx'
 
 const styles = stylex.create({
   tile: {
-    display: 'flex', flexDirection: 'column', gap: spacing.tight, minWidth: 0, padding: spacing.tight,
+    // The picture at the tile's left edge; the caption takes the tile's whole width, which may be wider.
+    display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: spacing.tight, minWidth: 0, padding: spacing.tight,
     color: colors.cream, textDecoration: 'none', borderRadius: radius.control,
     backgroundColor: {
       default: 'transparent',
@@ -20,11 +20,6 @@ const styles = stylex.create({
     },
     outlineColor: colors.cream, outlineStyle: 'solid', outlineOffset: '-1px', outlineWidth: { default: 0, ':focus-visible': '1px' },
   },
-  name: { minWidth: 0, fontWeight: 600 },
-  // One line under the name: the state at its start, the age at its end. A narrow portrait column drops the age to a
-  // line of its own rather than spilling past the tile.
-  meta: { minWidth: 0, minHeight: spacing.row, rowGap: 0 },
-  end: { marginInlineStart: 'auto', flexShrink: 0 },
 });
 
 type FileRow = Extract<ReviewProjectRow, { on: 'file' }>;
@@ -41,21 +36,16 @@ type ProjectTileProps = {
 };
 
 /**
- * A project page's grid item: a file's picture filling a cell of its grid's shape, the part of its name that tells it
- * from its siblings, then its one state word (ProjectRowStatus) and its age. It opens what its row would.
+ * A project page's grid item: a file's picture filling a cell of its grid's shape, then the studio's tile caption
+ * (StudioTileCaption) with its one state word (ProjectRowStatus) and its age. It opens what its row would.
  */
 export function ProjectTile({ project, row, now, name, siblings, cell }: ProjectTileProps) {
   const { artifact } = row;
   return (
     <ProjectTargetLink target={{ project, on: 'file', path: artifact.path }} xstyle={styles.tile}>
       <ProjectThumbnail project={project} thumbnail={row.thumbnail} tile={cell} />
-      <Text component="span" size="md" {...stylex.props(styles.name)}><StudioSiblingName name={name} siblings={siblings} lines={2} /></Text>
-      <Group gap="gap" {...stylex.props(styles.meta)}>
-        <ProjectRowStatus threads={row.threads} />
-        <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>
-          <ProjectAge now={now} at={artifact.modified} what={artifact.kind === 'video' ? 'rendered' : 'made'} />
-        </Group>
-      </Group>
+      <StudioTileCaption name={name} siblings={siblings} status={<ProjectRowStatus threads={row.threads} />}
+        end={<ProjectAge now={now} at={artifact.modified} what={artifact.kind === 'video' ? 'rendered' : 'made'} />} />
     </ProjectTargetLink>
   );
 }

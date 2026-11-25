@@ -20,7 +20,7 @@ import { useProjectRowHotkeys } from './use-project-row-hotkeys.ts';
 
 const styles = stylex.create({
   quiet: { paddingInline: spacing.gap, paddingBlock: spacing.gap, color: colors.dim },
-  project: { color: 'inherit' },
+  project: { color: 'inherit', fontWeight: 'inherit' },
 });
 
 /** A project's awaiting rows shown before the rest fold into `N more`, so one busy project can't fill the first screen. */
