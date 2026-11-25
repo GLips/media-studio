@@ -294,6 +294,9 @@ Panel fill, 1px seam border, 3px corners, cream chrome type: they sit on the dar
 ### View toggle
 Two icon buttons (list, grid) edged as one control in a 1px seam, the showing view lit as an active icon button; each tooltip names its view and the `V` key. It sits in a page's title row before quick-open.
 
+### Group and sort
+Wherever a grid of pictures shows (a project page in grid view, a folder of stills), a dim `⇅ Shape · Name ▾` menu sits before the view toggle (on the stills grid, at the grid's top right): group by shape, name or none, sort by name or newest, the choice checked. One choice for every grid, remembered in the browser and kept across tabs (`useStudioCollectionArrangement`). By shape is today's grid per aspect. By name splits pictures on the start their names share (`03-menu-appstore-iphone-*`, `og-*`), read from the names, each group under that start in cream at 600 with its count dim (`StudioNameGroupHead`). By name and none lay pictures in justified rows (`StudioJustifiedRows`): a row's pictures share one height, about 200px on a project page and 128px in the stills grid, each at its own shape, and the row scales to fill the width; a short last row stays at that height. Sort orders the pictures and the groups.
+
 ### Sidebar items
 24px rows, chrome type, a 14px lucide icon column on the pages (Awaiting you, Library); a project has none, so its name starts at the edge the Projects heading and filter share; a month heading over a run of projects is dim at chrome size, 600, raised on hover and on the page showing now, a count in amber at the end when something waits there.
 

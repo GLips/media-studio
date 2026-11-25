@@ -1,8 +1,8 @@
 /** Where a name breaks into words: a dash, an underscore, a space or a slash. Not a dot, which starts an extension. */
-const NAME_BREAK = /[-_ /]/;
+export const STUDIO_NAME_BREAK = /[-_ /]/;
 
 /** The start every name shares, cut back to its last word break so no word is split; none for fewer than two names. */
-function sharedWordPrefixOf(names: readonly string[]): string {
+export function studioSharedNameStartOf(names: readonly string[]): string {
   if (names.length < 2) return '';
   let shared = names[0];
   for (const name of names) {
@@ -11,7 +11,7 @@ function sharedWordPrefixOf(names: readonly string[]): string {
     shared = shared.slice(0, i);
   }
   let cut = shared.length;
-  while (cut > 0 && !NAME_BREAK.test(shared[cut - 1])) cut -= 1;
+  while (cut > 0 && !STUDIO_NAME_BREAK.test(shared[cut - 1])) cut -= 1;
   return shared.slice(0, cut);
 }
 
@@ -30,13 +30,13 @@ export type StudioSiblingName = {
  * reads `detail.jpg`, and a long one keeps its end in view while its middle gives way. `siblings` includes the name.
  */
 export function studioSiblingNameOf(name: string, siblings: readonly string[]): StudioSiblingName {
-  const prefix = sharedWordPrefixOf(siblings);
+  const prefix = studioSharedNameStartOf(siblings);
   // A name that is the shared start itself, or wholly inside it, shows whole.
   const shown = prefix.length < name.length && name.startsWith(prefix) ? name.slice(prefix.length) : name;
   const extension = /\.[^./]+$/.exec(shown)?.[0] ?? '';
   const stem = shown.slice(0, shown.length - extension.length);
   let lastBreak = stem.length - 1;
-  while (lastBreak > 0 && !NAME_BREAK.test(stem[lastBreak])) lastBreak -= 1;
+  while (lastBreak > 0 && !STUDIO_NAME_BREAK.test(stem[lastBreak])) lastBreak -= 1;
   const split = lastBreak > 0 ? lastBreak : 0;
   return { shown, head: shown.slice(0, split), tail: shown.slice(split) };
 }

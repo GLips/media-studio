@@ -4,12 +4,13 @@ import { projectFileUrl, reviewMediaUrl, type PinnedProjectFile } from '#web/sha
 import { useReviewScreen } from './review-screen-context.tsx';
 import { reviewIsProofed } from './use-review-proof-ground.ts';
 
-/** A still in the open one's folder: its path, its file name, and its bytes as they are now. */
-export type ReviewStillSibling = { readonly path: string; readonly name: string; readonly src: string };
+/** A still in the open one's folder: its path, its file name, its bytes as they are now, and when it was written. */
+export type ReviewStillSibling = { readonly path: string; readonly name: string; readonly src: string; readonly modified?: number };
 
 const folderOf = (path: string) => path.slice(0, path.lastIndexOf('/') + 1);
 
-const reviewStillSiblingOf = (path: string, src: string): ReviewStillSibling => ({ path, name: path.slice(path.lastIndexOf('/') + 1), src });
+const reviewStillSiblingOf = (path: string, src: string, modified?: string): ReviewStillSibling =>
+  ({ path, name: path.slice(path.lastIndexOf('/') + 1), src, ...(modified !== undefined && { modified: Date.parse(modified) }) });
 
 /**
  * The stills in the open still's folder, itself included, in name order (`og-a`, `og-b`, … `og-10`): what the grid
@@ -19,7 +20,7 @@ const reviewStillSiblingOf = (path: string, src: string): ReviewStillSibling => 
 export function reviewStillSiblingsOf(artifacts: readonly ProjectArtifact[], open: PinnedProjectFile): ReviewStillSibling[] {
   const folder = folderOf(open.path);
   const listed = artifacts.filter((a) => a.kind === 'still' && folderOf(a.path) === folder);
-  const entries = listed.map((a) => reviewStillSiblingOf(a.path, projectFileUrl(open.project, a.path, a.modified)));
+  const entries = listed.map((a) => reviewStillSiblingOf(a.path, projectFileUrl(open.project, a.path, a.modified), a.modified));
   const all = listed.some((a) => a.path === open.path) ? entries : [...entries, reviewStillSiblingOf(open.path, reviewMediaUrl(open))];
   return all.toSorted((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
 }

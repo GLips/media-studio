@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Fragment, useRef, useState } from 'react';
 import { projectPageRungOf, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
+import { StudioCollectionArrangementMenu } from '#web/shared/ui/studio-collection-arrangement-menu.tsx';
 import { StudioCollectionViewToggle } from '#web/shared/ui/studio-collection-view-toggle.tsx';
 import { StudioPageTitle } from '#web/shared/ui/studio-page-title.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
@@ -161,7 +162,7 @@ export function ProjectPage({ project }: { readonly project: string }) {
   const shown = view === 'grid' ? projectPageGridSections(rungs.shown) : rungs.shown;
   return (
     <StudioShell>
-      <StudioPageTitle count={<Group component="span" gap="gap" wrap="nowrap"><ProjectThreadCounts threads={summary.threads} linkedTo={summary} /></Group>} end={<StudioCollectionViewToggle />}>
+      <StudioPageTitle count={<Group component="span" gap="gap" wrap="nowrap"><ProjectThreadCounts threads={summary.threads} linkedTo={summary} /></Group>} end={<>{view === 'grid' && <StudioCollectionArrangementMenu />}<StudioCollectionViewToggle /></>}>
         <ProjectName project={project} />
       </StudioPageTitle>
       <FadeScroll>

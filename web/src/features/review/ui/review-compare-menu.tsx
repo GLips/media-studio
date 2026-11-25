@@ -46,7 +46,7 @@ export function ReviewCompareMenu() {
     <Group gap={0} wrap="nowrap">
       <Menu opened={opened} onChange={setOpened} position="top-start" withinPortal>
         {/* The tooltip outside: Menu.Target forwards its ref to the button, where HotkeyTooltip would swallow it. */}
-        <HotkeyTooltip name="Compare with" hotkey="Compare with">
+        <HotkeyTooltip name="Compare with" hotkey="Compare with" disabled={opened}>
           <Menu.Target>
             <UnstyledButton {...stylex.props(styles.target, comparing && styles.on)}>
               <Group gap="tight" wrap="nowrap">

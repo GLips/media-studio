@@ -20,6 +20,8 @@ const styles = stylex.create({
     },
     outlineColor: colors.cream, outlineStyle: 'solid', outlineOffset: '-1px', outlineWidth: { default: 0, ':focus-visible': '1px' },
   },
+  // In a justified row, as wide as its picture and its padding, so a long name truncates rather than widening it.
+  justified: (pictureWidth: number) => ({ width: `calc(${pictureWidth}px + 2 * ${spacing.tight})`, flexShrink: 0 }),
 });
 
 type FileRow = Extract<ReviewProjectRow, { on: 'file' }>;
@@ -33,16 +35,18 @@ type ProjectTileProps = {
   readonly name: string;
   readonly siblings: readonly string[];
   readonly cell: ProjectTileCell;
+  /** In a justified row (StudioJustifiedRows), where the tile is held to its picture's width; in a grid, its column. */
+  readonly justified?: boolean;
 };
 
 /**
  * A project page's grid item: a file's picture filling a cell of its grid's shape, then the studio's tile caption
  * (StudioTileCaption) with its one state word (ProjectRowStatus) and its age. It opens what its row would.
  */
-export function ProjectTile({ project, row, now, name, siblings, cell }: ProjectTileProps) {
+export function ProjectTile({ project, row, now, name, siblings, cell, justified = false }: ProjectTileProps) {
   const { artifact } = row;
   return (
-    <ProjectTargetLink target={{ project, on: 'file', path: artifact.path }} xstyle={styles.tile}>
+    <ProjectTargetLink target={{ project, on: 'file', path: artifact.path }} xstyle={[styles.tile, justified && styles.justified(cell.width)]}>
       <ProjectThumbnail project={project} thumbnail={row.thumbnail} tile={cell} />
       <StudioTileCaption name={name} siblings={siblings} status={<ProjectRowStatus threads={row.threads} />}
         end={<ProjectAge now={now} at={artifact.modified} what={artifact.kind === 'video' ? 'rendered' : 'made'} />} />

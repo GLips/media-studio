@@ -1,5 +1,3 @@
-import type { ReviewTileStep } from './use-review-board-hotkeys.ts';
-
 /** What a group of same-shaped stills is called: its orientation in a word. */
 export type ReviewStillOrientation = 'wide' | 'square' | 'tall';
 
@@ -45,29 +43,6 @@ export function reviewStillAspectSectionsOf<T>(
     return { word: orientationOfAspect(aspect), aspect, size: same ? { w: sizes[0].w, h: sizes[0].h } : null, items: members };
   });
   return { groups, unread };
-}
-
-/** A section of the grid as the arrows read it: how many stills it holds, and how many columns it lays them out in. */
-export type ReviewGridSectionLayout = { readonly count: number; readonly columns: number };
-
-/**
- * The cursor's next place in a grid laid out in sections, each at its own column count (a group's rows begin afresh):
- * along steps through the reading order, a row up or down keeps the column where the row reaches it. Held inside the grid.
- */
-export function reviewSectionedGridStep(at: number, { along, rows }: ReviewTileStep, sections: readonly ReviewGridSectionLayout[]): number {
-  const total = sections.reduce((sum, s) => sum + s.count, 0);
-  if (total === 0) return 0;
-  if (rows === 0) return Math.min(Math.max(at + along, 0), total - 1);
-  // Every laid-out row, as the index its first tile has and how many it holds.
-  const laid: { first: number; length: number }[] = [];
-  let first = 0;
-  for (const { count, columns } of sections) {
-    for (let r = 0; r < count; r += columns) laid.push({ first: first + r, length: Math.min(columns, count - r) });
-    first += count;
-  }
-  const row = laid.findIndex((r) => at < r.first + r.length);
-  const target = laid[Math.min(Math.max(row + rows, 0), laid.length - 1)];
-  return target.first + Math.min(at - laid[row].first, target.length - 1);
 }
 
 /**
