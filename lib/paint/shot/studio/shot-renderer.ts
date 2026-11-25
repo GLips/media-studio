@@ -368,7 +368,8 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
      */
     const exposureImages = (exposure: ShotExposure, laid: ShotExposureLaid, hidden: ReadonlySet<CompiledShotPaintedPlane>, t: number) => {
       arena.reset();
-      layer.reserve([...laid.moments.values(), ...laid.variantMoments.values()].flatMap(({ shares }) => shares.map(({ frame }) => frame)));
+      const effectLeaves = new Set([...laid.effects.values()].flatMap(({ leaves }) => leaves));
+      layer.reserve([...laid.moments.values(), ...laid.variantMoments.values(), ...effectLeaves].flatMap(({ shares }) => shares.map(({ frame }) => frame)));
       const encoder = device.createCommandEncoder();
       const itemsCovered = shotItemsCoverages(encoder, { owner, lenses: canvases.map(({ lens }) => lens), planes, stage }, laid.variantMoments, hidden, laid.items);
       const reads = (id: string, reader: string) => sourceRead(id, reader, exposure, laid.renders, itemsCovered, t);

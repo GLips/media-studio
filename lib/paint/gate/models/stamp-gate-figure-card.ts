@@ -20,7 +20,8 @@ import { stampGateHeronPaper, stampGateHeronPolygon } from './stamp-gate-paper-h
 import { STAMP_GATE_FRAME_TOLERANCE, stampGateFrameDifference, stampGateFrameDifferenceText, stampGateFramePasses } from './stamp-gate-frames.ts';
 import type { StampGateShot } from './stamp-gate-shot-span.ts';
 
-const FRAME = { width: 200, height: 120 } as const;
+export const STAMP_GATE_FIGURE_FRAME = { width: 200, height: 120 } as const;
+const FRAME = STAMP_GATE_FIGURE_FRAME;
 /** How far each wash bleeds past its figure, and how far the figure card's paper fades past it, px. */
 const BLEED_PX = 8, FADE_PX = 8;
 /** The footage stand-in: a dark green the root's paper is, so paper showing past a figure reads as a bright band. */
@@ -182,7 +183,7 @@ export const STAMP_GATE_FIGURE_IMAGE: PaintingSourceModule<typeof figureCardProp
 };
 
 /** The footage: FOOTAGE over the whole stage, one picture uploaded once. */
-function footagePlane(stage: StampStage): PlaneProps {
+export function stampGateFootagePlane(stage: StampStage): PlaneProps {
   const linear = [1, 3, 5].map((at) => srgbToLinear(Number.parseInt(FOOTAGE.slice(at, at + 2), 16) / 255));
   const picture: StampPictureRgba = { box: { x: 0, y: 0, w: stage.width, h: stage.height }, rgba: new Float32Array(stage.width * stage.height * 4).map((_, i) => (i % 4 === 3 ? 1 : linear[i % 4])) };
   return { id: 'footage', depth: 2, source: { kind: 'picture', extent: { kind: 'everywhere' }, pictureAt: () => Promise.resolve(picture) } };
@@ -203,7 +204,7 @@ export function stampGateFigureImageShot(placing: StampGateFigurePlacing, reveal
     : { ...near, source: layersOf(evaluation, placing === 'grounded' ? ['shadow', 'figure'] : ['figure'], { ground: 'transparent', at }) };
   return {
     camera: { stage, fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },
-    planes: [footagePlane(stage), figure, { id: 'sticker', depth: 1.5, source: layersOf(evaluation, ['sticker'], { ground: 'transparent', at }) }],
+    planes: [stampGateFootagePlane(stage), figure, { id: 'sticker', depth: 1.5, source: layersOf(evaluation, ['sticker'], { ground: 'transparent', at }) }],
   };
 }
 

@@ -9,6 +9,7 @@
 
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { checkStampGateFigureCard, checkStampGateFigureImage, stampGateFigureCardShot, stampGateFigureImageShot, type StampGateFigurePlacing } from '../models/stamp-gate-figure-card.ts';
+import { checkStampGateOffsetCopies, stampGateOffsetCopiesPlacedShot, stampGateOffsetCopiesShot } from '../models/stamp-gate-offset-copies.ts';
 import { checkStampGateCardShutter, STAMP_GATE_CARD_SHUTTER, stampGateCardShutterShot } from '../models/stamp-gate-card-shutter.ts';
 import { STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_POSED_AT, stampGateCardsPosedShot, stampGateCardsShot } from '../models/stamp-gate-cards.ts';
 import { STAMP_GATE_FRAME_TOLERANCE, stampGateFrameDifference, stampGateFrameDifferenceText, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
@@ -20,7 +21,7 @@ import {
   STAMP_GATE_LONE_DROP_AT, STAMP_GATE_LONE_DROP_TRAVEL, STAMP_GATE_RAIN, STAMP_GATE_SLIDING_POST, stampGateLoneDropShot, stampGateRainShot, stampGateSlidingPostShot,
 } from '../models/stamp-gate-rain.ts';
 import { STAMP_GATE_FAR_SHALLOWS } from '../models/stamp-gate-sheets.ts';
-import { STAMP_GATE_SHOT_FPS } from '../models/stamp-gate-shot-span.ts';
+import { STAMP_GATE_SHOT_FPS, type StampGateShot } from '../models/stamp-gate-shot-span.ts';
 import {
   STAMP_GATE_DISSOLVE_AT, STAMP_GATE_HERON_BOIL_AT, STAMP_GATE_HERON_NECKS, STAMP_GATE_HIDDEN_FOOT_AT, STAMP_GATE_PAINTING_IN_AT, STAMP_GATE_RIGGED_DISSOLVE_AT,
   STAMP_GATE_RIGGED_HERON_AT, STAMP_GATE_WARM, STAMP_GATE_WARMED_AT, STAMP_GATE_WET_CONTACT_AT, stampGateBoilingHeronShot, stampGateDifferenceBox, stampGateDissolveShot,
@@ -405,6 +406,12 @@ async function checkFigureImage(): Promise<StampGateWashCheck[]> {
   });
 }
 
+/** shot/offset-copies: offsetCopies over the figure read in no plane, beside the figure placed alone. */
+async function checkOffsetCopies(): Promise<StampGateWashCheck[]> {
+  const frame = async (shot: StampGateShot) => stampGateRgb((await stampGateShotFrames(shot, [0])).frames[0]);
+  return checkStampGateOffsetCopies({ copies: await frame(stampGateOffsetCopiesShot()), placed: await frame(stampGateOffsetCopiesPlacedShot()) });
+}
+
 /** Shot case `id`'s checks. */
 export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGateWashCheck[]> {
   if (id === 'shot/rain') return checkStampGateRain();
@@ -422,6 +429,7 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/card-shutter') return checkCardShutter();
   if (id === 'shot/figure-card') return checkFigureCard();
   if (id === 'shot/figure-image') return checkFigureImage();
+  if (id === 'shot/offset-copies') return checkOffsetCopies();
   return checkStampGateShotMasksCase(id);
 }
 
