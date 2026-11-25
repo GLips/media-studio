@@ -54,6 +54,8 @@ export const importPolicyCheck: StructuralCheck = {
         }
         if (from.kind === 'style' && to.kind === 'project') report(`style ${from.style} imports project ${to.project}; projects use a style, never the reverse`);
         if (from.kind === 'style' && to.kind === 'engine') report('a style paints in the browser; engine code is Node');
+        if (from.kind === 'brand-kit' && to.kind === 'project') report(`brand kit ${from.kit} imports project ${to.project}; projects use a kit, never the reverse`);
+        if (from.kind === 'brand-kit' && from.character !== undefined && to.kind === 'engine') report('a character draws in the browser; engine code is Node');
         const crossed = edge.scanned.specifier.startsWith('.') ? libFeatureCrossedTo(file.path, target.path) : undefined;
         if (crossed !== undefined) report(`reaches ${crossed} by a relative path; import it through ${crossed === 'lib/api.ts' ? '#studio' : '#lib/*'}`);
         if (from.kind === 'studio' && to.kind === 'engine' && !SPEC_FILE.test(file.path)) report('studio code renders in the browser; engine code is Node');

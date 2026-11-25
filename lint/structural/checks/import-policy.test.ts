@@ -169,6 +169,23 @@ test('a project uses only the styles its project.ts names, public code none, and
   ]);
 });
 
+test('any project draws a brand kit\'s character, which reaches no project or engine code', () => {
+  const findings = runCheckOnFiles('import-policy', {
+    'package.json': JSON.stringify({ imports: { '#lib/*': './lib/*', '#brands/*': './work/brands/*' } }),
+    'lib/output/render/engine/run.ts': 'export const run = 1;\n',
+    'work/brands/kit/characters/mascot/mascot-body.ts': [
+      "import { run } from '#lib/output/render/engine/run.ts';",
+      "import { t } from '../../../../projects/p/storyboard.ts';",
+    ].join('\n'),
+    'work/projects/p/storyboard.ts': 'export const t = 0;\n',
+    'work/projects/p/scenes/intro.tsx': "import body from '#brands/kit/characters/mascot/mascot-body.ts';\n",
+  });
+  assert.deepEqual(caught(findings), [
+    'work/brands/kit/characters/mascot/mascot-body.ts:#lib/output/render/engine/run.ts',
+    'work/brands/kit/characters/mascot/mascot-body.ts:../../../../projects/p/storyboard.ts',
+  ]);
+});
+
 test('a web feature is entered through its barrel, which announces only its own modules, and its layers import down', () => {
   const findings = runCheckOnFiles('import-policy', {
     'package.json': JSON.stringify({ imports: { '#web/*': './web/src/*' } }),
