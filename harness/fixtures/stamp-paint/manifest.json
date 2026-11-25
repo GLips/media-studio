@@ -245,11 +245,11 @@
     },
     "shot/folds": {
       "file": "shot/folds.png",
-      "output": "49e79730c2be212f3f71ae8367a9aa3742e5a11f0cc0dcc0a713d8348b84c000",
+      "output": "6a52898d2b41e1541dd4ba4103d6937441a439747af49483aa3ed62eed3a3e9b",
       "inputs": "b54592be8fb11990641a94a7ec1287ac147c47178ba2c37337d39e5232cb88bc",
-      "reason": "vid-187: folded sheets, nested flip order, tilt-aware defocus",
-      "accepted": "2026-11-23",
-      "acceptedOver": "3b2ce5d2",
+      "reason": "figure card change: a masked cut card covers min(1,2u)*m instead of min(1,2u*m)",
+      "accepted": "2026-11-25",
+      "acceptedOver": "dbd6cacf",
       "adapter": "apple metal-3"
     },
     "shot/masks": {
@@ -308,11 +308,11 @@
     },
     "shot/paper-heron": {
       "file": "shot/paper-heron.png",
-      "output": "e9eed935effc412a6643f9ed277b5db526b6c211562b601c59a911f830f46b4d",
+      "output": "4906d4a5746e6a44ecde8b6ad54abbe063131b4cb7bf2c60a6ce5523b401479c",
       "inputs": "13c4b30cd621b835e2a73807fd3ad780b040c88d6b046f528713056e5846167a",
-      "reason": "p.vid-10 cut paper: own sheets are cards by default (shadow, cut line, lip under the shot's light), fold shading, PCSS receiver-plane bias",
-      "accepted": "2026-11-23",
-      "acceptedOver": "4247cd66",
+      "reason": "figure card change: a masked cut card covers min(1,2u)*m instead of min(1,2u*m)",
+      "accepted": "2026-11-25",
+      "acceptedOver": "dbd6cacf",
       "adapter": "apple metal-3"
     },
     "shot/pieces": {
@@ -344,11 +344,11 @@
     },
     "shot/rigged-dissolve": {
       "file": "shot/rigged-dissolve.png",
-      "output": "523e77a3653fbcb671213a8ebafbd58f4bac1c26e9b8827d1ac3a264eebc97b0",
+      "output": "32d1a91d57d76b9ecdbf2f23b061d6176ddf26238d6259c6cc7201a3475b8e2b",
       "inputs": "6e0dd89b923e963a0801d9de458cf4e7939cb76394f46c72c95d2d756ee09b88",
-      "reason": "p.vid-10 cut paper: own sheets are cards by default (shadow, cut line, lip under the shot's light), fold shading, PCSS receiver-plane bias",
-      "accepted": "2026-11-23",
-      "acceptedOver": "4247cd66",
+      "reason": "figure card change: a masked cut card covers min(1,2u)*m instead of min(1,2u*m)",
+      "accepted": "2026-11-25",
+      "acceptedOver": "dbd6cacf",
       "adapter": "apple metal-3"
     },
     "shot/shadow": {
@@ -380,11 +380,11 @@
     },
     "solved/paper-heron": {
       "file": "solved/paper-heron.png",
-      "output": "49b64c932a6bd597ecd80d0d0fff28c3a53c3abff7009665020dc898a9786bfe",
+      "output": "501359927190b3165c49183472bfb486eadcc9a73030ecaca5c037faaf172442",
       "inputs": "4328056e8926d35836b50886a4ac5c93a61214ebf4510f9233a4ef25cdaaa07f",
-      "reason": "p.vid-10 cut paper: own sheets are cards by default (shadow, cut line, lip under the shot's light), fold shading, PCSS receiver-plane bias",
-      "accepted": "2026-11-23",
-      "acceptedOver": "4247cd66",
+      "reason": "figure card change: a masked cut card covers min(1,2u)*m instead of min(1,2u*m)",
+      "accepted": "2026-11-25",
+      "acceptedOver": "dbd6cacf",
       "adapter": "apple metal-3"
     },
     "solved/wet-contact": {
