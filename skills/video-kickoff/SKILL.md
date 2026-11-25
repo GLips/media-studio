@@ -1,7 +1,7 @@
 ---
 name: video-kickoff
-description: Kickoff for any video, from the first brief, context dump or raw recording to an animatic or first cut the user has signed off. Use when the user asks for a video from any repo, dumps context for one, points at recordings to make something from, wants story angles, or wants a storyboard or beat sheet.
-argument-hint: [script|footage]
+description: Kickoff for a scripted video, from the first brief or context dump to an animatic the user has signed off. Use when the user asks for a video from any repo, dumps context for one, wants story angles, or wants a storyboard or beat sheet.
+argument-hint: [script]
 ---
 
 # Starting a video
@@ -27,8 +27,7 @@ more on it.
 **Choose the path at kickoff, and say which.** The full ladder suits a piece whose pacing or look is uncertain, or
 whose later rungs are expensive (generated footage, a long reel). To try ideas fast, skip style frames. On every path
 the animatic is signed off before anything gets a real voice or motion polish: a scene table is cheap to change, and
-voiced, polished motion is not. On the `footage` path the voice is recorded already: the story pick is the plan's
-gate, and the first cut is the animatic.
+voiced, polished motion is not.
 
 **An autonomous brief skips the gates** ("go all out", "surprise me"): make each gate's call yourself, write the
 table as your plan, build through to a render, and show the result.
@@ -55,12 +54,8 @@ it's for, the takeaway, the angle, the sources, the rules), then a row per scene
 Hand it over on the plan page (`studio-review`): it times the plan, flags long silences and holds, and takes the
 reviewer's notes on any cell, line or word. Done when every scene is signed off.
 
-## Two ways in
+## Writing it
 
-| Command | Starts from | File |
-|---|---|---|
-| `script` | a brief, a context dump, a draft: the words are yet to be written | [subcommands/script.md](subcommands/script.md) |
-| `footage` | recordings in the footage library: the words are spoken already, and the story is found in them | [subcommands/footage.md](subcommands/footage.md) |
-
-A command word picks its file. Without one, a request pointing at recordings, takes or footage ("make something from
-this week's recordings") is `footage`, and any other is `script`. Load the file and follow it.
+The words are yet to be written: from a brief, a context dump or a draft. Follow
+[subcommands/script.md](subcommands/script.md). A piece made from the person's own recordings, where the words are
+spoken already, is the `producer` skill's.
