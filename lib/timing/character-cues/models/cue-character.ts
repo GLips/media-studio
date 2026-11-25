@@ -8,12 +8,14 @@ import type { CueNumberPath, CuePatch, CuePath, CueState } from './cue-state.ts'
 export type CueSlider<S> = { readonly path: CueNumberPath<S>; readonly min: number; readonly max: number };
 
 /**
- * A ready-made performance. `writes` claims the controls it drives (leaves or subtrees); `sample` gives their values
- * `seconds` into the move from `entry`, the whole state as it stood when the move began. `markers` name moments in
- * it (the snap's `hit`) a cue can align on. Without `seconds` it plays until a cue takes its controls or ends it.
+ * A ready-made performance. `writes` claims the controls it drives; `sample` gives their values `seconds` in, from
+ * `entry`, the state as the move began. A cue can align on a `markers` moment (the snap's `hit`). Without `seconds` it
+ * plays until a cue ends it.
  */
 export type CueMove<S extends CueState> = {
   readonly writes: readonly CuePath<S>[];
+  /** What `end: { return }` hands back, all of `writes` unless given: a clip's weights, never its playhead. */
+  readonly returns?: readonly CuePath<S>[];
   readonly markers?: { readonly [name: string]: number };
   readonly seconds?: number;
   readonly sample: (seconds: number, entry: S) => CuePatch<S>;
@@ -48,6 +50,7 @@ export type AnyCueCharacter = {
   readonly moves: {
     readonly [name: string]: {
       readonly writes: readonly string[];
+      readonly returns?: readonly string[];
       readonly markers?: { readonly [name: string]: number };
       readonly seconds?: number;
       readonly sample: (seconds: number, entry: never) => CuePatch<CueState>;

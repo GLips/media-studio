@@ -59,7 +59,7 @@ export function compileCueScore<Clock extends CueClock, C extends AnyCueCharacte
   };
 
   // Each move's entry: the whole character as it stood just before the move began, read lazily once the tracks exist.
-  const moves: { row: number; begins: number; ends: number; leaves: readonly number[]; end: CueMoveEnd }[] = [];
+  const moves: { row: number; begins: number; ends: number; returns: readonly number[]; end: CueMoveEnd }[] = [];
 
   rows.forEach((row, n) => {
     const seconds = at(row.at), { character } = cast;
@@ -86,8 +86,10 @@ export function compileCueScore<Clock extends CueClock, C extends AnyCueCharacte
       const begins = seconds - marker / rate;
       const ends = call.until === undefined ? begins + (move.seconds ?? Infinity) / rate : at(call.until);
       if (!(ends > begins)) throw new Error(`${where(n)}: move ${call.name} ends before it begins`);
-      const leaves = [...new Set(move.writes.flatMap((path) => cueSchemaLeaves(schema, `character.${path}`)))];
-      const index = moves.push({ row: n, begins, ends, leaves, end: call.end ?? 'hold' }) - 1;
+      const leavesOf = (paths: readonly string[]) => [...new Set(paths.flatMap((path) => cueSchemaLeaves(schema, `character.${path}`)))];
+      const leaves = leavesOf(move.writes), returns = move.returns ? leavesOf(move.returns) : leaves;
+      if (returns.some((leaf) => !leaves.includes(leaf))) throw new Error(`move ${call.name} returns a control it doesn't write`);
+      const index = moves.push({ row: n, begins, ends, returns, end: call.end ?? 'hold' }) - 1;
       const local = (t: number) => Math.min(Math.max(t - begins, 0), ends - begins) * rate;
       let memo: { seconds: number; patch: CuePatch<CueState> } | undefined;
       const sampleAt = (t: number) => {
@@ -109,7 +111,7 @@ export function compileCueScore<Clock extends CueClock, C extends AnyCueCharacte
     const { end } = move;
     if (end === 'hold' || move.ends === Infinity) continue;
     const curve = curveOf(end.return, move.ends);
-    for (const leaf of move.leaves) {
+    for (const leaf of move.returns) {
       if (tracks[leaf].some((w) => w.row !== move.row && w.start > move.begins && w.start <= move.ends)) continue;
       tracks[leaf].push({ start: move.ends, row: move.row, curve, target: () => entryLeaves(index)[leaf] });
     }
