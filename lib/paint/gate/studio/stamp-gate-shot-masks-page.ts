@@ -1,7 +1,7 @@
 // stamp-gate-shot-masks-page.ts: the gate page's masked shot (stamp-gate-shot-masks.ts), drawn through the shot's
 // renderer (stamp-gate-shot-frames.ts): alphaOf masks cutting a tint to the heron's wing, to all but it, to a disc
 // moving across, a picture or a three plane, to the heron revealed by its document over frames and faded, to the
-// disc faded, held and instanced, and to the wing a depth farther as the camera pans.
+// disc faded, held and instanced, and to the wing a depth farther as the camera pans; and the tint's image unplaced.
 
 import { CircleGeometry, Mesh, MeshBasicNodeMaterial, Scene } from 'three/webgpu';
 import type { ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
@@ -16,7 +16,10 @@ import { paintSimilarityApply } from '#lib/paint/animation/models/paint-similari
 import { paintFilmShutter } from '#lib/paint/animation/models/paint-camera.ts';
 import { STAMP_GATE_SHOT_FPS } from '../models/stamp-gate-shot-span.ts';
 import { stampGateRgb } from './stamp-gate-page-surface.ts';
-import { stampGateShotFrames, type StampGateShotDraw } from './stamp-gate-shot-frames.ts';
+import { stampGateShotFrames, stampGateShotImages, type StampGateShotDraw } from './stamp-gate-shot-frames.ts';
+import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import type { ShotImageReadback } from '#lib/paint/shot/studio/shot-renderer.ts';
 
 /** The masked shot as `shown` says, drawn as `draws` say: each frame's RGB bytes, and its costs. */
 async function maskedFrames(shown: StampGateMaskedShot, draws: readonly StampGateShotDraw[]) {
@@ -101,7 +104,8 @@ const KEPT_TIMES = [STAMP_GATE_MASKS_AT.none, STAMP_GATE_MASKS_AT.part, STAMP_GA
  */
 async function checkAlphaOfPainted(): Promise<StampGateWashCheck[]> {
   const shown = { heron: 'revealed', tint: 'wing' } as const, { width } = stampGateMaskedShot(shown).camera.stage.frame;
-  const kept = await maskedFrames(shown, KEPT_TIMES), alone = await Promise.all(KEPT_TIMES.map(async (at) => (await maskedFrames(shown, [at])).frames[0]));
+  const kept = await maskedFrames(shown, KEPT_TIMES), drawnAlone = await Promise.all(KEPT_TIMES.map(async (at) => maskedFrames(shown, [at]))), alone = drawnAlone.map(({ frames }) => frames[0]);
+  const unplaced = await checkImageUnplaced(shown, drawnAlone[KEPT_TIMES.indexOf(STAMP_GATE_MASKS_AT.whole)]);
   const differences = kept.frames.map((frame, i) => stampGateFrameDifference(frame, alone[i])), misses = kept.costs.map(({ counts }) => counts.get('picture misses') ?? 0);
   const tinted = await Promise.all((['unmasked', 'half', 'dissolving'] as const).map(async (heron) => {
     const [[bare], [cut], [uncut]] = await Promise.all((['none', 'heron', 'uncut'] as const).map(async (tint) => (await maskedFrames({ heron, tint }, [0])).frames));
@@ -121,7 +125,36 @@ async function checkAlphaOfPainted(): Promise<StampGateWashCheck[]> {
       id: 'shot/masks: alphaOf dissolving', passed: Math.abs(dissolvedShare - share) <= 0.03,
       detail: `with the heron dissolving halfway to water lying elsewhere, the tint cut to heron/heron lays ${dissolvedShare.toFixed(3)} as much as unfaded (${share.toFixed(3)}, as faded to half, within 0.03 wanted)`,
     },
+    unplaced,
   ];
+}
+
+/** How many of `image`'s texels take any light, its film's taken layer read back. */
+function takenTexels({ layers: { width, height, values } }: ShotImageReadback): number {
+  const texels = width * height, taken = texels * 4;
+  let count = 0;
+  for (let i = 0; i < texels; i++) if (Math.max(values[taken + i * 4], values[taken + i * 4 + 1], values[taken + i * 4 + 2]) > 1 / 255) count++;
+  return count;
+}
+
+/** Pictures laid anew for `costs`. */
+const picturesLaid = (costs: StampPaintCosts) => costs.counts.get('picture misses') ?? 0;
+
+/**
+ * An image evaluated without being placed: the tint cut to the revealed heron's wing, asked for out of order with no
+ * frame drawn, takes light only once the wing shows. The frame drawn after matches it drawn alone, laying anew only
+ * what the images didn't: they are the pictures the shot places.
+ */
+async function checkImageUnplaced(shown: StampGateMaskedShot, alone: Awaited<ReturnType<typeof maskedFrames>>): Promise<StampGateWashCheck> {
+  const { whole, none } = STAMP_GATE_MASKS_AT;
+  const { images: [wholeImage, noneImage], costs, frames } = await stampGateShotImages(stampGateMaskedShot(shown), [{ plane: 'tint', at: paintMoment(whole) }, { plane: 'tint', at: paintMoment(none) }], [whole]);
+  const [taken, takenBefore] = [wholeImage, noneImage].map((image) => (image ? takenTexels(image) : null)), difference = stampGateFrameDifference(stampGateRgb(frames.frames[0]), alone.frames[0]);
+  const imageMisses = costs.map(picturesLaid), [after] = frames.costs.map(picturesLaid), [aloneMisses] = alone.costs.map(picturesLaid);
+  return {
+    id: 'shot/masks: image unplaced', passed: taken !== null && taken > 0 && takenBefore === 0 && stampGateFramePasses(difference) && after === aloneMisses - imageMisses[0],
+    detail: `the tint's image cut to the wing, read back unplaced, takes light in ${taken ?? 'no image'} texels wholly revealed, ${takenBefore ?? 'no image'} before the reveal (some, then none of an image laid wanted); `
+      + `laid ${imageMisses.join(', ')} pictures anew; the frame drawn after against it drawn alone: ${differenceText(difference)}, laying ${after} anew against ${aloneMisses} (${aloneMisses - imageMisses[0]} wanted)`,
+  };
 }
 
 /** The held frames' scene seconds: frames 0, 3 and 7 at 24 fps, the first two within a hold of HOLD, the last past it. */

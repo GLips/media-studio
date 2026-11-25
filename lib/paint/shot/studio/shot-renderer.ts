@@ -1,6 +1,6 @@
 // shot-renderer.ts: a compiled shot drawn on one owner's device into its canvases. A frame solves each
 // painted plane and variant it shows, once, at its moment; then each exposure (a fast frame's one, a reference
-// frame's many) lays every plane where it lies, in its masks' order, reads its items, and composites each canvas far
+// frame's many) evaluates every plane's image where it lies, reads its items, and composites each canvas far
 // to near through its lens. The first canvas holds the back. A pinned plane lies where the frame's measures put it.
 //
 // Picture and three planes are the old path's sources (stamp-lens-source-layers.ts). An alphaOf mask reads its
@@ -23,6 +23,8 @@ import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-
 import { loadStampPictureSources } from '#lib/paint/painting/studio/stamp-picture-sources.ts';
 import { createStampSpanFade } from '#lib/paint/painting/studio/stamp-span-fade-pass.ts';
 import { createStampGrowingUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
+import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
+import { copyStampLayerForReadback, readStampLayerCopy, type StampLayerReadback } from '#lib/paint/painting/studio/stamp-layer-readback.ts';
 import { loadPaintedThreeSources } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
@@ -32,6 +34,7 @@ import { shotCanvasLayings, shotPaintedSolvables, type CompiledPaintedShot, type
 import { shotExposureMoments, shotSolvablesShown, shotWarmShown } from '../models/shot-shown.ts';
 import { shotPinnedPlanes, type ShotPinCentres } from '../models/shot-placement.ts';
 import { shotNodePoseAt, shotRigReader, shotVisibilityAt, type ShotRigRead } from '../models/shot-frame-plan.ts';
+import { shotImageReach } from '../models/shot-images.ts';
 import { shotDrawSteps, shotExposureItems, type CompiledShotInstancedPlane, type CompiledShotVariant, type ShotExposureItems } from '../models/shot-instances.ts';
 import type { ShotMaskAcross } from '../models/shot-masks.ts';
 import { shotDrawablesAt } from '../models/shot-plan.ts';
@@ -73,15 +76,19 @@ export type PaintedShotWarmRun = { readonly fps: number; readonly sceneDur: numb
 /** How a renderer paints: its brushes and costs, and `progress`, told of each warm's and each frame's solves. */
 export type PaintedShotRendererOptions = PaintedShotPaintOptions & { readonly progress?: ShotSolveProgress };
 
+/** A plane's image read back unplaced: its picture's layers, and the stage texels they lie over. */
+export type ShotImageReadback = { readonly layers: StampLayerReadback; readonly box: StampPixelBox };
+
 /**
- * A shot drawn a frame at a time: `warm` solving its warm span's films (nothing without one), `draw` at frame time `t`
- * in a lens mode, its pinned planes' elements as `pins` measures them at that frame (none needed without pins),
- * `finish` waiting out the GPU. Each counts its costs (evictions, uploads, bytes kept) and tells `progress` its solves.
+ * A shot drawn a frame at a time: `warm` solving its warm span, `draw` at frame `t` in a lens mode, its pins as `pins`
+ * measures them, `finish` waiting out the GPU. `image` reads back a plane's sharp image at `at`, unplaced, solving
+ * only the planes it reads (null: it lays nothing). Each counts costs and tells `progress` its solves.
  */
 export type PaintedShotRenderer = {
   readonly stage: StampStage;
   warm: (run: PaintedShotWarmRun) => Promise<void>;
   draw: (t: number, mode: LensMode, pins?: ShotPinCentres) => Promise<void>;
+  image: (plane: string, at: PaintMoment, pins?: ShotPinCentres) => Promise<ShotImageReadback | null>;
   finish: () => Promise<void>;
   dispose: () => void;
 };
@@ -409,6 +416,32 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
         // frame's exposures. A pinned plane is solved where this frame's measures lay it.
         await withSolved(shown.shown.map((plane) => pinned.planes.get(plane.id) ?? plane), paintMoment(t), read, async (solved) => {
           await gpuEachInTurn(exposures, async (exposure) => drawExposure(exposure, await exposureLaid(exposure, solved, t), shown.hidden, t));
+        });
+      }),
+      image: (id, at, pins = new Map()) => counted(async () => {
+        if (disposed) throw new Error(`shot: ${id}'s image asked of a renderer disposed`);
+        owner.assertLive();
+        const outside = paintSpanDrawnProblem(shot.span, at.frame);
+        if (outside) throw new Error(`painted shot: ${outside}`);
+        const plane = planeOf.get(id);
+        if (plane?.kind !== 'painted') throw new Error(`shot: an image is a painted plane's, and ${id} is ${plane ? `a ${plane.kind} plane` : 'no plane of this shot'}`);
+        const pinned = shotPinnedPlanes(shot, pins);
+        if (pinned.problems.length) throw paintingProblemsError(`the shot's pins at ${at.frame} s`, pinned.problems);
+        const read = shotRigReader(shot.motion), exposure = shotFastExposure(shot, at), shown = shotSolvablesShown(shot, [at], read), reach = shotImageReach(shot.planes, id);
+        if (shown.hidden.has(plane)) return null;
+        const reached = shown.shown.filter((each) => reach.has(each.id));
+        progress?.run({ kind: 'frame', t: at.frame }, reached.length + (textures?.handles.length ?? 0));
+        // A pinned plane's picture is laid where the measures put it, as a frame at `at` would lay it.
+        return withSolved(reached.map((each) => pinned.planes.get(each.id) ?? each), at, read, async (solved) => {
+          const lying = await exposureLaid(exposure, solved, at.frame);
+          const copy = await owner.checked(`evaluating ${id}'s image at ${at.at} s`, () => {
+            const { encoder, image } = exposureImages(exposure, lying, shown.hidden, at.frame), sharp = image(id).sharp();
+            // A picture's texture starts at its box's first texel.
+            const copied = sharp && { box: sharp.box, copy: copyStampLayerForReadback(device, encoder, sharp.texture, { x: 0, y: 0, w: sharp.box.w, h: sharp.box.h }) };
+            submit(encoder);
+            return copied;
+          });
+          return copy && { box: copy.box, layers: await readStampLayerCopy(copy.copy) };
         });
       }),
       finish: () => (disposed ? Promise.resolve() : device.queue.onSubmittedWorkDone()),

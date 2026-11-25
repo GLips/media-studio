@@ -104,7 +104,7 @@ export function createStampPlanePictures(owner: StampPaintGpuOwner, { stage, are
       const laid = plane.lay(film ? 'white' : 'paper'), box = film ? laid : { x: 0, y: 0, w: stage.width, h: stage.height };
       if (!box) return null;
       const note: StampPictureNote = { ...layers, box };
-      const [texture] = pictures.make(plane.key, encoder, [{ width: box.w, height: box.h, layers: stampPlanePictureLayerCount(layers), format: 'rgba16float', usage: STORAGE | GPUTextureUsage.TEXTURE_BINDING }], note).textures;
+      const [texture] = pictures.make(plane.key, encoder, [{ width: box.w, height: box.h, layers: stampPlanePictureLayerCount(layers), format: 'rgba16float', usage: STORAGE | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC }], note).textures;
       if (film) {
         // Between the lays the picture's colour layer holds the light on white over its box; the picture pass replaces it.
         measureStampPlaneLight(owner, arena, encoder, { compositor, painting, box, into: texture, layer: 0 });

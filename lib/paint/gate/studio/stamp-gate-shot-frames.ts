@@ -4,10 +4,11 @@
 
 import { paintingProblemsError } from '#lib/paint/document/models/painting-problem.ts';
 import { createStampPaintCostTally, type StampPaintCostTally, type StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { createStampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { compilePaintedShot, shotCanvasLayings, type CompiledPaintedShot } from '#lib/paint/shot/models/shot-compile.ts';
 import { createShotCanvasElements, createShotCanvasSurface, disposeShotCanvasSurface, type ShotCanvasElements, type ShotCanvasSurface } from '#lib/paint/shot/studio/shot-canvas.ts';
-import { createPaintedShotRenderer, type PaintedShotRenderer } from '#lib/paint/shot/studio/shot-renderer.ts';
+import { createPaintedShotRenderer, type PaintedShotRenderer, type ShotImageReadback } from '#lib/paint/shot/studio/shot-renderer.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { STAMP_GATE_SHOT_FPS, stampGateShotSpanned, type StampGateShot } from '../models/stamp-gate-shot-span.ts';
@@ -75,6 +76,35 @@ export function stampGateFramesBeside(frames: readonly Uint8ClampedArray[], { wi
     for (let y = 0; y < height; y++) beside.set(rgba.subarray(y * one * 4, (y + 1) * one * 4), (y * width + f * one) * 4);
   });
   return beside;
+}
+
+/** What a gate shot's images and then its frames came to: each image read back unplaced, its costs, and the frames'. */
+export type StampGateShotImages = { readonly images: readonly (ShotImageReadback | null)[]; readonly costs: readonly StampPaintCosts[]; readonly frames: StampGateShotFrames };
+
+/**
+ * `props`' painted planes' sharp images at each of `images`' moments in turn, read back without placing any or drawing
+ * a frame, then `draws`' frames on the same renderer, fast, as stampGateShotFrames draws them; no warm.
+ */
+export async function stampGateShotImages(props: StampGateShot, images: readonly { readonly plane: string; readonly at: PaintMoment }[], draws: readonly number[]): Promise<StampGateShotImages> {
+  const { shot, problems } = compilePaintedShot(stampGateShotSpanned(props, [...draws, ...images.map(({ at }) => at.at)]), []);
+  if (!shot) throw paintingProblemsError('stamp gate shot', problems);
+  const canvas = createShotCanvasElements(), tally = createStampPaintCostTally();
+  return withGateShotRenderer(shot, [canvas], async (renderer) => {
+    const imageCosts: StampPaintCosts[] = [], frameCosts: StampPaintCosts[] = [];
+    const read = await gpuEachInTurn(images, async ({ plane, at }) => {
+      const image = await renderer.image(plane, at);
+      imageCosts.push(tally.take());
+      return image;
+    });
+    const frames = await gpuEachInTurn(draws, async (t) => {
+      await renderer.draw(t, 'fast');
+      await renderer.finish();
+      const bytes = stampGateCanvasBytes(canvas.colour);
+      frameCosts.push(tally.take());
+      return bytes;
+    });
+    return { images: read, costs: imageCosts, frames: { frames, costs: frameCosts, warm: tally.take() } };
+  }, tally);
 }
 
 /** A frame's solves, each its sheet program and the first entry it re-ran. */

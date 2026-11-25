@@ -71,7 +71,7 @@ export function createShotDissolve(owner: StampPaintGpuOwner, { stage, arena }: 
     sum(encoder: GPUCommandEncoder, layers: StampPlanePictureLayers, shares: readonly ShotDissolveShare[]): StampPlanePicture {
       if (encoder !== encoderSumming) [encoderSumming, summed] = [encoder, 0];
       const texture = owner.target(`shot dissolve ${summed++}`, {
-        size: [stage.width, stage.height, stampPlanePictureLayerCount(layers)], format: 'rgba16float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        size: [stage.width, stage.height, stampPlanePictureLayerCount(layers)], format: 'rgba16float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
       }, encoder);
       const sum = stampArrayView(texture);
       shares.forEach(({ picture, weight }, index) => {

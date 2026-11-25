@@ -719,11 +719,9 @@ layer (`studio/shot-instance-passes.ts`): a quad per item, its view, shutter end
 (`lens-compositor.ts`, `platform/gpu/studio/gpu-instance-ring.ts`), its filter then its add before the next. An
 item's travel is its views at the shutter's ends, as a plane's is; its picture's own motion isn't read.
 
-Masks are drawn. The `alphaOf` graph is checked acyclic and sorted so each read plane composites first
-(`shot-masks.ts`); the plan holds each mask and what other planes read of it (`shot-sheet-lays.ts`), and each film's
+Masks are drawn. The `alphaOf` graph is checked acyclic (`shot-masks.ts`); the plan holds each mask and what other planes read of it (`shot-sheet-lays.ts`), and each film's
 reveals at the selection's time, read under the poses its marks were solved by, so a moving reveal moves the
-picture's key and solves nothing. Each exposure lays every painted plane first, in the graph's order (`present` in
-`studio/shot-painted-plane.ts`). `studio/shot-mask-passes.ts` multiplies a plane's masks into one r32float factor
+picture's key and solves nothing. Each exposure evaluates every painted plane's image first (`images` in `studio/shot-painted-plane.ts`). `PaintedShotRenderer.image` evaluates one unplaced. `studio/shot-mask-passes.ts` multiplies a plane's masks into one r32float factor
 over the stage: an `alphaOf` read where the exposure's camera shows its drawable, a painted or picture plane's through
 both lays and the parallax between their depths (the reader's view, then the drawable's undone: `paintViewAcross`,
 exactly the identity between equal views, so a reader at its drawable's depth reads plane px to plane px and keys
@@ -735,8 +733,8 @@ cut it in its layer target before it's laid (`stamp-reveal-pass.ts`), its glow a
 coverage of each drawable another plane reads gathers alongside (film, card, pieces, ground), a channel each, four
 to a layer of one array, mixed by a fading group's span like the paint; the picture keeps it, faded by the plane's
 visibility, in layers after the lens's (`coverage` in `stampPlanePictureLayers`), so whatever sums pictures sums
-their coverage alike. A reader's picture is kept under its plan's key and what it read (`shotPresentedKeys`): a
-painted plane's presented key and the map across to it, a picture source's upload and box, a three render's frame and exposure, an instanced
+their coverage alike. A plane's image asks first for what its masks read, and is kept under its plan's key and what it read (`shotImageKeys`): a
+painted plane's image key and the map across to it, a picture source's upload and box, a three render's frame and exposure, an instanced
 plane's variants' keys and its shown items' views and visibility, each with the map it's read through and its weight. So a reader is laid anew only when what it reads moves. A dissolving plane's masks cut each
 selection alike, and its coverage is summed by weight with its colour (`shot-dissolve-pass.ts`); a reader keys it by
 every selection's key and weight.
