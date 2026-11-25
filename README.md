@@ -7,68 +7,85 @@
 <h3>A media studio for you and your agents: code-based tools for making video and images, and a review app where you
 leave specific notes, frame by frame.</h3>
 
-<!-- demo video -->
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=EmcyuoMzjZM"><img src="docs/images/demo-reel.jpg" alt="Play: a product reel made with media-studio, price columns in 3D on a field of blocks" width="100%"></a>
+  <br><sub>A 25-second product reel made with media-studio: kinetic type and 3D, cut to a 120 BPM track. Click to play it on YouTube.</sub>
+</p>
 
-Your coding agent drives the `studio` CLI with skills that ship as a Claude Code plugin. It plans a video, captures,
-animates, paints, voices, scores and renders it, or makes a still, and you look at the result in the review app and point at what should
-change. The agent takes the drudgery out of the basic tasks, so your attention goes to the parts that matter.
+Your coding agent drives the `studio` CLI, with skills that ship as a Claude Code plugin. You watch what it makes in the
+review app and point at what should change. With media-studio, your agent can:
 
-Each video or set of stills is a project, a folder in `work/` inside your clone. A video's plan is `storyboard.ts`: a brief, then a row per
-scene with its lines and cues. Every frame is code (built on [Remotion](https://www.remotion.dev)), so a note like "hold
-that shot longer" becomes an edit and a re-render.
+- **Paint** in watercolour, gouache, crayon, pencil and ink on the GPU, then animate the painting, wrap it onto a 3D
+  object or fold it up as cut paper.
+- **Cut motion to music**: kinetic type, 3D scenes and transitions timed to the beats and bars of a track it can trim
+  to length.
+- **Film your web pages** in a browser, with the clicks, scrolls and typing written per shot, and zoom to whatever the
+  voiceover names.
+- **Voice, score and mix** a video, starting on a free draft voice so the plan is right before anything costs money.
+- **Block a shot out in 3D** for your sign-off before it pays for generated footage.
+- **Study a reference video** you like: its cuts against the beat, its motion and its palette, frame by frame.
+- **Find your best takes** in recordings from Studio Recorder, transcribed and searchable.
+- **Take your notes in a review app**, pinned to a frame, a word or a region, and answer them while you watch.
+- **Check its own frames** before you see them, and refuse a still whose text is cut off.
 
-## Building blocks for many styles
+Each video or set of stills is a project in `work/` inside your clone. Every frame is code, built on
+[Remotion](https://www.remotion.dev), so a note like "hold that shot longer" is an edit and a re-render.
 
-Your agent builds each video or image from parts it edits in code: captured UI, motion, 3D blockouts, flat 2D, music-cut timing,
-generated footage and your own recordings.
+## Painting
 
-- **It films your web pages itself.** It opens them in a browser, writes the clicks, scrolls and typing for each shot,
-  then zooms and highlights the element each line talks about.
-- **It paints.** A GPU paint engine lays watercolour, gouache, crayon, pencil and ink the way paint behaves: washes
-  bleed into wet paper, and a wash laid over a dry one tints it. Paintings animate, wrap onto 3D objects and fold up as
-  cut paper. Each painted look comes from a brush pack you own (Procreate or Photoshop), imported once as a private
-  style.
-- **It checks its own work.** `studio check` measures every frame for highlights off screen, clicks hidden under a
-  caption, and moments that leave the screen before a viewer can read them. `studio still` refuses to write an image
-  whose text is cut off, sits under a platform's buttons or fails contrast.
+<img src="docs/images/painted-lake.webp" alt="A watercolour lake going from dawn to dusk, a figure in a canoe on the water" width="100%">
+
+A GPU paint engine lays paint the way it behaves: washes bleed into wet paper, and a wash laid over a dry one tints
+it. Each painted look comes from a brush pack you own (Procreate or Photoshop), imported once as a private style. The
+lake above is one painting animated from dawn to dusk.
+
+## Painting on 3D, and cut paper
 
 <table>
   <tr>
-    <td><img src="docs/images/painted-lake.jpg" alt="A watercolour lake at dusk, a figure in a canoe on the glittering water"></td>
-    <td><img src="docs/images/paper-village.jpg" alt="Cut-paper houses and trees on a painted ground, lit windows, seen as a miniature"></td>
-    <td><img src="docs/images/painted-mug.jpg" alt="A ceramic mug turning on a wooden turntable, its gouache flowers opening on the beat"></td>
+    <td width="50%"><img src="docs/images/painted-mug.webp" alt="A ceramic mug turning on a wooden turntable, its painted flowers opening"></td>
+    <td width="50%"><img src="docs/images/paper-village.webp" alt="Cut-paper houses folding up out of a painted ground"></td>
   </tr>
   <tr>
-    <td>A lake from dawn to dusk, in watercolour</td>
-    <td>A cut-paper village, folding up on the music</td>
-    <td>A painted mug, its petals opening on each beat</td>
+    <td>Flowers painted onto a turning mug, opening on each beat</td>
+    <td>A cut-paper village folding up out of the ground</td>
   </tr>
 </table>
 
+A painting wraps onto a 3D model as its texture, or becomes paper pieces that fold, pop up and cast shadows.
+
+<img src="docs/images/paper-morning.webp" alt="A cut-paper house, trees and a bird popping up from a folded card" width="100%">
+
+## Motion cut to music
+
+<img src="docs/images/motion-type.webp" alt="Kinetic type: a grid of ink dots counting up to 174 inks, the word blue filtering them, then BUY MORE banners sliding past" width="100%">
+
+The agent plans a music-cut piece on the track's bars, so each scene lands on a downbeat. It fits the track to the
+video's length by dropping or repeating whole bars, and drafts sound effects from what happens on screen.
+
 ## A review app for the important bits
 
-![Reviewing a render: pin a note on a frame, and it knows the scene and the sound under it](docs/images/review.png)
+![Reviewing a render: notes pinned to frames, each naming the scene and the sound under it](docs/images/review.png)
 
 Pin a note to a frame of a render, a word of the script or a region of a still. The note saves into the project and
-follows its moment into each new render. Edit a line on the plan page and the change saves into `storyboard.ts`. Sign a
-scene off, and if it changes afterwards the app marks the sign-off "Changed since you approved it" and shows what was
-reworded.
+follows its moment into each new render. Sign a scene off, and if it changes afterwards the app marks it "Changed since
+you approved it".
 
-The agent is connected to the app while you review. It wakes on each note (`studio review watch`), replies in the thread
-with a fix and its render, asks you about specific frames, and posts candidates for you to pick between.
+The agent stays connected while you review. It wakes on each note (`studio review watch`), replies in the thread with a
+fix and its render, asks you about specific frames, and posts candidates for you to pick between.
 
 ## Studio Recorder
 
-Studio Recorder is a macOS menu-bar app in this repo (`studio recorder install`). One key records screen, camera, mic
-and an input log, each as its own file. Every take goes into a footage library on your machine, transcribed and
-searchable, so your agent can find the good takes and cut them into any project without you scrubbing through them.
+A macOS menu-bar app in this repo (`studio recorder install`). One key records screen, camera, mic and an input log,
+each as its own file. Every take lands in a footage library on your machine, transcribed and searchable, so the agent
+finds the good takes and cuts them into any project.
 
 ## Useful out of the box
 
-The plugin's skills teach your agent the craft, from capture and animation to painting, the mix and handing work over
-for review. They plan each video in rungs of rising cost: you sign off a short written pitch, the scene table, then an
-animatic (every scene roughed in at its real timing on a free macOS `say` voice) before the agent spends anything on a
-real voice, generated footage or finished animation.
+The plugin's skills teach your agent the craft: capture, animation, painting, sound and handing work over for review.
+They plan each video in steps of rising cost. You sign off a short written pitch, then the scene table, then an
+animatic (every scene roughed in at its real timing on the free voice) before the agent pays for a real voice,
+generated footage or finished animation.
 
 ## Example requests
 
