@@ -10,6 +10,21 @@
 # studio's root, so both are made absolute first: they read the workspace in this environment, and check:arch reads
 # the studio without it.
 
+# core.hooksPath names the main studio checkout's copy of these hooks (an absolute path: a relative one resolves
+# from each worktree's own top and finds nothing for a work/ worktree made anywhere else, and git then skips every
+# hook without a word). Each hook hands over to the copy in the studio checkout that holds this worktree as its work/,
+# so a studio worktree's work/ runs that worktree's hooks; a work/ worktree outside any studio checkout is refused,
+# since its #styles and #brands imports would resolve to some other checkout's work/.
+top=$(git rev-parse --show-toplevel) || exit 1
+owner=$(cd "$top/.." && pwd -P)
+if [ "$(basename "$top")" != work ] || [ ! -f "$owner/.githooks-workspace/pre-commit" ]; then
+  echo "workspace: $top isn't the work/ of a studio checkout, so its imports and this hook can't find their studio." >&2
+  echo "workspace: make a work/ worktree at <studio worktree>/work (git -C <main>/work worktree add <studio worktree>/work)." >&2
+  exit 1
+fi
+here=$(cd "$(dirname "$0")/.." && pwd -P)
+[ "$owner" = "$here" ] || exec "$owner/.githooks-workspace/$(basename "$0")" "$@"
+
 GIT_DIR=$(git rev-parse --absolute-git-dir) && export GIT_DIR
 case "${GIT_INDEX_FILE:-}" in
   '') ;;

@@ -14,12 +14,19 @@
 // package.json because none sits between them.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
 import { STUDIO_BRANDS_DIR, STUDIO_PROJECTS_DIR, STUDIO_STYLES_DIR, STUDIO_WORKSPACE_DIR } from './studio-project.ts';
 
-/** Relative to work/, so the checkout can move. */
-const WORKSPACE_HOOKS_PATH = '../.githooks-workspace';
+/**
+ * The main checkout's workspace hooks, absolute: a relative path resolves from each worktree's top, so a work/ worktree
+ * outside a studio checkout found no hooks and git skipped them silently. The hooks hand over to the holding
+ * checkout's copy. After moving the checkout, run `studio workspace init` again.
+ */
+function workspaceHooksPath(git: (...args: string[]) => string): string {
+  const mainWorkspace = dirname(resolve(STUDIO_WORKSPACE_DIR, git('rev-parse', '--git-common-dir')));
+  return join(dirname(mainWorkspace), '.githooks-workspace');
+}
 
 /**
  * What a project writes that's made, not authored: recorded, generated or rendered; a brand's licensed fonts; a
@@ -61,9 +68,10 @@ export function initStudioWorkspace(): string[] {
     done.push('made work/ a git repository');
   }
   const hooksPath = (() => { try { return git('config', 'core.hooksPath'); } catch { return ''; } })();
-  if (hooksPath !== WORKSPACE_HOOKS_PATH) {
-    git('config', 'core.hooksPath', WORKSPACE_HOOKS_PATH);
-    done.push(`set its hooks to ${WORKSPACE_HOOKS_PATH}`);
+  const wanted = workspaceHooksPath(git);
+  if (hooksPath !== wanted) {
+    git('config', 'core.hooksPath', wanted);
+    done.push(`set its hooks to ${wanted}`);
   }
   const ignoreFile = join(STUDIO_WORKSPACE_DIR, '.gitignore');
   const ignored = existsSync(ignoreFile) ? readFileSync(ignoreFile, 'utf8') : '';
