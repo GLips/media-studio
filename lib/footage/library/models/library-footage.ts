@@ -4,7 +4,8 @@
 //
 //   import item from '#library/<id>/item.json' with { type: 'json' };
 //   import transcript from '#library/<id>/transcript.json' with { type: 'json' };
-//   const footage = libraryFootage(item, transcript);
+//   import system from '#library/<id>/system.transcript.json' with { type: 'json' };   // the other side of a call
+//   const footage = libraryFootage(item, transcript, system);
 //
 // Those imports are how a project refers to footage: `studio library show` lists an item's projects by them.
 import { Result, Schema } from 'effect';
@@ -15,9 +16,9 @@ import type { TimedPoint } from '#lib/picture/camera/models/follow-point.ts';
 import type { SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
 import type { RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
 import { LibraryFileUnreadable } from './library-errors.ts';
-import { LIBRARY_ITEM_FORMAT, LibraryItem, libraryItemTimeOf, libraryMediaTimeOf, libraryScreenPointOf } from './library-item.ts';
+import { LIBRARY_ITEM_FORMAT, LibraryItem, type LibraryTrack, libraryItemTimeOf, libraryMediaTimeOf, libraryScreenPointOf } from './library-item.ts';
 
-/** An item's transcript.json: what its speech track says, on that track's media time. */
+/** An item's transcript.json (or `<track>.transcript.json`): what that spoken track says, on its media time. */
 export const LibraryTranscriptFile = Schema.Struct({ track: Schema.String, ...FootageTranscript.fields });
 export type LibraryTranscriptFile = typeof LibraryTranscriptFile.Type;
 
@@ -33,14 +34,16 @@ export type LibraryScreenWaypoint = InputWaypoint & { inside: boolean };
 /** A library item as a project uses it (libraryFootage). */
 export type LibraryFootage = {
   item: LibraryItem;
-  /** Every word said in it, on item time; none for an item with no speech or no transcript yet. */
+  /** Every word said on its speech track, on item time; none for an item with no speech or no transcript yet. */
   words: readonly SpokenWord[];
+  /** Every word said on spoken track `track` (one whose transcript it was given), on item time. */
+  wordsOn(track: string): readonly SpokenWord[];
   /**
-   * The words whose middles lie between `from` and `to` (item seconds), as a storyboard line's `speech`: what's said
-   * and its levelled sound. Each edge moves into the pause beside the words, so the times `studio library show`
-   * prints (a line's start, the next line's) cut cleanly. Throws when no word lies between: a spoken line says something.
+   * The words on spoken `track` (the item's speech unless named; `system` for a call's far side) whose middles lie
+   * between `from` and `to` (item seconds), as a line's `speech`: what's said and its levelled sound. Each edge moves
+   * into the pause beside the words, so `studio library show`'s times cut cleanly. Throws when no word lies between.
    */
-  speech(from: number, to: number): RecordedSpeech;
+  speech(from: number, to: number, track?: string): RecordedSpeech;
   /**
    * The item second a scene shows at its time `s.t`, kept to its lines spoken in this item: within a line, where it's
    * being said; after one, running on from it until the next line jumps; before the first, running up to it.
@@ -71,37 +74,47 @@ const CUT_QUIET_BEFORE = 0.15, CUT_QUIET_AFTER = 0.25;
 const WORD_EDGE_SLACK = 0.02;
 const round = (seconds: number) => Math.round(seconds * 1000) / 1000;
 
+/** A track a line can be spoken from, its words and pauses on item time. `untranscribed`: its transcript wasn't given. */
+type LibraryVoice = { track: LibraryTrack; words: SpokenWord[]; pauses: { start: number; end: number }[]; untranscribed?: true };
+
 const decodeLibraryItem = Schema.decodeUnknownResult(LibraryItem);
 const decodeLibraryTranscript = Schema.decodeUnknownResult(LibraryTranscriptFile);
 
 /**
- * An item from its imported item.json and transcript.json, each decoded. Refuses metadata in a format this studio
- * doesn't read, and a transcript that isn't of the item's speech track, with a LibraryFileUnreadable.
+ * An item from its imported item.json and a transcript per spoken track (transcript.json, `system.transcript.json`),
+ * each decoded. Refuses metadata in a format this studio doesn't read, and a transcript of a track the item has no
+ * sound on, with a LibraryFileUnreadable.
  */
-export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?: LibraryTranscriptFile): LibraryFootage {
+export function libraryFootage(itemJson: LibraryItemJsonImport, ...transcriptJsons: LibraryTranscriptFile[]): LibraryFootage {
   const named = `library item ${itemJson.id}`;
   if (itemJson.format !== LIBRARY_ITEM_FORMAT) throw new LibraryFileUnreadable({ path: named, reason: `is ${itemJson.format}, not ${LIBRARY_ITEM_FORMAT}: this studio can't read it` });
   const decoded = decodeLibraryItem(itemJson);
   if (Result.isFailure(decoded)) throw new LibraryFileUnreadable({ path: named, reason: `isn't an item the library wrote: ${decoded.failure.message}` });
   const item = decoded.success;
-  const transcriptRead = transcriptJson && decodeLibraryTranscript(transcriptJson);
-  if (transcriptRead && Result.isFailure(transcriptRead)) throw new LibraryFileUnreadable({ path: `${item.id}'s transcript`, reason: `isn't a transcript the library wrote: ${transcriptRead.failure.message}` });
-  const transcript = transcriptRead?.success;
-  const speechTrack = item.speech === undefined ? undefined : item.tracks[item.speech];
-  if (transcript && transcript.track !== item.speech) throw new LibraryFileUnreadable({ path: `${item.id}'s transcript`, reason: `is of ${transcript.track}, but its speech is ${item.speech ?? 'none'}` });
-  const words = speechTrack && transcript
-    ? transcript.words.map((w) => ({ text: w.text, start: libraryItemTimeOf(speechTrack, w.start), end: libraryItemTimeOf(speechTrack, w.end) }))
-    : [];
-  const pauses = speechTrack && transcript
-    ? transcript.pauses.map((p) => ({ start: libraryItemTimeOf(speechTrack, p.start), end: libraryItemTimeOf(speechTrack, p.end) }))
-    : [];
+  const voices = new Map(transcriptJsons.map((json) => {
+    const read = decodeLibraryTranscript(json);
+    if (Result.isFailure(read)) throw new LibraryFileUnreadable({ path: `${item.id}'s transcript`, reason: `isn't a transcript the library wrote: ${read.failure.message}` });
+    const transcript = read.success, track = item.tracks[transcript.track];
+    if (!track?.audio) throw new LibraryFileUnreadable({ path: `${item.id}'s transcript`, reason: `is of ${transcript.track}, a track ${item.id} has no sound on` });
+    const voice: LibraryVoice = {
+      track,
+      words: transcript.words.map((w) => ({ text: w.text, start: libraryItemTimeOf(track, w.start), end: libraryItemTimeOf(track, w.end) })),
+      pauses: transcript.pauses.map((p) => ({ start: libraryItemTimeOf(track, p.start), end: libraryItemTimeOf(track, p.end) })),
+    };
+    return [transcript.track, voice] as const;
+  }));
+  const voiceOf = (name: string): LibraryVoice | undefined => {
+    if (voices.has(name)) return voices.get(name);
+    const track = item.tracks[name];
+    return track ? { track, words: [], pauses: [], untranscribed: true } : undefined;
+  };
   /**
    * `from` and `to` moved into the pauses touching the words whose middles lie between them: a cut on a word's raw
    * time clips its first or last sound. Words that run into the next with no pause are cut midway. With no transcript
    * there are no pauses to cut in, so they stay.
    */
-  const cutInPauses = (from: number, to: number) => {
-    if (!transcript) return { from, to };
+  const cutInPauses = ({ words, pauses, untranscribed }: LibraryVoice, from: number, to: number) => {
+    if (untranscribed) return { from, to };
     const first = words.findIndex((w) => (w.start + w.end) / 2 >= from);
     const last = words.findLastIndex((w) => (w.start + w.end) / 2 <= to);
     if (first < 0 || last < first) throw new Error(`${item.id} has no words said between ${from} and ${to} s to speak a line from`);
@@ -124,19 +137,22 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
   };
   return {
     item,
-    words,
-    speech(asked, askedTo) {
-      if (!speechTrack) throw new Error(`${item.id} has no speech track to speak a line from`);
+    words: item.speech === undefined ? [] : (voices.get(item.speech)?.words ?? []),
+    wordsOn: (name) => voices.get(name)?.words ?? [],
+    speech(asked, askedTo, name = item.speech) {
+      const voice = name === undefined ? undefined : voiceOf(name);
+      if (!name || !voice) throw new Error(`${item.id} has no ${name ?? 'speech'} track to speak a line from`);
+      const { track } = voice;
       // A track starting on a fraction of a millisecond can round an edge on its first or last word just outside it.
-      const first = libraryItemTimeOf(speechTrack, 0), last = libraryItemTimeOf(speechTrack, speechTrack.mediaSeconds);
-      const cut = cutInPauses(asked, askedTo);
+      const first = libraryItemTimeOf(track, 0), last = libraryItemTimeOf(track, track.mediaSeconds);
+      const cut = cutInPauses(voice, asked, askedTo);
       const from = Math.max(first, cut.from), to = Math.min(last, cut.to);
-      const heard = words.filter((w) => (w.start + w.end) / 2 >= from && (w.start + w.end) / 2 <= to)
+      const heard = voice.words.filter((w) => (w.start + w.end) / 2 >= from && (w.start + w.end) / 2 <= to)
         .map((w) => ({ text: w.text, start: Math.max(0, w.start - from), end: Math.min(to - from, w.end - from) }));
-      // A stretch reaching outside the speech track has no sound there to play.
-      if (from < first || to > last) throw new Error(`${item.id}'s speech runs ${first.toFixed(3)}–${last.toFixed(3)} s: a line can't be spoken from ${from}–${to} s`);
-      const { levelled } = speechTrack;
-      const sound = levelled ? { item: item.id, file: levelled.file, start: libraryMediaTimeOf(speechTrack, from), lufs: levelled.lufs } : null;
+      // A stretch reaching outside the track has no sound there to play.
+      if (from < first || to > last) throw new Error(`${item.id}'s ${name} runs ${first.toFixed(3)}–${last.toFixed(3)} s: a line can't be spoken from ${from}–${to} s`);
+      const { levelled } = track;
+      const sound = levelled ? { item: item.id, file: levelled.file, start: libraryMediaTimeOf(track, from), lufs: levelled.lufs } : null;
       return { item: item.id, from, to, heard, sound };
     },
     waypointsOn,

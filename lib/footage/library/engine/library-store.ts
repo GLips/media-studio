@@ -3,6 +3,7 @@
 //
 //   work/library/items/<id>/item.json        the item (library-item.ts)
 //   work/library/items/<id>/transcript.json  what its speech track says, on that track's media time
+//   work/library/items/<id>/<track>.transcript.json  what another spoken track says (librarySpokenTracks)
 //   work/library/items/<id>/flags.json       its flags, the library's review scope (library-flags.ts)
 import type { PlatformError } from 'effect';
 import { Context, DateTime, Effect, FileSystem, Layer, Option, Path, Result, Schema } from 'effect';
@@ -37,9 +38,10 @@ export class LibraryStore extends Context.Service<LibraryStore, {
   readonly removeItemMetadata: (id: string) => Effect.Effect<void, PlatformError.PlatformError>;
   /** An item named by its whole id, or a part of it only one id holds. */
   readonly resolveItemId: (named: string) => Effect.Effect<string, LibraryItemUnknown | LibraryItemAmbiguous | LibraryRequestRefused | PlatformError.PlatformError>;
-  readonly readTranscript: (id: string) => Effect.Effect<Option.Option<LibraryTranscriptFile>, StoreFailure>;
+  /** `file` names which: libraryTranscriptFileName's, its speech's by default. */
+  readonly readTranscript: (id: string, file?: string) => Effect.Effect<Option.Option<LibraryTranscriptFile>, StoreFailure>;
   /** One word to a line, so a hand correction is a one-line diff. */
-  readonly writeTranscript: (id: string, transcript: LibraryTranscriptFile) => Effect.Effect<void, PlatformError.PlatformError>;
+  readonly writeTranscript: (id: string, transcript: LibraryTranscriptFile, file?: string) => Effect.Effect<void, PlatformError.PlatformError>;
   readonly readFlags: (id: string) => Effect.Effect<LibraryFlagsFile, LibraryFileUnreadable>;
   /** Applies `op` to the item's newest flags under their lock, as `by`; the flag it touched. */
   readonly changeFlags: (id: string, op: LibraryFlagOp, by: ReviewAuthor) => Effect.Effect<LibraryFlag, LibraryFlagRefused | LibraryFlagsLocked | LibraryItemMissing | StoreFailure>;
@@ -109,8 +111,8 @@ export const makeLibraryStoreLayer = ({ libraryDir, projectsDir, workspaceRequir
     );
   });
 
-  const readTranscript = Effect.fn('LibraryStore.readTranscript')(function* (id: string) {
-    const file = path.join(itemDir(id), 'transcript.json');
+  const readTranscript = Effect.fn('LibraryStore.readTranscript')(function* (id: string, name: string = 'transcript.json') {
+    const file = path.join(itemDir(id), name);
     if (!(yield* fs.exists(file))) return Option.none();
     const transcript = yield* Schema.decodeUnknownEffect(LibraryTranscriptFileText)(yield* fs.readFileString(file)).pipe(
       Effect.mapError((error) => new LibraryFileUnreadable({ path: file, reason: `isn't a transcript the library wrote: ${error.message}` })),
@@ -149,8 +151,8 @@ export const makeLibraryStoreLayer = ({ libraryDir, projectsDir, workspaceRequir
       return yield* (near.length ? new LibraryItemAmbiguous({ named, ids: near }) : new LibraryItemUnknown({ named, libraryEmpty: !ids.length }));
     }),
     readTranscript,
-    writeTranscript: (id, { track, duration, words, pauses }) =>
-      replaceWhole(path.join(itemDir(id), 'transcript.json'), `{\n  "track": ${JSON.stringify(track)},\n  "duration": ${duration},\n  "words": ${jsonLines(words)},\n  "pauses": ${jsonLines(pauses)}\n}\n`),
+    writeTranscript: (id, { track, duration, words, pauses }, file = 'transcript.json') =>
+      replaceWhole(path.join(itemDir(id), file), `{\n  "track": ${JSON.stringify(track)},\n  "duration": ${duration},\n  "words": ${jsonLines(words)},\n  "pauses": ${jsonLines(pauses)}\n}\n`),
     readFlags,
     changeFlags: Effect.fn('LibraryStore.changeFlags')(function* (id, op, by) {
       const { durationSeconds } = yield* readItem(id);

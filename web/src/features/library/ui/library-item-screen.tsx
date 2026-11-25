@@ -59,7 +59,7 @@ function LibraryItemScreenBody({ view }: { readonly view: LibraryItemView }) {
   const [marked, setMarked] = useState<LibraryMarkedRange | null>(null);
   const [composing, setComposing] = useState<LibraryComposing | null>(null);
   const { words, lines } = useMemo(() => {
-    const footage = libraryFootage(item, view.transcript);
+    const footage = libraryFootage(item, ...(view.transcript ? [view.transcript] : []));
     return { words: footage.words, lines: transcriptLines({ words: footage.words }) };
   }, [item, view.transcript]);
   const queue = libraryFlagsInOrder(flags.flags, filter);

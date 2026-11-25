@@ -23,6 +23,8 @@ import transcript from '#library/<id>/transcript.json' with { type: 'json' };
 export const recording = libraryFootage(item, transcript);
 ```
 
+A call's far side (a voice agent) speaks on the `system` track: `studio api libraryFootage`.
+
 ## The plan
 
 A line is `{ speech: recording.speech(from, to) }`: timed by its stretch, worded by the transcript, its sound the

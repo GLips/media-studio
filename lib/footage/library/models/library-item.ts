@@ -193,6 +193,18 @@ export function librarySpeechTrack(tracks: Readonly<Record<string, LibraryTrackS
   return Object.entries(tracks).find(([name, track]) => track.audio && name !== 'system')?.[0];
 }
 
+/**
+ * The tracks a storyboard line can be spoken from, each transcribed and levelled: the speech track, and the system
+ * audio, where the other side of a call (a voice agent, a person on a meeting) is heard.
+ */
+export function librarySpokenTracks(item: LibraryItem): string[] {
+  const system = item.tracks.system?.audio && item.speech !== 'system' ? ['system'] : [];
+  return [...(item.speech ? [item.speech] : []), ...system];
+}
+
+/** The file in an item's folder holding `track`'s transcript: transcript.json for its speech, `<track>.transcript.json` for another. */
+export const libraryTranscriptFileName = (item: LibraryItem, track: string) => (track === item.speech ? 'transcript.json' : `${track}.transcript.json`);
+
 /** `lg-ultrafine-trial`: lower case, words joined by hyphens, at most 48 characters. */
 export function librarySlug(text: string): string {
   return text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48).replace(/-+$/, '') || 'footage';

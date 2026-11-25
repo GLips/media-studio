@@ -57,3 +57,18 @@ test('a spoken line with no text says what the transcript heard, and one not yet
   const { diagnostics } = resolveStoryboard(spokenPlan(unlevelled.speech(1.45, 3.4)));
   assert.match(diagnostics.map((d) => d.message).join('\n'), /isn't levelled for the mix yet: run studio library finish take/);
 });
+
+test("a line spoken on the system track, the other side of a call, plays that track's levelled copy and words", () => {
+  const call = {
+    ...item,
+    tracks: { ...item.tracks, system: { file: 'system.m4a', mediaSeconds: 9.8, startSeconds: 0.2, audio: { sampleRate: 48000, channels: 2, codec: 'aac' }, levelled: { file: 'proxies/system-levelled.wav', lufs: -15 } } },
+  };
+  const agent = { track: 'system', duration: 9.8, pauses: [{ start: 4.0, end: 5.0 }, { start: 6.0, end: 9.8 }], words: [{ text: 'Want', start: 5.0, end: 5.4 }, { text: 'it?', start: 5.4, end: 6.0 }] };
+  const both = libraryFootage(call, transcript, agent);
+  const reply = both.speech(5.0, 6.5, 'system');
+  assert.deepEqual(reply.heard.map((w) => w.text), ['Want', 'it?']);
+  assert.deepEqual(reply.sound && { file: reply.sound.file, lufs: reply.sound.lufs }, { file: 'proxies/system-levelled.wav', lufs: -15 });
+  // The mic's words stay the item's words; the system's are its own.
+  assert.deepEqual(both.words, footage.words);
+  assert.deepEqual(both.wordsOn('system').map((w) => Math.round(w.start * 100) / 100), [5.2, 5.6]);
+});

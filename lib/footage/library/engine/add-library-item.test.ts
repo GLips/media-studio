@@ -82,14 +82,17 @@ test('a complete take is moved into the library, transcribed and its speech leve
   assert.deepEqual(item.tracks.mic.levelled, { file: 'proxies/mic-levelled.wav', lufs: -16.2 });
 }));
 
-test("a take's system audio is a track of its own, never transcribed or levelled as its speech", () => withStudioTemp('library-add', async (root) => {
+test("a take's system audio is never its speech, but is transcribed and levelled apart, as the other side of a call", () => withStudioTemp('library-add', async (root) => {
   const withMic = await runStudioEffect(addLibraryItem({ paths: [writeTake(root, { status: 'complete', stillFor: 0, input: CLICK, sound: ['system', 'mic'] })], ...MOVE }), libraryAt(root));
   assert.equal(withMic.speech, 'mic');
   assert.equal(withMic.tracks.system.file, 'system.m4a');
+  assert.equal(withMic.tracks.system.levelled?.file, 'proxies/system-levelled.wav');
+  const items = join(root, 'work/library/items', withMic.id);
+  assert.match(readFileSync(join(items, 'transcript.json'), 'utf8'), /"track": *"mic"/);
+  assert.match(readFileSync(join(items, 'system.transcript.json'), 'utf8'), /"track": *"system"/);
   const alone = writeTake(root, { status: 'complete', stillFor: 0, input: CLICK, sound: ['system'], name: '2026-11-22 19.00.00' });
   const item = await runStudioEffect(addLibraryItem({ paths: [alone], ...MOVE }), libraryAt(root));
   assert.equal(item.speech, undefined);
-  assert.equal(item.tracks.system.levelled, undefined);
   assert.equal(existsSync(join(root, 'work/library/items', item.id, 'transcript.json')), false);
 }));
 
