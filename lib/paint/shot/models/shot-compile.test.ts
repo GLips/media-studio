@@ -14,6 +14,7 @@ import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import { compilePaintedShot } from './shot-compile.ts';
 import { shotPlaneClocks, shotPlaneMomentAt, shotPlaneSharesAt } from './shot-frame-plan.ts';
+import { shotImageReach } from './shot-images.ts';
 import { shotPinnedPlanes } from './shot-placement.ts';
 import { shotDrawablesAt } from './shot-plan.ts';
 import type { CoverFrame, PaintedShotProps, PlaneProps, RigPart, ScreenPin } from './shot-props.ts';
@@ -329,7 +330,8 @@ test('an alphaOf mask reads a rig drawn as pieces whole, never a part inside it,
     ],
   });
   assert.deepEqual(problemsOf(shotReading('bed/reed-b')), ['tint.masks[0].drawable: names bed/reed-b, inside bed/reeds, drawn as pieces: read bed/reeds']);
-  assert.deepEqual(compilePaintedShot(shotReading('bed/reeds'), []).shot!.masks.order, ['back', 'bed', 'tint']);
+  // The tint's image needs the bed's, and nothing of the back.
+  assert.deepEqual([...shotImageReach(compilePaintedShot(shotReading('bed/reeds'), []).shot!.planes, 'tint')], ['tint', 'bed']);
 });
 
 test('a plane moving in depth passes another where it crosses its depth, refused behind the back, out of its canvas, or on a three plane', () => {
