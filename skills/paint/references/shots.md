@@ -36,8 +36,9 @@ PaintedShotProps {camera, span, light?, planes, paintedTextures?, warm?}
 - A small painting meant to sit inside the frame goes on a nearer plane with `ground: 'paper'`, in front of a
   frame-sized bare back (a document of the same paper with one empty layer).
 - `layersOf(evaluation, keys, {ground?, at?})` selects layers or groups (with their descendants). An own sheet's
-  layers go with their owner, on one plane. A layer on two planes is two paintings.
-- Keep `PaintedShotProps` stable (a module constant or memoised): the shot reloads when its identity changes.
+  layers go with their owner, on one plane. The same layer on two planes is two occurrences, two paintings.
+- Keep `PaintedShotProps` a module constant, memoised, or built once per scene binding: the shot reloads when its
+  identity changes.
 
 | Concept | Write | Notes |
 |---|---|---|
@@ -71,13 +72,13 @@ behind it inside the shot at every frame; over a dark page, put an opaque backgr
   is refused unless it says `blend: 'add'`, adding its fields to the move under it.
 - A plane at depth d shows scaled zoom · d ÷ (d − dolly) about the frame centre, shifted by −pan · zoom ÷ (d − dolly).
   A pan of 100 moves a plane at depth 2 by 50 and one at 0.5 by 200; a dolly grows near planes more than far ones.
-  Give a far plane a document wider by what it travels.
+  A pan moves a far plane less, so give it a document wider by what it travels.
 - The back's painting must reach past everything the frame reads of it: past the frame by its blur (about 3 × sigma
   + 2 px each side) and any travel the move and shutter show. Short of that the shot is refused (`back.lay`), never
   clamped, naming fixes in the lay's own terms: a larger scale, a cover of a box inside the painting, or how many px
-  more to paint and how far up and left to lay it. Apply one as written: painting more on the top and left moves the
-  lay up and left with it.
-- Past 1.3 magnification paint looks soft.
+  more to paint and how far up and left to lay it. Apply one as written. Painting more on the top and left moves every
+  document px right and down, so the lay moves up and left with it.
+- Past about 1.3 magnification a plane's paint looks soft.
 
 `paintCameraPlay` and `PaintCameraMovePose` come from `#lib/paint/animation/models/paint-camera.ts`, `stampStage` from
 `#lib/paint/painting/models/stamp-stage.ts`. A 4 s push-in:

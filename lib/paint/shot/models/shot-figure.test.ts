@@ -41,7 +41,7 @@ const compiled = (near: PlaneProps) => compilePaintedShot({ camera, span: SPAN, 
 const nearPlane = (near: PlaneProps) => {
   const { shot, problems } = compiled(near);
   assert.deepEqual(problems, []);
-  return { shot: shot!, plane: shot!.planes.find(({ id }) => id === near.id) as CompiledShotPaintedPlane & { figure: string } };
+  return { shot: shot!, plane: shot!.planes.find(({ id }) => id === near.id) as CompiledShotPaintedPlane };
 };
 
 test("a placed figure is the plane selecting its card on no ground: its paint and nested card, never the ground's shadow", () => {
@@ -75,5 +75,7 @@ test("a figure in time solves key drawings of its card alone, each with its own 
 test("a figure naming a layer, or a group on a cut-paper card, is refused: a figure is a figure card's group", () => {
   const refused = (card: string) => compiled(shotPlace(shotFigure(painting(walker), card), { id: 'walker', depth: 1 })).problems.map(({ message }) => message).join('\n');
   assert.match(refused('body'), /names body as its figure, which is a layer/);
-  assert.match(refused('badge'), /names badge as its figure, which is a group on an own sheet with no figure card/);
+  assert.match(refused('badge'), /names badge as its figure, which is a group on a sheet that is no figure card/);
+  const handWritten = { kind: 'figure', card: 'walker', source: layersOf(painting(walker), ['shadow', 'walker'], { ground: 'transparent' }) } as const;
+  assert.match(compiled({ id: 'walker', depth: 1, source: handWritten }).problems.map(({ message }) => message).join('\n'), /selects shadow, walker on transparent ground as figure walker/);
 });

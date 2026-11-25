@@ -52,25 +52,31 @@ export function shotFigureSilhouette(selection: LayerSelection, card: GroupKey):
 }
 
 /**
- * Why plane `plane`'s figure `card` can't be drawn from `ends`: one naming a layer, or a group on an own sheet that
- * isn't a figure card (cut paper, flat). A group on its parent's sheet is a hidden subject's figure, with no
- * silhouette; a missing key is the selection's problem.
+ * Why `ends` can't be plane `plane`'s figure `card`: selecting more than its group on no ground, or naming a layer
+ * or a group on a sheet that's no figure card. A group with no sheet passes as a hidden subject's, indistinguishable
+ * from any such group. A callback is checked at its first moment only.
  */
 export function shotFigureProblems(plane: string, card: GroupKey, ends: readonly PaintedSourceEnd[]): PaintingProblem[] {
   return ends.flatMap(({ selection, field }) => {
     const place = selection.painting.tree.byKey.get(card), refuse = (why: string) => [paintingProblem('error', plane, field, `names ${card} as its figure, which is ${why} of ${selection.painting.source}: a figure is a figure card's group (subjectFigureCard)`)];
+    if (selection.layers.length !== 1 || selection.layers[0] !== card || selection.ground !== 'transparent') {
+      return [paintingProblem('error', plane, field, `selects ${selection.layers.join(', ')} on ${selection.ground ?? 'the default'} ground as figure ${card}: make a figure with shotFigure or shotFigureInTime, which select its group alone on none`)];
+    }
     if (place?.kind === 'layer') return refuse('a layer');
-    if (place?.node.sheet?.kind === 'own' && shotFigureSilhouette(selection, card) === null) return refuse('a group on an own sheet with no figure card');
+    if (place?.node.sheet && shotFigureSilhouette(selection, card) === null) return refuse('a group on a sheet that is no figure card');
     return [];
   });
 }
 
 /**
- * Figure plane `plane`'s silhouette at frame moment `t`, as its source reads then: each selection it blends, its
- * region (null: on no figure card) and weight. Several only between a painting in time's key drawings.
+ * Plane `plane`'s figure silhouette at frame moment `t`, as its source reads then: each selection it blends, its
+ * region (null: on no figure card) and weight. Several only between a painting in time's key drawings; none for a
+ * plane placing no figure.
  */
 export function shotFigureSilhouetteAt(
-  shot: Pick<CompiledPaintedShot, 'motion' | 'rigs'>, plane: CompiledShotPaintedPlane & { readonly figure: GroupKey }, t: PaintMoment,
+  shot: Pick<CompiledPaintedShot, 'motion' | 'rigs'>, plane: CompiledShotPaintedPlane, t: PaintMoment,
 ): { readonly region: Region | null; readonly weight: number }[] {
-  return shotPlaneSharesAt(shot, plane, t).map(({ selection, weight }) => ({ region: shotFigureSilhouette(selection, plane.figure), weight }));
+  const { figure } = plane;
+  if (figure === null) return [];
+  return shotPlaneSharesAt(shot, plane, t).map(({ selection, weight }) => ({ region: shotFigureSilhouette(selection, figure), weight }));
 }
