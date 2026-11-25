@@ -44,9 +44,10 @@ watcher below is running.
 5. **Leave resolving to the reviewer.** They resolve or reopen once they've seen the fix; a reopened note comes back
    through `watch` like a new one.
 
-Keep the session that holds the review on it: watching, replying, judging what comes back. Hand the making (a scene,
-a capture, a painting, a render, a fix to the studio) to subagents, one per piece, side by side when none waits on
-another's result. Brief each with its notes and every `keep`, and look at what it returns before you hand it back.
+The session talking with the reviewer runs the watcher itself; never hand the watching to a subagent. It answers quick
+things itself and dispatches a subagent per note or piece of work (a scene, a capture, a painting, a render, a fix to
+the studio), side by side when none waits on another's result, each briefed with its notes and every `keep`. It
+checks each result before handing it back, and keeps the reviewer posted with replies.
 
 Done when `studio review notes <p>` lists nothing open or reopened that you haven't addressed, answered or asked
 about, every addressed note names what shows it, and the reviewer has said it's approved or resolved every note.
