@@ -1,9 +1,10 @@
-import { Box, Group, Text, UnstyledButton } from '@mantine/core';
+import { Box, Group, Menu, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import { Check, CheckCheck, Copy, ScanEye } from 'lucide-react';
+import { Check, CheckCheck, ChevronDown, Copy, Ellipsis, ScanEye, Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { REVIEW_THREAD_TONES, type ReviewThreadTone } from '#lib/output/review/models/review-threads.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
+import { useHotkeyLabel } from '#web/shared/ui/use-hotkey-label.ts';
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import type { ReviewSearch } from '../controllers/review-search.ts';
@@ -16,13 +17,19 @@ const styles = stylex.create({
     borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: colors.line,
   },
   title: { color: colors.cream, fontWeight: 600, whiteSpace: 'nowrap' },
+  // The heading is the filter: what the list shows, in a word, and a menu of the other two.
+  view: {
+    display: 'inline-flex', alignItems: 'center', gap: spacing.hairline, height: spacing.rowDense, paddingInline: spacing.tight,
+    marginInlineStart: `calc(-1 * ${spacing.tight})`, borderRadius: radius.control, whiteSpace: 'nowrap',
+    color: colors.cream, fontWeight: 600, backgroundColor: { default: 'transparent', ':hover': colors.raised },
+  },
+  chevron: { color: colors.dim },
+  hint: { color: colors.dim },
+  more: { height: spacing.rowDense },
   chip: {
     display: 'inline-flex', alignItems: 'center', gap: spacing.tight, paddingInline: spacing.tight, borderRadius: radius.control,
     whiteSpace: 'nowrap', color: { default: colors.dim, ':hover': colors.cream }, backgroundColor: { default: 'transparent', ':hover': colors.raised },
   },
-  // A filter is edged at rest, so it reads as a control beside the bare counts; lit, it fills.
-  filter: { height: spacing.rowDense, borderWidth: '1px', borderStyle: 'solid', borderColor: { default: colors.line, ':hover': colors.dim } },
-  lit: { color: colors.cream, backgroundColor: colors.raised },
   count: { display: 'inline-flex', alignItems: 'center', gap: spacing.tight, paddingInline: spacing.tight, whiteSpace: 'nowrap', color: colors.dim, cursor: 'default' },
   open: { color: colors.accent },
   addressed: { color: colors.pass },
@@ -31,9 +38,16 @@ const styles = stylex.create({
   keep: { color: colors.cream },
   cream: { color: colors.cream },
   end: { marginInlineStart: 'auto' },
-  // Between the filters and what acts on them: the counts read as one set, Clear as another.
-  rule: { width: '1px', height: spacing.row, backgroundColor: colors.line },
 });
+
+type ReviewThreadView = NonNullable<ReviewSearch['filter']>;
+
+/** Each view by the heading it gives the thread, and what it shows besides, for its row in the heading's menu. */
+const REVIEW_THREAD_VIEWS: readonly { readonly view: ReviewThreadView; readonly title: string; readonly hint: string }[] = [
+  { view: 'active', title: 'Notes', hint: 'all but resolved' },
+  { view: 'open', title: 'Open notes', hint: 'only the open' },
+  { view: 'all', title: 'All notes', hint: 'resolved too' },
+];
 
 /** How many of the panel's threads stand in each state; the filter row shows those that aren't zero. */
 export type ReviewThreadCounts = Record<ReviewThreadTone, number>;
@@ -84,12 +98,12 @@ function ReviewCheckRow({ head, step }: { readonly head?: ReactNode; readonly st
 }
 
 /**
- * `Notes  ● 1 open note  ◐ 2 to verify  ? 1 question  ✓ 9 resolved`: the thread's states in words, zero counts left out.
- * `open` and `resolved` are its two filters: `open` narrows to the open notes, `resolved` lets the resolved in; either
- * again, or `F`, goes back. With rows selected, the row becomes their actions; while the check queue walks, its place.
+ * `Notes ▾  ● 1 open note  ◐ 2 to verify  ✓ 9 resolved   ⋯`: the heading is the filter, a menu of the thread's three
+ * views (`F` cycles them), and the states follow in words, zero counts left out; Copy and Clear resolved wait behind ⋯.
+ * With rows selected, the row becomes their actions; while the check queue walks, its place.
  */
 export function ReviewThreadFilter({ head, counts, filter, onFilter, actions, check }: ReviewThreadFilterProps) {
-  const toggle = (to: 'open' | 'all') => onFilter(filter === to ? 'active' : to);
+  const filterKey = useHotkeyLabel('Filter');
   if (actions.selected.size) {
     const ids = [...actions.selected];
     return (
@@ -103,44 +117,54 @@ export function ReviewThreadFilter({ head, counts, filter, onFilter, actions, ch
     );
   }
   if (check?.step) return <ReviewCheckRow head={head} step={check.step} />;
+  const empty = Object.values(counts).every((n) => n === 0);
+  const title = REVIEW_THREAD_VIEWS.find((v) => v.view === filter)?.title ?? 'Notes';
   // Every state at once outgrows the side's width: the counts wrap rather than run under the actions.
   return (
     <Group gap="tight" {...stylex.props(styles.row)}>
-      {head ?? <Text component="span" size="sm" {...stylex.props(styles.title)}>Notes</Text>}
-      {Object.values(counts).every((n) => n === 0) && <Text component="span" size="sm" {...stylex.props(styles.count)}>none yet</Text>}
-      {counts.open > 0 && (
-        <HotkeyTooltip name={filter === 'open' ? 'Show every live note' : 'Show only open notes'} hotkey="Filter">
-          <UnstyledButton aria-pressed={filter === 'open'} onClick={() => toggle('open')} {...stylex.props(styles.chip, styles.filter, filter === 'open' && styles.lit)}>
-            <ReviewToneWords tone="open" count={counts.open} />
-          </UnstyledButton>
-        </HotkeyTooltip>
+      {head}
+      {empty && !head && <Text component="span" size="sm" {...stylex.props(styles.title)}>Notes</Text>}
+      {empty && <Text component="span" size="sm" {...stylex.props(styles.count)}>none yet</Text>}
+      {empty || (
+        <Menu position="bottom-start" withinPortal>
+          {/* No tooltip: it would lie over the menu it opens. The menu names the key instead. */}
+          <Menu.Target>
+            <UnstyledButton {...stylex.props(styles.view)}>
+              <Text component="span" size="sm" inherit>{title}</Text>
+              <ChevronDown size={12} {...stylex.props(styles.chevron)} />
+            </UnstyledButton>
+          </Menu.Target>
+          <Menu.Dropdown>
+            {REVIEW_THREAD_VIEWS.map(({ view, title: name, hint }) => (
+              <Menu.Item key={view} onClick={() => onFilter(view)} leftSection={view === filter ? <Check size={14} /> : <Box w={14} />}
+                rightSection={<Text component="span" size="sm" {...stylex.props(styles.hint)}>{hint}</Text>}>
+                {name}
+              </Menu.Item>
+            ))}
+            <Menu.Label>{filterKey && `${filterKey} steps through them`}</Menu.Label>
+          </Menu.Dropdown>
+        </Menu>
       )}
-      {counts.addressed > 0 && <Text component="span" size="sm" {...stylex.props(styles.count)}><ReviewToneWords tone="addressed" count={counts.addressed} /></Text>}
+      {(['open', 'addressed', 'asks', 'keep', 'resolved'] as const).map((tone) => counts[tone] > 0 && (
+        <Text key={tone} component="span" size="sm" {...stylex.props(styles.count)}><ReviewToneWords tone={tone} count={counts[tone]} /></Text>
+      ))}
       {check?.start && <IconButton name="Check addressed" onClick={check.start}><ScanEye size={14} /></IconButton>}
-      {counts.asks > 0 && <Text component="span" size="sm" {...stylex.props(styles.count)}><ReviewToneWords tone="asks" count={counts.asks} /></Text>}
-      {counts.keep > 0 && <Text component="span" size="sm" {...stylex.props(styles.count)}><ReviewToneWords tone="keep" count={counts.keep} /></Text>}
-      {counts.resolved > 0 && (
-        <HotkeyTooltip name={filter === 'all' ? 'Hide resolved notes' : 'Show resolved notes'} hotkey="Filter">
-          <UnstyledButton aria-pressed={filter === 'all'} onClick={() => toggle('all')} {...stylex.props(styles.chip, styles.filter, filter === 'all' && styles.lit)}>
-            <ReviewToneWords tone="resolved" count={counts.resolved} />
-          </UnstyledButton>
-        </HotkeyTooltip>
-      )}
-      {/* "Clear resolved" in full, though the filter beside it says resolved: "Clear" alone could be any of the counts.
-          An Undo row in the list takes a slip back. */}
-      {counts.resolved > 0 && (
-        <>
-          <Box {...stylex.props(styles.rule)} />
-          <HotkeyTooltip name="Delete the resolved notes">
-            <UnstyledButton onClick={actions.clearResolved} {...stylex.props(styles.chip)}><Text component="span" size="sm" inherit>Clear resolved</Text></UnstyledButton>
-          </HotkeyTooltip>
-        </>
-      )}
-      {/* The thread's own actions, held together at the row's end, wrapping as one when the counts fill the line. */}
+      {/* The thread's own actions, held together at the row's end; the rare ones behind ⋯, so the bar stays calm. */}
       <Group gap={0} wrap="nowrap" {...stylex.props(styles.end)}>
         {counts.addressed > 0 && <IconButton name="Resolve all addressed" onClick={() => actions.resolveAddressed()}><CheckCheck size={14} /></IconButton>}
-        {actions.copy && (
-          <IconButton name="Copy notes" onClick={() => void actions.copy?.()} active={actions.copied}>{actions.copied ? <Check size={14} /> : <Copy size={14} />}</IconButton>
+        {(actions.copy || counts.resolved > 0) && (
+          <Menu position="bottom-end" withinPortal>
+            <HotkeyTooltip name={actions.copied ? 'Copied' : 'More'}>
+              <Menu.Target>
+                <UnstyledButton aria-label="More" {...stylex.props(styles.chip, styles.more)}>{actions.copied ? <Check size={14} /> : <Ellipsis size={14} />}</UnstyledButton>
+              </Menu.Target>
+            </HotkeyTooltip>
+            <Menu.Dropdown>
+              {actions.copy && <Menu.Item leftSection={<Copy size={14} />} onClick={() => void actions.copy?.()}>Copy notes</Menu.Item>}
+              {/* "Clear resolved" in full: "Clear" alone could be any of the counts. An Undo row in the list takes a slip back. */}
+              {counts.resolved > 0 && <Menu.Item leftSection={<Trash2 size={14} />} onClick={actions.clearResolved}>Clear resolved</Menu.Item>}
+            </Menu.Dropdown>
+          </Menu>
         )}
       </Group>
     </Group>

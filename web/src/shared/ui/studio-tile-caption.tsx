@@ -31,16 +31,19 @@ type StudioTileCaptionProps = {
 
 /**
  * Every grid tile's caption under its picture: the name on one line, its shared start dropped and its middle
- * truncated, whole in its tooltip; then one meta line, the state at its start and the age at its end.
+ * truncated, whole in its tooltip; then one meta line, the state at its start and the age at its end, when it has either.
  */
 export function StudioTileCaption({ name, siblings, status, end }: StudioTileCaptionProps) {
   return (
     <Box component="span" {...stylex.props(styles.caption)}>
       <Text component="span" size="md" {...stylex.props(styles.name)}><StudioSiblingName name={name} siblings={siblings} /></Text>
-      <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.meta)}>
-        <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.start)}>{status}</Group>
-        <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>{end}</Group>
-      </Group>
+      {/* A tile with neither (a still in the review grid) draws no meta line, rather than an empty row under its name. */}
+      {(status !== undefined || end !== undefined) && (
+        <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.meta)}>
+          <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.start)}>{status}</Group>
+          <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>{end}</Group>
+        </Group>
+      )}
     </Box>
   );
 }

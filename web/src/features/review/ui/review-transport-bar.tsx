@@ -39,6 +39,13 @@ const styles = stylex.create({
     borderRightWidth: '1px', borderRightStyle: 'solid', borderRightColor: colors.ground,
   },
   at: (left: string) => ({ left }),
+  clock: { position: 'relative', display: 'inline-flex', alignItems: 'center', gap: spacing.tight },
+  // The frame shows under the pointer, as the hundredths do elsewhere: over what follows, on the raised ground, so
+  // nothing beside the clock shifts as it shows.
+  frame: {
+    position: 'absolute', insetBlock: 0, insetInlineStart: '100%', zIndex: 1, alignItems: 'center', paddingInline: spacing.tight,
+    display: { default: 'none', [stylex.when.ancestor(':hover')]: 'flex' }, borderRadius: radius.control, backgroundColor: colors.raised,
+  },
 });
 
 /** The rate the transport shows beside the time: the shuttle's, slowed by the loop's; null at plain 1×. */
@@ -59,7 +66,7 @@ function useReviewPlayingReadouts(playback: ReviewPlayback, playing: boolean, fp
 }
 
 /**
- * `▶ 0:04.53 / 0:23 f136 ⟲ ♪ │ compare        [✎ ⌗ ⊡ ▦]`: the transport between the stage and the dock, with the playhead's notch on the
+ * `▶ 0:04.53 / 0:23 (f136 under the pointer) ⟲ ♪ │ compare        [✎ ⌗ ⊡ ▦]`: the transport between the stage and the dock, with the playhead's notch on the
  * stage's edge. While playing, the time is written straight into its nodes, as the playhead is, so the bar re-renders
  * only when the clock settles.
  */
@@ -84,9 +91,11 @@ export function ReviewTransportBar() {
     <Group gap="tight" wrap="nowrap" {...stylex.props(styles.bar)}>
       <Box {...stylex.props(styles.edge)}><Box {...stylex.props(styles.notch, styles.at(reviewPlayheadLeft(view)))} /></Box>
       <IconButton name="Play" onClick={playback.toggle}>{state.playing ? <Pause size={14} /> : <Play size={14} />}</IconButton>
-      <Readout bright ref={time} chars={timeChars}>{formatReviewClock(state.frame / timing.fps)}</Readout>
-      <Readout>/ {formatReviewTimecode(timing.durationInFrames, timing.fps)}</Readout>
-      <Readout ref={frameNumber} chars={frameChars}>{`f${state.frame}`}</Readout>
+      <Box {...stylex.props(styles.clock, stylex.defaultMarker())}>
+        <Readout bright ref={time} chars={timeChars}>{formatReviewClock(state.frame / timing.fps)}</Readout>
+        <Readout>/ {formatReviewTimecode(timing.durationInFrames, timing.fps)}</Readout>
+        <Box {...stylex.props(styles.frame)}><Readout ref={frameNumber} chars={frameChars}>{`f${state.frame}`}</Readout></Box>
+      </Box>
       {rate !== null && <Readout bright>{`${rate}×`}</Readout>}
       <IconButton name="Loop" active={state.loop !== null} onClick={toggleLoop}><Repeat size={14} /></IconButton>
       <IconButton name="Mute" active={state.muted} onClick={() => playback.setMuted(!state.muted)}>{state.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}</IconButton>

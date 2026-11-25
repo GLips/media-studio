@@ -70,6 +70,14 @@ export function reviewSectionedGridStep(at: number, { along, rows }: ReviewTileS
   return target.first + Math.min(at - laid[row].first, target.length - 1);
 }
 
+/**
+ * The names a still's caption is shortened among: its section's, whose heading says what they share (`buy-box-og-`),
+ * or the whole folder's for a still alone in its section. The grid's caption and the rail's name both read it.
+ */
+export function reviewStillCaptionSiblingsOf(section: readonly { readonly name: string }[], folder: readonly { readonly name: string }[]): string[] {
+  return (section.length > 1 ? section : folder).map((s) => s.name);
+}
+
 /** The ratios stills are cut to, by the name each goes by: an OG card is 1.91:1, not 40:21. */
 const REVIEW_STILL_NAMED_RATIOS: readonly (readonly [number, string])[] = [
   [21 / 9, '21:9'], [2, '2:1'], [1.91, '1.91:1'], [16 / 9, '16:9'], [3 / 2, '3:2'], [4 / 3, '4:3'], [5 / 4, '5:4'], [1, '1:1'],

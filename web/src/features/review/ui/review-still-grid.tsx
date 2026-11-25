@@ -2,18 +2,14 @@ import { Box, Group, Stack, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
-import { studioSiblingNameOf } from '#web/shared/studio-sibling-names.ts';
-import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
+import { STUDIO_TILE_CAPTION_MIN_WIDTH, StudioTileCaption } from '#web/shared/ui/studio-tile-caption.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
-import { reviewSectionedGridStep, reviewStillAspectSectionsOf, reviewStillRatioName, type ReviewStillOrientation } from './review-still-aspects.ts';
+import { reviewSectionedGridStep, reviewStillAspectSectionsOf, reviewStillCaptionSiblingsOf, reviewStillRatioName, type ReviewStillOrientation } from './review-still-aspects.ts';
 import { useReviewStillPixels, type ReviewStillSibling } from './review-still-siblings.ts';
 import { REVIEW_TILE_COLUMN_HEIGHT, ReviewStillTile } from './review-still-tile.tsx';
 import { ReviewThreadDots } from './review-thread-dots.tsx';
 import { reviewTileArrowKeys, useReviewBoardHotkeys } from './use-review-board-hotkeys.ts';
 import { useReviewProofGround } from './use-review-proof-ground.ts';
-
-/** The narrowest a column gets, so a portrait still's caption has room: its picture sits left, the spare width right. */
-const REVIEW_GRID_MIN_COLUMN = '120px';
 
 const styles = stylex.create({
   sections: { padding: spacing.inset },
@@ -21,14 +17,12 @@ const styles = stylex.create({
   // is a strip of pictures the same height whatever their shape. Top-aligned: a caption run to two lines hangs lower.
   grid: (aspect: number) => ({
     display: 'grid', columnGap: spacing.gap, rowGap: spacing.inset, alignItems: 'start', justifyContent: 'start',
-    gridTemplateColumns: `repeat(auto-fill, min(100%, max(${REVIEW_GRID_MIN_COLUMN}, calc(${REVIEW_TILE_COLUMN_HEIGHT} * ${aspect}))))`,
+    gridTemplateColumns: `repeat(auto-fill, min(100%, max(${STUDIO_TILE_CAPTION_MIN_WIDTH}px, calc(${REVIEW_TILE_COLUMN_HEIGHT} * ${aspect}))))`,
   }),
   subhead: { color: colors.dim },
   shape: { color: colors.cream, fontWeight: 600 },
-  // Cream and on the cell's left edge, so a caption reads as the still's name, not a dim footnote under it. Held to the
-  // column's width and wrapped at its dashes onto a second line before it's cut: a portrait column is narrow.
-  name: { width: 0, minWidth: '100%', color: colors.cream, overflowWrap: 'anywhere' },
-  current: { fontWeight: 600 },
+  // Held to the column's width, so a long name gives way in its middle rather than widening the column.
+  caption: { display: 'flex', width: 0, minWidth: '100%', color: colors.cream },
 });
 
 /** The grid's `Enter`, by the name the rail's Open button reads its key from. */
@@ -80,7 +74,6 @@ export function ReviewStillGrid({ stills, selectedPath, clear, onSelect, onOpen 
   const orientations = groups.map((g) => g.word);
   const sharedOrientations = new Set(orientations.filter((word, i) => orientations.indexOf(word) !== i));
   const at = Math.max(0, shown.findIndex((s) => s.path === selectedPath));
-  const allNames = stills.map((s) => s.name);
   useReviewBoardHotkeys([
     ...reviewTileArrowKeys((step) => {
       const columns = reviewGridColumnsNow();
@@ -104,18 +97,12 @@ export function ReviewStillGrid({ stills, selectedPath, clear, onSelect, onOpen 
             )}
             <Box {...{ [REVIEW_STILL_SECTION_ATTRIBUTE]: true }} {...stylex.props(styles.grid(section.aspect))}>
               {section.items.map(({ path, name, src }, _i, items) => {
-                // A section's stills drop the start they share (`buy-box-og-`): its heading says what they have in
-                // common. A still alone in its section is named among the whole folder.
-                const siblings = items.length > 1 ? items.map((s) => s.name) : allNames;
+                const siblings = reviewStillCaptionSiblingsOf(items, stills);
                 return (
                   <Stack key={path} gap="tight">
                     <ReviewStillTile src={src} label={name} aspect={section.word === null ? null : section.aspect} fill="column" ground={clear.has(path) ? ground : null}
                       selected={path === selectedPath} onClick={() => onSelect(path)} onDoubleClick={onOpen} corner={<ReviewThreadDots path={path} />} />
-                    <HotkeyTooltip name={name}>
-                      <Text size="sm" lineClamp={2} {...stylex.props(styles.name, path === selectedPath && styles.current)}>
-                        {studioSiblingNameOf(name, siblings).shown}
-                      </Text>
-                    </HotkeyTooltip>
+                    <Box {...stylex.props(styles.caption)}><StudioTileCaption name={name} siblings={siblings} /></Box>
                   </Stack>
                 );
               })}

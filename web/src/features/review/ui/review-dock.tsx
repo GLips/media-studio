@@ -50,7 +50,7 @@ const REVIEW_DOCK_LANES: Readonly<Record<ReviewLaneId, (view: ReviewTimelineView
   ruler: (view, _data, hover) => <ReviewLaneRuler view={view} hover={hover} />,
   scenes: (view) => <ReviewLaneScenes view={view} />,
   marks: (view) => <ReviewLaneMarks view={view} />,
-  notes: (view, data) => <ReviewLaneNotes view={view} notes={data.notes} />,
+  notes: (view, data) => <ReviewLaneNotes view={view} notes={data.notes} projectNotes={data.projectNotes} />,
   voice: (view, data) => <ReviewLaneVoice view={view} lines={data.lines} />,
   sound: (view, data) => <ReviewLaneSound view={view} peaks={data.peaks} />,
 };
