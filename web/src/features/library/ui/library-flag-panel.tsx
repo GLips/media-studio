@@ -27,7 +27,12 @@ const styles = stylex.create({
     paddingInline: spacing.inset, paddingBlockEnd: spacing.gap,
     borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: colors.line,
   },
-  chip: { paddingInline: spacing.tight, borderRadius: radius.control, color: colors.dim, backgroundColor: { default: 'transparent', ':hover': colors.raised } },
+  // One segmented control, edged as the list-or-grid toggle is, so the three read as one choice of whose flags show.
+  segments: { borderWidth: '1px', borderStyle: 'solid', borderColor: colors.line, borderRadius: radius.control, padding: '1px' },
+  chip: {
+    paddingInline: spacing.gap, borderRadius: radius.control,
+    color: { default: colors.dim, ':hover': colors.cream }, backgroundColor: { default: 'transparent', ':hover': colors.raised },
+  },
   chipOn: { color: colors.cream, backgroundColor: colors.raised },
   hint: { minWidth: 0, flex: 1, color: colors.dim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   // The row's tools sit beside its button, not in it: a button can't hold buttons.
@@ -162,7 +167,7 @@ export function LibraryFlagPanel() {
       <Group gap="gap" wrap="nowrap" {...stylex.props(styles.head)}>
         <Text component="h2" size="sm" m={0} {...stylex.props(styles.heading)}>Flags</Text>
         <Text component="span" size="sm" {...stylex.props(styles.count)}>{at >= 0 ? `${at + 1} of ${queue.length}` : flags.flags.length || ''}</Text>
-        <Group gap="hairline" wrap="nowrap">
+        <Group gap={0} wrap="nowrap" role="group" aria-label="Whose flags" {...stylex.props(styles.segments)}>
           {(['all', 'agent', 'reviewer'] as const).map((by) => (
             <HotkeyTooltip key={by} name={`Flags: ${FILTER_LABELS[by]}`} hotkey="Whose flags">
               <UnstyledButton aria-pressed={filter === by} onClick={() => setFilter(by)} {...stylex.props(styles.chip, filter === by && styles.chipOn)}>

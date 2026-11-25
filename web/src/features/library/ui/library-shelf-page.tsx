@@ -143,7 +143,7 @@ export function LibraryShelfPage() {
             onKeyDown={(event) => {
               if (event.key === 'ArrowDown') {
                 event.preventDefault();
-                focusLibraryShelfRow(listRef.current, 1);
+                focusLibraryShelfRow(listRef.current, 'down');
               } else if (event.key === 'Escape') event.currentTarget.blur();
             }}
             classNames={{ input: stylex.props(styles.searchField).className }}

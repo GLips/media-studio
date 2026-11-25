@@ -1,19 +1,19 @@
 /** Where an item sits on screen: its box, as getBoundingClientRect gives it. */
-export type ProjectItemBox = { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number };
+export type StudioItemBox = { readonly left: number; readonly top: number; readonly right: number; readonly bottom: number };
 
-export type ProjectStepDirection = 'up' | 'down' | 'left' | 'right';
+export type StudioStepDirection = 'up' | 'down' | 'left' | 'right';
 
 /** Boxes whose tops differ by less than this share a line: a grid row's tiles, give or take a pixel. */
 const SAME_LINE_SLACK = 4;
 
-const centreX = (box: ProjectItemBox) => (box.left + box.right) / 2;
+const centreX = (box: StudioItemBox) => (box.left + box.right) / 2;
 
 /**
  * The item an arrow moves to from `at` among rows and tiles laid out down a page: up and down to the nearest line
  * that way, at the item nearest the current one's centre; left and right to the neighbour on its line. Null at an
  * edge, so the cursor holds; the first item when nothing is focused.
  */
-export function projectSpatialStepOf(boxes: readonly ProjectItemBox[], at: number | null, direction: ProjectStepDirection): number | null {
+export function studioSpatialStepOf(boxes: readonly StudioItemBox[], at: number | null, direction: StudioStepDirection): number | null {
   if (boxes.length === 0) return null;
   if (at === null) return 0;
   const from = boxes[at];

@@ -1,14 +1,14 @@
 import { useHotkeys } from '@tanstack/react-hotkeys';
 import type { RefObject } from 'react';
-import { projectSpatialStepOf, type ProjectStepDirection } from './project-spatial-step.ts';
+import { studioSpatialStepOf, type StudioStepDirection } from '#web/shared/studio-spatial-step.ts';
 import { PROJECT_ROW_ATTRIBUTE } from './project-target-link.tsx';
 
-/** Focuses the row or tile an arrow leads to from the focused one (projectSpatialStepOf), or the first when none is. */
-function focusProjectItem(list: HTMLElement | null, direction: ProjectStepDirection) {
+/** Focuses the row or tile an arrow leads to from the focused one (studioSpatialStepOf), or the first when none is. */
+function focusProjectItem(list: HTMLElement | null, direction: StudioStepDirection) {
   if (!list) return;
   const items = [...list.querySelectorAll<HTMLElement>(`[${PROJECT_ROW_ATTRIBUTE}]`)];
   const at = items.findIndex((item) => item === document.activeElement);
-  const next = projectSpatialStepOf(items.map((item) => item.getBoundingClientRect()), at === -1 ? null : at, direction);
+  const next = studioSpatialStepOf(items.map((item) => item.getBoundingClientRect()), at === -1 ? null : at, direction);
   if (next === null) return;
   items[next].focus();
   items[next].scrollIntoView({ block: 'nearest' });
