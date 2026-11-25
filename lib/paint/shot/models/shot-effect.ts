@@ -152,6 +152,7 @@ export const shotEffectReadMap = (read: ShotEffectRead) => read.map ?? PAINT_SIM
 /**
  * Where `effect`'s output can lie, plane px, given where each read's input can (`inputBox`, null: nowhere): each
  * box carried through its read's map, unioned, grown by the effect's growth. Before any clip: the stage clips it after.
+ * An input is drawn within the stage, so a read carrying paint from past the stage's edge shows that edge.
  */
 export function shotEffectBox(effect: CompiledShotEffectImage, inputBox: (read: CompiledShotEffectRead, index: number) => StampBox | null): StampBox | null {
   let box: StampBox | undefined;

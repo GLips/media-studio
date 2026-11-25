@@ -396,7 +396,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effec
               const picture = pictured[i];
               return picture && { x0: picture.box.x - margin, y0: picture.box.y - margin, x1: picture.box.x + picture.box.w - margin, y1: picture.box.y + picture.box.h - margin };
             });
-            const texels = box && stampStageTexelsWithin(stage, Math.floor(box.x0 + margin), Math.floor(box.y0 + margin), Math.ceil(box.x1 + margin), Math.ceil(box.y1 + margin));
+            const texels = box && stampStageTexelsWithin(stage, box.x0, box.y0, box.x1, box.y1);
             sharp = texels && visibility > 0
               ? effectPass.draw(encoder, { gpu, params: at.params, reads: at.reads.map(({ map }, i) => ({ picture: pictured[i], map })), box: texels, visibility, key })
               : null;

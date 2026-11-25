@@ -31,7 +31,7 @@ import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { createLensCompositor, type LensItemsLayer, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import { shotCanvasLayings, shotPaintedSolvables, shotPlaneLeaves, type CompiledPaintedShot, type CompiledShotPaintedPlane, type CompiledShotPlane, type PaintedShotPaintOptions } from '../models/shot-compile.ts';
-import { shotImageLeafReads, shotMomentMapped, type CompiledShotImage } from '../models/shot-effect.ts';
+import { shotImageLeafReads, shotMomentMapped } from '../models/shot-effect.ts';
 import { shotExposureMoments, shotSolvablesShown, shotWarmShown } from '../models/shot-shown.ts';
 import { shotPinnedPlanes, type ShotPinCentres } from '../models/shot-placement.ts';
 import { shotNodePoseAt, shotRigReader, shotVisibilityAt, type ShotRigRead } from '../models/shot-frame-plan.ts';
@@ -43,8 +43,8 @@ import type { ShotMomentAt } from '../models/shot-sheet-lays.ts';
 import { shotWarmFrames } from '../models/shot-warm.ts';
 import { shotCanvasPaintSurfaces, type ShotCanvasSurface } from './shot-canvas.ts';
 import { shotItemsCoverages, shotItemsLayer, type ShotItemsCoverage } from './shot-instance-passes.ts';
-import { shotEffectTable, type ShotEffectGpu, type ShotEffectTable } from './shot-effect-gpu.ts';
-import { SHOT_EFFECTS_BUILTIN } from './shot-effects-builtin.ts';
+import { shotEffectTableProblems, type ShotEffectGpu, type ShotEffectTable } from './shot-effect-gpu.ts';
+import { shotEffectTableWithBuiltins } from './shot-effects-builtin.ts';
 import { createShotPaintedPlanes, type ShotEffectLaid, type ShotImage, type ShotImageRead, type ShotPlaneMoment, type ShotPlaneSolved } from './shot-painted-plane.ts';
 import { createShotPaintedTextures, type ShotWarmSolve } from './shot-painted-textures.ts';
 import { createShotRigPictures, createShotRigPiecesDrawer } from './shot-rig-pieces.ts';
@@ -78,24 +78,14 @@ export type PaintedShotWarmRun = { readonly fps: number; readonly sceneDur: numb
 
 /**
  * How a renderer paints: its brushes and costs; `progress`, told of each warm's and each frame's solves; and
- * `effects`, the studio halves of the effects it draws beside the built-ins (SHOT_EFFECTS_BUILTIN).
+ * `effects`, the studio halves of the effects it draws beside the built-ins (shot-effects-builtin.ts).
  */
 export type PaintedShotRendererOptions = PaintedShotPaintOptions & { readonly progress?: ShotSolveProgress; readonly effects?: readonly ShotEffectGpu[] };
 
-/**
- * `shot`'s effect table: the built-ins and `effects`. Throws naming an effect a plane draws that has no studio half
- * in it, and how to give it one.
- */
+/** `shot`'s effect table: the built-ins and `effects`. Throws every effect it can't draw (shotEffectTableProblems). */
 function shotRendererEffects(shot: CompiledPaintedShot, effects: readonly ShotEffectGpu[]): ShotEffectTable {
-  const table = shotEffectTable([...SHOT_EFFECTS_BUILTIN, ...effects]);
-  const visit = (plane: string, image: CompiledShotImage) => {
-    if (image.kind === 'painted') return;
-    if (!table.has(image.definition)) {
-      throw new Error(`shot: ${plane} draws the effect ${image.definition.name}, which has no studio half here: pass the half defineShotEffectGpu made of it in PaintedShot's effects`);
-    }
-    for (const { input } of image.reads) visit(plane, input);
-  };
-  for (const plane of shot.planes) if (plane.kind === 'effect') visit(plane.id, plane.image);
+  const table = shotEffectTableWithBuiltins(effects), problems = shotEffectTableProblems(shot, table);
+  if (problems.length) throw paintingProblemsError("the shot's effects", problems);
   return table;
 }
 

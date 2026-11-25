@@ -17,7 +17,9 @@ import { stampPlanePictureLayerCount, stampPlanePictureLayers, type StampPlanePi
 import type { StampPlanePicture } from '#lib/paint/painting/studio/stamp-plane-picture-pass.ts';
 import type { StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
-import { SHOT_EFFECT_READS_MOST, type ShotEffect, type ShotEffectDefinition, type ShotEffectParams } from '../models/shot-effect.ts';
+import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
+import type { CompiledPaintedShot } from '../models/shot-compile.ts';
+import { SHOT_EFFECT_READS_MOST, type CompiledShotImage, type ShotEffect, type ShotEffectDefinition, type ShotEffectParams } from '../models/shot-effect.ts';
 
 /** The most floats an effect packs its parameters into: one uniform slot's. */
 export const SHOT_EFFECT_PARAMS_MOST = 64;
@@ -38,6 +40,25 @@ export function defineShotEffectGpu<P extends ShotEffectParams, I extends string
   effect: ShotEffect<P, I>, gpu: { readonly wgsl: string; readonly uniforms: (params: P) => readonly number[] },
 ): ShotEffectGpu<P> {
   return { definition: effect.definition, wgsl: gpu.wgsl, uniforms: gpu.uniforms };
+}
+
+/**
+ * What keeps `shot` from drawing its effects with `table`: an effect with no studio half in it, or one packing more
+ * floats than SHOT_EFFECT_PARAMS_MOST. `studio paint check` says these without the GPU, as the renderer refuses them.
+ */
+export function shotEffectTableProblems(shot: CompiledPaintedShot, table: ShotEffectTable): PaintingProblem[] {
+  const problems: PaintingProblem[] = [];
+  const visit = (plane: string, image: CompiledShotImage) => {
+    if (image.kind === 'painted') return;
+    const gpu = table.get(image.definition);
+    if (!gpu) problems.push(paintingProblem('error', plane, 'source', `draws the effect ${image.definition.name}, which has no studio half here: pass the half defineShotEffectGpu made of it in PaintedShot's effects`));
+    else if (gpu.uniforms(image.params).length > SHOT_EFFECT_PARAMS_MOST) {
+      problems.push(paintingProblem('error', plane, 'source', `${image.definition.name} packs ${gpu.uniforms(image.params).length} floats, past the ${SHOT_EFFECT_PARAMS_MOST} an effect may`));
+    }
+    for (const { input } of image.reads) visit(plane, input);
+  };
+  for (const plane of shot.planes) if (plane.kind === 'effect') visit(plane.id, plane.image);
+  return problems;
 }
 
 /** The effects a shot can draw: each definition's studio half. Static: a project lists its own beside the built-ins. */
@@ -109,6 +130,9 @@ ${emission.map((_, i) => `@group(0) @binding(${3 + i}) var read${i}: texture_2d_
 ${shotEffectReadingWgsl(emission)}
 ${gpu.wgsl}
 @compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn shotEffectPass(@builtin(global_invocation_id) id: vec3u) {
+  // Every binding used, so the pipeline's layout holds each the pass binds, whatever the effect reads.
+  _ = shotParams.values[0];
+${emission.map((_, i) => `  _ = textureDimensions(read${i});`).join('\n')}
   if (any(id.xy >= shotPass.extent)) { return; }
   let texel = shotPass.origin + id.xy;
   let film = shotFaded(shotEffect(vec2f(texel) + vec2f(0.5 - ${margin.toFixed(1)})), shotPass.visibility);
@@ -146,8 +170,8 @@ export function createShotEffectPass(owner: StampPaintGpuOwner, { stage, arena }
       const [texture] = outputs.make(key, encoder, [{
         width: box.w, height: box.h, layers: stampPlanePictureLayerCount(layers), format: 'rgba16float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
       }], { ...layers, box }).textures;
+      // shotEffectTableProblems held it to SHOT_EFFECT_PARAMS_MOST as the shot loaded.
       const packed = gpu.uniforms(params);
-      if (packed.length > SHOT_EFFECT_PARAMS_MOST) throw new Error(`shot effect ${gpu.definition.name}: packs ${packed.length} floats, past the ${SHOT_EFFECT_PARAMS_MOST} it may`);
       // A read laying nothing reads from a picture of one clear texel, placed where no texel of the output maps.
       const empty = owner.target('shot effect nothing', { size: [1, 1, 2], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING }, encoder);
       const emission = reads.map(({ picture }) => picture?.emission ?? null);

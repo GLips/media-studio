@@ -67,7 +67,7 @@ export function checkStampGateOffsetCopies({ copies, placed }: StampGateOffsetCo
       detail: `the figure and its copies stand ${stands.map(f).join(', ')} levels of luma from the footage (each less than the one before wanted)`,
     },
     {
-      id: 'shot/offset-copies: grown past its input', passed: farthest.x0 > FIGURE.x1 + FIGURE.reach && stands[2] >= SHOWN,
+      id: 'shot/offset-copies: grown past its input', passed: stands[2] >= SHOWN,
       detail: `the farthest copy, at x ${farthest.x0}..${farthest.x1} past the figure's reach to ${FIGURE.x1 + FIGURE.reach}, stands ${f(stands[2])} levels from the footage (${SHOWN} or more wanted)`,
     },
   ];

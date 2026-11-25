@@ -27,6 +27,8 @@ import type { PaintedShotProps } from '../models/shot-props.ts';
 import { shotPlanesKeyDrawingsText } from '../models/shot-painting-in-time.ts';
 import { shotWarmPastScene } from '../models/shot-warm.ts';
 import { PaintedShotSeenContext } from '../studio/painted-shot.tsx';
+import { shotEffectTableProblems, type ShotEffectGpu } from '../studio/shot-effect-gpu.ts';
+import { shotEffectTableWithBuiltins } from '../studio/shot-effects-builtin.ts';
 
 /**
  * A scene's shot checked: the scene's id; the shot's problems, errors and warnings both; and, when it compiles, its
@@ -44,13 +46,16 @@ function shotNamedCanvases(shot: PaintedShotProps): string[] {
   return [...new Set(shot.planes.toSorted((a, b) => far.get(b)! - far.get(a)!).flatMap(({ canvas }) => (canvas === undefined ? [] : [canvas])))];
 }
 
+/** A shot a scene renders, and the studio halves of the effects it's drawn with. */
+type ShotSeen = { readonly props: PaintedShotProps; readonly effects: readonly ShotEffectGpu[] };
+
 /** The shots `scene` renders at video frame `frame`, as the composition lays it there, in render order. */
-function shotsRenderedAt(scene: LaidScene, frame: number, video: { fps: number; width: number; height: number; frames: number }): PaintedShotProps[] {
-  const seen: PaintedShotProps[] = [], clock = sceneClockAt(scene, frame / video.fps);
+function shotsRenderedAt(scene: LaidScene, frame: number, video: { fps: number; width: number; height: number; frames: number }): ShotSeen[] {
+  const seen: ShotSeen[] = [], clock = sceneClockAt(scene, frame / video.fps);
   const SceneAtFrame = (): ReactNode => createElement(
     Sequence, { from: scene.visible.from, durationInFrames: Math.max(1, scene.visible.to - scene.visible.from), layout: 'none' },
     createElement(PictureDrawnContext, { value: false }, createElement(SceneContext.Provider, { value: clock }, createElement(
-      PaintedShotSeenContext, { value: (shot: PaintedShotProps) => seen.push(shot) }, scene.render(clock),
+      PaintedShotSeenContext, { value: (props: PaintedShotProps, effects: readonly ShotEffectGpu[]) => seen.push({ props, effects }) }, scene.render(clock),
     ))),
   );
   try {
@@ -88,14 +93,18 @@ export async function checkProjectSceneShots(project: string, sceneId: string | 
   if (!scenes.length) throw new Error(`the video has no scene ${sceneId}: its scenes are ${laid.scenes.map(({ id }) => id).join(', ')}`);
   return scenes.flatMap((scene) => {
     const { from, to } = scene.visible, frames = [...new Set([from, Math.floor((from + to - 1) / 2), to - 1])];
-    const shots = [...new Set(frames.flatMap((frame) => shotsRenderedAt(scene, frame, { fps, width, height, frames: laid.frames })))];
-    return shots.map((props): ShotSceneCheck => {
+    const seen = frames.flatMap((frame) => shotsRenderedAt(scene, frame, { fps, width, height, frames: laid.frames }));
+    const shots = [...new Map(seen.map((each) => [each.props, each])).values()];
+    return shots.map(({ props, effects }): ShotSceneCheck => {
       const { shot, problems } = compilePaintedShot(props, shotNamedCanvases(props), { htmlBehind: true });
+      // The effects it draws, each with a studio half to draw it, as the renderer holds them.
+      const effectProblems = shot ? shotEffectTableProblems(shot, shotEffectTableWithBuiltins(effects)) : [];
       return {
         scene: scene.id,
         problems: [
           ...paintSpanShownProblems(props.span, fps, scene.dur).map((message) => paintingProblem('error', 'shot', 'span', message)),
           ...problems,
+          ...effectProblems,
           ...(props.warm ? shotWarmPastScene(props.warm, scene.dur) : []),
         ],
         plans: shot ? shotPlanesKeyDrawingsText(shot.planes) : [],

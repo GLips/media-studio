@@ -86,13 +86,13 @@ export function PaintedShotCanvas({ name }: { readonly name: string }) {
   return <span ref={host} />;
 }
 
-/**
- * What `studio paint check` hands a scene it renders without a page (shot-scene-check.ts): every PaintedShot rendered
- * gives it its shot. Null in a render.
- */
 const NO_SHOT_EFFECTS: readonly ShotEffectGpu[] = [];
 
-export const PaintedShotSeenContext = createContext<((shot: PaintedShotProps) => void) | null>(null);
+/**
+ * What `studio paint check` hands a scene it renders without a page (shot-scene-check.ts): every PaintedShot rendered
+ * gives it its shot and its effects' studio halves. Null in a render.
+ */
+export const PaintedShotSeenContext = createContext<((shot: PaintedShotProps, effects: readonly ShotEffectGpu[]) => void) | null>(null);
 
 /**
  * Draws `shot` at scene second `t`, holding the frame until its paint is solved. Its element is the camera's frame,
@@ -102,7 +102,7 @@ export const PaintedShotSeenContext = createContext<((shot: PaintedShotProps) =>
 export function PaintedShot({ shot, t, box: given, effects = NO_SHOT_EFFECTS, children }: {
   readonly shot: PaintedShotProps; readonly t: number; readonly box?: { x: number; y: number; w: number; h: number }; readonly effects?: readonly ShotEffectGpu[]; readonly children?: ReactNode;
 }) {
-  useContext(PaintedShotSeenContext)?.(shot);
+  useContext(PaintedShotSeenContext)?.(shot, effects);
   const format = useVideoFormat(), box = given ?? fullFrameRect(format), { frame } = shot.camera.stage, { fps } = format;
   // The scene playing the shot, when it's played in one: its length is what a warm span is held to.
   const sceneDur = useSceneOrNull()?.dur ?? null, pictureDrawn = usePictureDrawn(), trace = usePageTrace();
