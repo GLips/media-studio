@@ -70,3 +70,11 @@ test('a computed value or a missing target is refused, naming where', () => {
   const missing = applyStoryboardTextEdit(source, { field: 'reads', scene: 'open', index: 5, was: '', text: 'New.' });
   assert.deepEqual(missing, { refused: 'scenes.open.reads has no item 5' });
 });
+
+test('edits to different texts made from the same page both land, in either order', () => {
+  const line: StoryboardTextEdit = { field: 'line', scene: 'open', line: 'hello', was: 'Say hello.', text: 'Say hi.' };
+  const screen: StoryboardTextEdit = { field: 'onScreen', scene: 'open', was: 'The app, open.', text: 'The app, shut.' };
+  for (const out of [edited(edited(source, line), screen), edited(edited(source, screen), line)]) {
+    assert.ok(out.includes("'Say hi.'") && out.includes("'The app, shut.'"), out);
+  }
+});

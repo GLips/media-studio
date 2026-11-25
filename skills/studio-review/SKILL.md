@@ -41,14 +41,15 @@ watcher below is running.
      sound, a shared component, several scenes, a transparent video, the hand-over. It retires every slice.
    Write the reply by the moment ("the ring now lands on *faster*"), not the frame number: notes follow their moment
    to each new render. A second thought is another `--addressed` reply with the newer render.
-5. **Leave resolving to the reviewer.** They resolve or reopen once they've seen the fix.
+5. **Leave resolving to the reviewer.** They resolve or reopen once they've seen the fix; a reopened note comes back
+   through `watch` like a new one.
 
 The session talking with the reviewer runs the watcher itself; never hand the watching to a subagent. It answers quick
 things itself and dispatches a subagent per note or piece of work, side by side when none waits on another's result,
-each briefed with its notes and every `keep`. As it starts on a note or dispatches it, it runs `studio review start <p>
-<id>`, so the page shows it's being worked on. It forwards each new note or reply to any running subagent whose scene,
-asset or fix it bears on, without waiting for it to finish; when unsure, forward. It checks each result before handing
-it back, and keeps the reviewer posted with replies.
+each briefed with its notes and every `keep`. As it starts on a note or dispatches it, it runs
+`studio review start <p> <id>`, so the page shows it's being worked on. It forwards each new note or reply to any
+running subagent whose scene, asset or fix it bears on, without waiting for it to finish; when unsure, forward. It
+checks each result before handing it back, and keeps the reviewer posted with replies.
 
 Done when `studio review notes <p>` lists nothing open or reopened that you haven't addressed, answered or asked
 about, every addressed note names what shows it, and the reviewer has said it's approved or resolved every note.
@@ -63,7 +64,8 @@ holds flagged), then a row per scene.
 - The reviewer notes a brief section, a scene's cell, a line or words in it, or a left-out item. A note quotes what
   it's on, so it follows the words through your edits and is unplaced once they've gone.
   `studio review notes <p> --on plan` lists them. A fix is an edit to `storyboard.ts`, replied `--addressed` with
-  its commit and no render.
+  its commit and no render. The reviewer may be editing it in the app at the same time: re-read it just before, and
+  replace only the text you change, never the whole file.
 - The reviewer signs off scene by scene. A sign-off holds the scene's row and its own
   timing, not where it starts, so an edit unsigns only the scene it touches: say which scenes changed. Done when every
   scene is signed off.
@@ -75,7 +77,8 @@ variants, headlines (`text:` candidates). When one is clearly better, pick it yo
 
 - **Cull first.** Two to four candidates, each one you'd ship, differing along the axis the question names. Render
   each to `out/decisions/<topic>/`, identical but for that axis: a bed is heard in its mix, a lead against the cut
-  (`${CLAUDE_PLUGIN_ROOT}/skills/video-sound/references/music.md`).
+  (`${CLAUDE_PLUGIN_ROOT}/skills/video-sound/references/music.md`). Recorded takes:
+  `library:<item>@<from>-<to>`.
 - **Ask one question**, the axis in words ("Which bed under the VO?"). `--many` when they may keep several. For
   generated candidates, carry the model, seed and cost as meta (`--spec`), so the pick can be made again.
 - **Say what it's for**: `--scene`, or `--line` for a take; they're walked in story order.
