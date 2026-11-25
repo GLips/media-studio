@@ -121,14 +121,15 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
   const forced = (edits.cut ?? []).map((t) => {
     const i = sounds.findIndex((s, k) => k >= first && k <= last && s.start <= t && t <= s.end);
     if (i < 0) throw new Error(`${where} says nothing at ${t} s in the line from ${asked} to ${askedTo} s to cut`);
-    return { kind: 'cut', flag: undefined, from: i, to: i };
+    // A cut on a find the line left in (no quiet beside it) takes the whole find.
+    return found.find((f) => f.from <= i && i <= f.to && !restored.includes(f)) ?? { kind: 'cut', flag: undefined, from: i, to: i };
   });
   const takenBy = new Map<number, { finds: Set<Find>; forced: boolean }>();
-  for (const find of [...found.filter((f) => !restored.includes(f)), ...forced]) {
+  for (const find of new Set([...found.filter((f) => !restored.includes(f)), ...forced])) {
     for (let i = find.from; i <= find.to; i++) {
       const at = takenBy.get(i) ?? { finds: new Set(), forced: false };
       at.finds.add(find);
-      at.forced ||= find.kind === 'cut';
+      at.forced ||= forced.includes(find);
       takenBy.set(i, at);
     }
   }
