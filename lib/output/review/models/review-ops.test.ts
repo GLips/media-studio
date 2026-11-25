@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { applyReviewOpsToFile, ReviewOpRefused, type NewDecision, type ReviewOp, type ReviewOpsApplied } from './review-ops.ts';
-import { emptyReviewFile, type ReviewAuthor, type ReviewFile } from './review-threads.ts';
+import { emptyReviewFile, REVIEW_WORKING_STALE_MS, reviewThreadWorkingUntil, type ReviewAuthor, type ReviewFile } from './review-threads.ts';
 
 const render = { path: 'out/video.mp4', hash: 'a1b2c3d4e5' };
 const apply = (file: ReviewFile, author: ReviewAuthor, ...ops: ReviewOp[]) =>
@@ -100,4 +100,22 @@ test('an agent\'s reply names the render that shows the fix by path and hash, an
   assert.throws(() => apply(withNote, 'agent', { op: 'thread.reply', id: 1, text: 'eased', render: { ...slice, hash: 'HEAD' } }), ReviewOpRefused);
   // Not in normal form, it would match no archived version's path.
   assert.throws(() => apply(withNote, 'agent', { op: 'thread.reply', id: 1, text: 'eased', render: { ...slice, path: `./${slice.path}` } }), ReviewOpRefused);
+});
+
+test('the agent marks a note it starts on, and its next reply on it, of any kind, clears the mark', () => {
+  assert.throws(() => apply(withNote, 'reviewer', { op: 'thread.working', ids: [1] }), ReviewOpRefused);
+  const started = applied(apply(withNote, 'agent', { op: 'thread.working', ids: [1] })).file;
+  assert.deepEqual(started.threads[0].working, { at: '2026-10-11T12:00:00Z' });
+  // The reviewer saying more leaves the agent on it; the agent's plain reply ends it.
+  const nudged = applied(apply(started, 'reviewer', { op: 'thread.reply', id: 1, text: 'and the whip' })).file;
+  assert.ok(nudged.threads[0].working);
+  assert.equal(applied(apply(nudged, 'agent', { op: 'thread.reply', id: 1, text: 'looking at both' })).file.threads[0].working, undefined);
+});
+
+test('a working mark reads as worked on for 30 minutes, then lapses, and never on a resolved note', () => {
+  const started = applied(apply(withNote, 'agent', { op: 'thread.working', ids: [1] })).file.threads[0];
+  const at = Date.parse('2026-10-11T12:00:00Z');
+  assert.equal(reviewThreadWorkingUntil(started, at + 29 * 60_000), at + REVIEW_WORKING_STALE_MS);
+  assert.equal(reviewThreadWorkingUntil(started, at + 31 * 60_000), null);
+  assert.equal(reviewThreadWorkingUntil({ ...started, state: 'resolved' }, at), null);
 });

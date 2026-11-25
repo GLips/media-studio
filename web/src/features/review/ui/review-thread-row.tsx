@@ -16,6 +16,7 @@ import { Textarea } from '#web/shared/ui/textarea.tsx';
 import { colors, fonts, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { ReviewThreadBody } from './review-thread-body.tsx';
 import { ReviewThreadKindIcon } from './review-thread-kind.tsx';
+import { REVIEW_THREAD_WORKING_WORD, ReviewThreadWorkingSpinner, useReviewThreadWorking } from './review-thread-working.tsx';
 import { useReviewThreadScope } from './review-thread-scope.tsx';
 import type { ReviewComparedVersion } from './use-review-render-versions.ts';
 import type { ReviewThreadActions, ReviewThreadInline } from './use-review-thread-panel.ts';
@@ -35,9 +36,12 @@ const styles = stylex.create({
   flash: { animationName: flashIn, animationDuration: '1s', animationTimingFunction: 'ease-out' },
   head: { height: spacing.rowDense, minWidth: 0 },
   glyph: { width: spacing.inset, flexShrink: 0, textAlign: 'center' },
+  // The spinner takes the glyph's place without moving the line.
+  glyphBox: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
   // Dim, like the rest of the label line: the request under it is what reads first.
   kind: { display: 'inline-flex', alignItems: 'center', gap: spacing.hairline, flexShrink: 0, color: colors.dim },
   earlier: { color: colors.dim, paddingInlineStart: spacing.inset },
+  workingLine: { display: 'flex', alignItems: 'center', gap: spacing.hairline, marginTop: spacing.tight, color: colors.accent },
   open: { color: colors.accent },
   addressed: { color: colors.pass },
   asks: { color: colors.caution },
@@ -168,6 +172,7 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
   const { noteAside: NoteAside } = useReviewThreadScope();
   const [note, ...replies] = thread.entries;
   const { glyph, style, word } = reviewThreadGlyphOf(thread);
+  const working = useReviewThreadWorking(thread);
   const frame = reviewThreadFrameOf(thread);
   const scene = frame === undefined || !place ? undefined : reviewSceneAtFrame(place.scenes, frame);
   // On a file's thread, a note on the whole project says so where a time would be.
@@ -220,8 +225,8 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
       )}
     >
       <Group gap="tight" wrap="nowrap" {...stylex.props(styles.head)}>
-        <Tooltip label={word} openDelay={400} withinPortal>
-          <Text component="span" size="sm" {...stylex.props(styles.glyph, styles[style])}>{glyph}</Text>
+        <Tooltip label={working ? `${word} · ${REVIEW_THREAD_WORKING_WORD.toLowerCase()}` : word} openDelay={400} withinPortal>
+          <Text component="span" size="sm" {...stylex.props(styles.glyph, styles.glyphBox, styles[style])}>{working ? <ReviewThreadWorkingSpinner /> : glyph}</Text>
         </Tooltip>
         <Text component="span" size="sm" {...stylex.props(styles.kind)}>
           <ReviewThreadKindIcon kind={thread.kind} />
@@ -295,6 +300,11 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
             );
           })}
         </Stack>
+      )}
+      {working && (
+        <Text component="span" size="xs" {...stylex.props(styles.body, styles.workingLine)}>
+          <ReviewThreadWorkingSpinner size={10} /> {REVIEW_THREAD_WORKING_WORD}
+        </Text>
       )}
       {inline && (
         <Box onClick={(event) => event.stopPropagation()} {...stylex.props(styles.body)}>

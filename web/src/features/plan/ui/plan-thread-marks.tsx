@@ -1,7 +1,7 @@
 import { Group, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { formatReviewPlanNoteWhere } from '#lib/output/review/models/review-plan.ts';
-import { ReviewThreadKindIcon } from '#web/features/review/index.ts';
+import { REVIEW_THREAD_WORKING_WORD, ReviewThreadKindIcon, ReviewThreadWorkingSpinner, useReviewThreadWorking } from '#web/features/review/index.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { colors, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
 import { planThreadMarkOf, planUnquotedAttributes, type PlanPlacedThread } from './plan-notes.ts';
@@ -27,18 +27,25 @@ export function PlanThreadMarks({ threads }: { readonly threads: readonly PlanPl
   if (!shown.length) return null;
   return (
     <Group component="span" wrap="nowrap" {...planUnquotedAttributes} {...stylex.props(styles.marks)}>
-      {shown.map((thread) => {
-        const mark = planThreadMarkOf(thread);
-        const label = `#${thread.id} · ${mark.word} · ${formatReviewPlanNoteWhere(thread.anchor, { short: true })}`;
-        return (
-          <HotkeyTooltip key={thread.id} name={label}>
-            <UnstyledButton aria-label={label} onClick={() => setSearch({ note: thread.id })}
-              {...stylex.props(styles.mark, styles[mark.tone], search.note === thread.id && styles.focused)}>
-              <ReviewThreadKindIcon kind={thread.kind} size={14} />
-            </UnstyledButton>
-          </HotkeyTooltip>
-        );
-      })}
+      {shown.map((thread) => (
+        <PlanThreadMark key={thread.id} thread={thread} focused={search.note === thread.id} open={() => setSearch({ note: thread.id })} />
+      ))}
     </Group>
+  );
+}
+
+type PlanThreadMarkProps = { readonly thread: PlanPlacedThread; readonly focused: boolean; readonly open: () => void };
+
+/** One thread's mark: its kind's icon, or a spinner while the agent is on it. */
+function PlanThreadMark({ thread, focused, open }: PlanThreadMarkProps) {
+  const working = useReviewThreadWorking(thread);
+  const mark = planThreadMarkOf(thread);
+  const label = `#${thread.id} · ${working ? REVIEW_THREAD_WORKING_WORD : mark.word} · ${formatReviewPlanNoteWhere(thread.anchor, { short: true })}`;
+  return (
+    <HotkeyTooltip name={label}>
+      <UnstyledButton aria-label={label} onClick={open} {...stylex.props(styles.mark, styles[mark.tone], focused && styles.focused)}>
+        {working ? <ReviewThreadWorkingSpinner size={14} /> : <ReviewThreadKindIcon kind={thread.kind} size={14} />}
+      </UnstyledButton>
+    </HotkeyTooltip>
   );
 }

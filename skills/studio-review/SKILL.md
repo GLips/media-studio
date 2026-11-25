@@ -8,7 +8,7 @@ description: Review of any plan, video, still or mix with the reviewer in the st
 The studio's projects live under `$(studio home)`: run `studio home` and use absolute paths for Read and Edit.
 
 The reviewer works in the studio app; you work the other half from the CLI. Every note, reply, question and pick lands
-in the project's `review/review.json` and shows on both sides within a second. Each verb's mechanics are in
+in the project's `review/review.json` and shows on both sides. Each verb's mechanics are in
 `studio review <verb> --help`; this skill is when to use them and how to judge what comes back. Paths the CLI prints
 are from the studio root (a scene's source is from the project): Read them under `$(studio home)`.
 
@@ -25,14 +25,14 @@ watcher below is running.
 ## The loop
 
 1. **Watch**, one watcher a project. Under Claude Code's Monitor, `studio review watch <p> --follow` prints a line
-   per reviewer act, naming the command that prints it whole. Without Monitor, run it in the background without
-   `--follow`: its exit wakes you; rerun it after acting. Nothing is missed or repeated.
+   per reviewer act. Without Monitor, run it in the background without
+   `--follow`: its exit wakes you; rerun it after acting.
 2. **Read each note whole.** Read its frame image: the reviewer's marks say what terse words leave out. Its moment,
    scene, sounds and tagged elements tell you where (a reviewer's "scene 3" is the third in `studio clock <p>`); its
    `look:` line shows the frames around it. `keep` notes are standing constraints, not work.
-3. **Talk on any note, any time.** A plain `reply` leaves the note's state alone: answer a question, say your plan,
-   check which reading they meant. Their answers wake `watch`. `reply --question` is for when you're blocked: the
-   note then waits on them. Raise something nobody noted with `studio review ask`.
+3. **Talk on any note, any time.** A plain `reply` leaves the note's state alone: answer a question or say your plan.
+   Their answers wake `watch`. `reply --question` is for when you're blocked: the note then waits on them. Raise
+   something nobody noted with `studio review ask`.
 4. **Fix, then hand the fix back.** One fix per note, held to every `keep`. Then reply `--addressed` with a commit and
    the render that shows it:
    - A fix inside one scene: the note's `fix:` line, a `render --scene` slice, which the page lays into the cut over
@@ -41,13 +41,14 @@ watcher below is running.
      sound, a shared component, several scenes, a transparent video, the hand-over. It retires every slice.
    Write the reply by the moment ("the ring now lands on *faster*"), not the frame number: notes follow their moment
    to each new render. A second thought is another `--addressed` reply with the newer render.
-5. **Leave resolving to the reviewer.** They resolve or reopen once they've seen the fix; a reopened note comes back
-   through `watch` like a new one.
+5. **Leave resolving to the reviewer.** They resolve or reopen once they've seen the fix.
 
 The session talking with the reviewer runs the watcher itself; never hand the watching to a subagent. It answers quick
-things itself and dispatches a subagent per note or piece of work (a scene, a capture, a painting, a render, a fix to
-the studio), side by side when none waits on another's result, each briefed with its notes and every `keep`. It
-checks each result before handing it back, and keeps the reviewer posted with replies.
+things itself and dispatches a subagent per note or piece of work, side by side when none waits on another's result,
+each briefed with its notes and every `keep`. As it starts on a note or dispatches it, it runs `studio review start <p>
+<id>`, so the page shows it's being worked on. It forwards each new note or reply to any running subagent whose scene,
+asset or fix it bears on, without waiting for it to finish; when unsure, forward. It checks each result before handing
+it back, and keeps the reviewer posted with replies.
 
 Done when `studio review notes <p>` lists nothing open or reopened that you haven't addressed, answered or asked
 about, every addressed note names what shows it, and the reviewer has said it's approved or resolved every note.
@@ -60,10 +61,10 @@ reading `storyboard.ts` live, so an edit re-times it: the brief, a timing bar (l
 holds flagged), then a row per scene.
 
 - The reviewer notes a brief section, a scene's cell, a line or words in it, or a left-out item. A note quotes what
-  it's on, so it follows the words through your edits and is unplaced once they've gone. `watch` wakes on them;
+  it's on, so it follows the words through your edits and is unplaced once they've gone.
   `studio review notes <p> --on plan` lists them. A fix is an edit to `storyboard.ts`, replied `--addressed` with
   its commit and no render.
-- The reviewer signs off scene by scene, waking `watch`. A sign-off holds the scene's row and its own
+- The reviewer signs off scene by scene. A sign-off holds the scene's row and its own
   timing, not where it starts, so an edit unsigns only the scene it touches: say which scenes changed. Done when every
   scene is signed off.
 
@@ -74,8 +75,7 @@ variants, headlines (`text:` candidates). When one is clearly better, pick it yo
 
 - **Cull first.** Two to four candidates, each one you'd ship, differing along the axis the question names. Render
   each to `out/decisions/<topic>/`, identical but for that axis: a bed is heard in its mix, a lead against the cut
-  (`${CLAUDE_PLUGIN_ROOT}/skills/video-sound/references/music.md`). Recorded takes:
-  `library:<item>@<from>-<to>`.
+  (`${CLAUDE_PLUGIN_ROOT}/skills/video-sound/references/music.md`).
 - **Ask one question**, the axis in words ("Which bed under the VO?"). `--many` when they may keep several. For
   generated candidates, carry the model, seed and cost as meta (`--spec`), so the pick can be made again.
 - **Say what it's for**: `--scene`, or `--line` for a take; they're walked in story order.

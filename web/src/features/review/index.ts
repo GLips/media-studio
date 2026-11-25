@@ -18,3 +18,4 @@ export { drawReviewPeaks, reviewPeaksQueryOptions } from './ui/review-peaks-canv
 export type { SetReviewSearch } from './controllers/review-search.ts';
 export type { DecodedReviewOp } from './controllers/review-op-schema.ts';
 export { ReviewThreadKindIcon } from './ui/review-thread-kind.tsx';
+export { REVIEW_THREAD_WORKING_WORD, ReviewThreadWorkingSpinner, useReviewThreadWorking } from './ui/review-thread-working.tsx';

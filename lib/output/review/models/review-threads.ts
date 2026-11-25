@@ -38,6 +38,11 @@ export type ReviewThread = {
   anchor: ReviewAnchor;
   /** entries[0] is the note itself; its `rev` is when its text, kind or anchor last changed. */
   entries: ReviewEntry[];
+  /**
+   * When the agent said it started on the thread (`studio review start`), so the reviewer sees it being worked on.
+   * The agent's next reply clears it; reviewThreadWorkedOn ignores one gone stale, so a dead agent leaves no spinner.
+   */
+  working?: { at: string };
 };
 
 /** A commit as the CLI resolves `--commit HEAD`: hashes, so it stays meaningful after the branch moves. */
@@ -173,6 +178,16 @@ export function reviewReferencedHashes(file: ReviewFile): Set<string> {
     ...file.threads.flatMap(({ entries }) => entries.flatMap((e) => (e.render ? [e.render.hash] : []))),
     ...file.decisions.flatMap((d) => d.candidates.flatMap((c) => (c.media ? [c.media.hash] : []))),
   ]);
+}
+
+/** How long a `working` mark holds without a reply: long enough for a render, short enough that a dead agent's clears. */
+export const REVIEW_WORKING_STALE_MS = 30 * 60_000;
+
+/** Until when the agent is on `thread`, as epoch ms, or null when it isn't (never said, replied since, or gone stale). */
+export function reviewThreadWorkingUntil(thread: Pick<ReviewThread, 'state' | 'working'>, now: number): number | null {
+  if (!thread.working || thread.state === 'resolved') return null;
+  const until = Date.parse(thread.working.at) + REVIEW_WORKING_STALE_MS;
+  return until > now ? until : null;
 }
 
 /**

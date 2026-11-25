@@ -3,8 +3,8 @@
 // clobber each other: ops name threads by id and re-apply cleanly onto whatever landed first. The one true conflict is
 // an edit to a note someone else edited since it was loaded.
 //
-// Who may do what is checked here, not by the channel: the agent opens, replies, asks, marks addressed and hands the
-// plan over; only the reviewer resolves, reopens, deletes, picks, and signs off or takes a sign-off back.
+// Who may do what is checked here, not by the channel: the agent opens, starts on, replies, asks, marks addressed and
+// hands the plan over; only the reviewer resolves, reopens, deletes, picks, and signs off or takes a sign-off back.
 import {
   emptyReviewFile, type ReviewAnchor, type ReviewAuthor, type ReviewCandidate, type ReviewDecision, type ReviewEntry, type ReviewEntryCommit,
   type ReviewEntryRender, type ReviewFile, type NewReviewSignoff, type ReviewSignoff, type ReviewThread, type ReviewThreadKind, type ReviewWrittenOn,
@@ -32,6 +32,7 @@ export type ReviewOp =
     render?: ReviewEntryRender;
   }
   | { op: 'thread.resolveAddressed'; ids: number[] }
+  | { op: 'thread.working'; ids: number[] }
   | { op: 'thread.takeBack'; id: number }
   | { op: 'thread.delete'; id: number }
   | { op: 'thread.restore'; thread: ReviewThread; image?: Uint8Array }
@@ -84,6 +85,7 @@ function applyReviewOp(at: Applying, op: ReviewOp): ReviewThread | undefined {
     case 'thread.add': addReviewThread(at, op); break;
     case 'thread.reply': replyToReviewThread(at, op); break;
     case 'thread.resolveAddressed': resolveAddressedReviewThreads(at, op.ids); break;
+    case 'thread.working': markReviewThreadsWorking(at, op.ids); break;
     case 'thread.takeBack': takeBackReviewTransition(at, op.id); break;
     case 'thread.delete': deleteReviewThread(at, op.id); break;
     case 'thread.restore': restoreReviewThread(at, op.thread, op.image); break;
@@ -205,7 +207,21 @@ function replyToReviewThread(at: Applying, op: Extract<ReviewOp, { op: 'thread.r
     ...(op.commit && { commit: op.commit }), ...(op.render && { render: op.render }), ...(transition && { transition }), ...(op.asks && { asks: true as const }),
   });
   if (transition) thread.state = transition;
+  // The agent's word on a thread is the end of working on it, whatever the reply says.
+  if (at.author === 'agent') delete thread.working;
   touch(at, thread);
+}
+
+/** The agent says it has started on `ids`: marked until its next reply on each, or until the mark goes stale. */
+function markReviewThreadsWorking(at: Applying, ids: readonly number[]) {
+  if (at.author !== 'agent') refuse('only the agent starts on a note');
+  for (const id of ids) {
+    const thread = threadOf(at, id);
+    if (thread.state === 'resolved') refuse(`#${id} is resolved already`);
+    if (thread.kind === 'keep') refuse(`#${id} is a keep: a standing constraint, with nothing to work on`);
+    thread.working = { at: at.now };
+    touch(at, thread);
+  }
 }
 
 /** A render hash as renderFileStamp gives it: the first 10 hex digits of the file's SHA-256. */
