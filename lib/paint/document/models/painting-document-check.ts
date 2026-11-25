@@ -102,14 +102,20 @@ function checkPaintingTreeAndKeys(list: PaintingProblemList, paintingDocument: P
   paintingDocument.layers.forEach((node, i) => visit(node, `layers[${i}]`));
 }
 
-/** An own sheet's `card`: `flat`, or its known fields, each of its type, a lift of at least 0. */
+/** An own sheet's `card`: `flat`; a figure, its region and a fade above 0; or its known fields, each of its type, a lift of at least 0. */
 function checkSheetCard(list: PaintingProblemList, owner: string, card: SheetCard, box: StampBox | undefined): void {
   if (card === 'flat') return;
   if (typeof card !== 'object' || card === null) {
-    list.error(owner, 'sheet.card', `${JSON.stringify(card)} isn't 'flat' or { shadow?, rim?, lift? }`, box);
+    list.error(owner, 'sheet.card', `${JSON.stringify(card)} isn't 'flat', { figure } or { shadow?, rim?, lift? }`, box);
     return;
   }
-  for (const field of Object.keys(card)) if (!['shadow', 'rim', 'lift'].includes(field)) list.error(owner, `sheet.card.${field}`, "isn't a card's: it takes shadow, rim and lift", box);
+  if (card.figure !== undefined) {
+    for (const field of Object.keys(card)) if (field !== 'figure' && field !== 'fadePx') list.error(owner, `sheet.card.${field}`, "isn't a figure card's: it lies flat, so it takes its figure and fadePx", box);
+    if (card.fadePx !== undefined && !isPaintingPositive(card.fadePx)) list.error(owner, 'sheet.card.fadePx', `${card.fadePx} isn't above 0`, box);
+    checkPaintingRegion(list, owner, 'sheet.card.figure', card.figure);
+    return;
+  }
+  for (const field of Object.keys(card)) if (!['shadow', 'rim', 'lift'].includes(field)) list.error(owner, `sheet.card.${field}`, "isn't a card's: it takes shadow, rim and lift, or a figure alone", box);
   for (const field of ['shadow', 'rim'] as const) if (card[field] !== undefined && typeof card[field] !== 'boolean') list.error(owner, `sheet.card.${field}`, `${String(card[field])} isn't true or false`, box);
   if (card.lift !== undefined && !(card.lift >= 0 && Number.isFinite(card.lift))) list.error(owner, 'sheet.card.lift', `${card.lift} isn't a finite lift of 0 or more px`, box);
 }

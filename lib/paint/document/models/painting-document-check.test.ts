@@ -4,7 +4,7 @@ import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercol
 import * as meadow from './meadow.painting.ts';
 import type { StampWrap } from '#lib/paint/painting/models/stamp-stage.ts';
 import { checkPaintingDocument, paintingWrappedGrainHeightProblem } from './painting-document-check.ts';
-import type { Application, BrushRef, EdgedRegion, Field, Hex, Layer, LayerNode, Mix, PaintingDocument, Ring, Subpath, Wash } from './painting-document.ts';
+import type { Application, BrushRef, EdgedRegion, Field, Hex, Layer, LayerNode, Mix, PaintingDocument, Ring, SheetCard, Subpath, Wash } from './painting-document.ts';
 import type { PaintingProblem } from './painting-problem.ts';
 import { checkPaintingSource, type PaintingSourceModule } from './painting-source.ts';
 import type { PaintingStyleCatalogue } from './painting-styles.ts';
@@ -136,6 +136,14 @@ const brokenSources: readonly { readonly name: string; readonly check: () => rea
     name: "an own sheet's card lifted below its ground",
     check: () => checkPaintingSource(sourceOf(documentOf([{ key: 'card', sheet: { kind: 'own', paper: { color: '#ffffff', absorbency: 0.5 }, card: { lift: -1 } }, children: [layer('leaf', [])] }]))),
     expect: { severity: 'error', path: 'card.sheet.card.lift', message: "-1 isn't a finite lift of 0 or more px" },
+  },
+  {
+    name: 'a figure card asked to cast a shadow',
+    check: () => {
+      const card = { figure: { kind: 'ellipse', center: { x: 50, y: 50 }, radiusX: 20, radiusY: 30 }, shadow: true } as unknown as SheetCard;
+      return checkPaintingSource(sourceOf(documentOf([{ key: 'card', sheet: { kind: 'own', paper: { color: '#ffffff', absorbency: 0.5 }, card }, children: [layer('leaf', [])] }])));
+    },
+    expect: { severity: 'error', path: 'card.sheet.card.shadow', message: "isn't a figure card's: it lies flat, so it takes its figure and fadePx" },
   },
   {
     name: 'a wet wash on a crayon-owned sheet',

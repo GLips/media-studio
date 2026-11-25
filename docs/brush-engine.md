@@ -852,9 +852,10 @@ front before it crosses the post's depth and the kite after, and an open shutter
 held at that depth, which only the push blurs. A ridge's top swept as a painting in time (`shot/properties-in-time`,
 `stamp-gate-in-time.ts`) keys the moments its rule names, within four drawings; a frame between two keys lies between
 their drawings, each drawing solves once and frames after them solve nothing, and a warm over the sweep solves its
-drawings alone. Six cards over a sky (`shot/card-shadows`, `stamp-gate-card-shadows.ts`), measured against
-themselves laid flat, cast shadows away from the light that fade with their card and move with it, a turning card's
-lip stays toward the light, a flat card changes nothing, and a parent's rim stays under its child card. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
+drawings alone. Six cards over a sky (`shot/card-shadows`), against
+themselves laid flat, cast shadows away from the light that fade and move with their card, a turning card's
+lip stays toward the light, a flat card changes nothing, and a parent's rim stays under its child card. Over footage a figure card (`shot/figure-card`) keeps its
+white and leaves no paper band. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
 and cuts a tint to the heron's wing, to all but it, and to a disc moving across as a picture plane and as a three
 plane under a panned camera. On a plane nearer than the heron, the tint stays cut to the wing, and to a picture disc,
 as a pan parts their depths (`shot/masks-across`), laid anew each frame they move apart; at the heron's depth, never.

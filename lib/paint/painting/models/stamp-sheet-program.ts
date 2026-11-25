@@ -9,6 +9,7 @@
 
 import type { PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { CompiledStampArea } from './stamp-area.ts';
+import type { StampSheetEdge } from './stamp-card-edge.ts';
 import type { StampCardLook } from './stamp-card-relief.ts';
 import type { StampSeededPaintField } from './stamp-paint-field.ts';
 import type { CompiledStampPaintAction } from './stamp-paint-action.ts';
@@ -76,12 +77,11 @@ export type StampSheetEntry = {
 };
 
 /**
- * A sheet program: its name (for a cost report), size, paper, where that lies (`document`; `union`, a card's) and how
- * its card is lit (`card`), the medium its water dries by, its clock, `wrap`, its films, washes and entries, and
+ * A sheet program: its name (for a cost report), size, paper, where that lies (`edge`) and how its card is lit (`card`), the medium its water dries by, its clock, `wrap`, its films, washes and entries, and
  * `head`, its incoming state's text (K₀). No solve reads the edge or the card: the head omits them.
  */
 export type StampSheetProgram = {
-  name: string; width: number; height: number; paper: StampPaintPaper; edge: 'document' | 'union'; card: StampCardLook; water: PaintMedium; clock: StampSheetClock;
+  name: string; width: number; height: number; paper: StampPaintPaper; edge: StampSheetEdge; card: StampCardLook; water: PaintMedium; clock: StampSheetClock;
   wrap: StampWrap | null; films: readonly StampSheetFilm[]; washes: readonly StampSheetWash[]; entries: readonly StampSheetEntry[]; head: string;
 };
 

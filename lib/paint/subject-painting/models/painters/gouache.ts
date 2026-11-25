@@ -17,7 +17,7 @@ import { blendSubjectHex } from './subject-paint-colour.ts';
 import {
   clampSubjectPaint as clamp, directSubjectLayer, SUBJECT_LINE_EDGE_WEIGHTS, subjectLightOptionProblems, subjectOptionHexProblems, subjectOptionRangeProblems,
 } from './subject-paint-kit.ts';
-import { subjectPathRuns, subjectSilhouetteStroke } from './subject-paint-lines.ts';
+import { subjectPathRuns, subjectSilhouetteStretches, subjectStretchRuns } from './subject-paint-lines.ts';
 import {
   planSubjectPaintGroups, subjectGroupFeatureReserves, subjectLaterLighterRegions, subjectPaintedRegions, subjectCheekSpots, subjectEyeMarks, subjectEyeSpots, subjectUnitPx, type SubjectPaintGroup,
 } from './subject-paint-plan.ts';
@@ -51,8 +51,6 @@ export type GouacheSubjectOptions = {
 const GOUACHE_SLOTS = ['ground', 'form', 'light', 'features', 'accents', 'lines'] as const;
 /** Where gouache lays its paint, back to front: what a replacement names to sit among it. */
 export type GouacheSubjectSlot = (typeof GOUACHE_SLOTS)[number];
-/** The slots that paint a region feature: an eye in accents, any other in features. */
-const FEATURE_SLOTS = { eyes: 'accents', regions: 'features' } as const;
 
 type GouacheContext = SubjectPainterContext<LitSubject, GouacheSubjectOptions, GouacheSubjectSlot>;
 type GouacheGroup = SubjectPaintGroup<GouacheSubjectOptions>;
@@ -61,7 +59,8 @@ type GouacheKit = { readonly context: GouacheContext; readonly binding: GouacheS
 /** A dark colour shades toward a cool near-black rather than grey; a glint is white. */
 const COOL_DARK: SubjectHex = '#1f2640', WHITE: SubjectHex = '#ffffff';
 
-const GROUP_CONTROLS = ['shadowDepth'] as const;
+/** The options each pass reads per group: the flat blocks none, so a tuned shade never splits or reseeds them. */
+const PASS_CONTROLS = { form: [], light: ['shadowDepth'] } as const;
 /** Each line's width as a share of the contour's: a design's own lines (a brow, an eye's ring) read bolder than its forms' edges. */
 const LINE_KIND_WEIGHT: Record<SubjectLineKind, number> = { authored: 1.6, 'occluding-edge': 1, crease: 0.7, 'material-boundary': 0.7 };
 
@@ -87,8 +86,8 @@ const edgeOf = (intent: ResolvedSubjectIntent, unit: number): Edge | undefined =
 
 const regionArea = (region: Region, edge?: Edge) => ({ region, ...(edge && { edge }) });
 const groupTargets = (groups: readonly GouacheGroup[]): PaintableRef[] => groups.flatMap(({ parts }) => parts.map(({ ref }) => ref));
-const formGroups = (context: GouacheContext, slot: GouacheSubjectSlot) =>
-  planSubjectPaintGroups(context, slot, GROUP_CONTROLS, (part) => !hasSubjectTag(part, SUBJECT_WELL_KNOWN_TAGS.eye));
+const formGroups = (context: GouacheContext, slot: 'form' | 'light') =>
+  planSubjectPaintGroups(context, slot, PASS_CONTROLS[slot], (part) => !hasSubjectTag(part, SUBJECT_WELL_KNOWN_TAGS.eye));
 
 function groundContribution({ context, binding, unit }: GouacheKit): SubjectContribution<GouacheSubjectSlot>[] {
   const parts = context.paintedParts('ground');
@@ -108,7 +107,7 @@ function formContribution(kit: GouacheKit): SubjectContribution<GouacheSubjectSl
   const blocks = groups.map((group): DirectApplication => {
     const name = context.paintKey('form', 'block', ...group.segments);
     return {
-      key: name, kind: 'fill', area: regionArea(subjectAreaRegion(group.area), edgeOf(group.intent, unit)), reserves: subjectGroupFeatureReserves(context, group, 'lights', FEATURE_SLOTS),
+      key: name, kind: 'fill', area: regionArea(subjectAreaRegion(group.area), edgeOf(group.intent, unit)), reserves: subjectGroupFeatureReserves(context, group, 'lights'),
       brush: binding.brushes.block, diameterPx: flood, seed: name, charge: solid(blockHex(kit, group.intent)),
     };
   });
@@ -122,7 +121,8 @@ function groupLightApplications(kit: GouacheKit, group: GouacheGroup): DirectApp
   const depth = group.options.shadowDepth * (group.intent.emphasis === 'accent' ? 1.15 : 1), t = field.terminator;
   const soft: Edge | undefined = context.options.light === 'soft' ? { kind: 'feather', widthPx: Math.max(4, 0.015 * unit) } : undefined;
   const band = (pass: string, rings: readonly SubjectRing[], share: number): DirectApplication[] => {
-    if (!rings.length) return [];
+    // A shade darkens by share × depth, toward nothing as the depth does; at none it isn't laid.
+    if (!rings.length || !(share * depth > 0)) return [];
     const name = context.paintKey('light', pass, ...group.segments);
     return [{ key: name, kind: 'fill', area: regionArea({ kind: 'polygon', rings }, soft), clips, brush: binding.brushes.block, diameterPx: flood, seed: name, charge: solid(darker(hex, share * depth)) }];
   };
@@ -193,13 +193,19 @@ function lineContributions(kit: GouacheKit): SubjectContribution<GouacheSubjectS
   const { context, binding, unit } = kit;
   const line = clamp(Math.round(unit * 0.008), 3, 10), runPx = unit * 0.4, hand = { curvature: 0.2 };
   const contributions: SubjectContribution<GouacheSubjectSlot>[] = [];
-  const silhouette = context.options.contours ? subjectSilhouetteStroke(context, 'lines', runPx, line * context.options.lineWeight) : undefined;
-  if (silhouette) {
-    const key = context.paintKey('lines', 'silhouette'), { lineWeight, lineColor } = context.options;
-    contributions.push({ key, slot: 'lines', targets: silhouette.targets, layers: [directSubjectLayer(key, [{
-      key: `${key}.ink`, kind: 'stroke', subpaths: silhouette.subpaths, hand, reserves: silhouette.reserves,
-      brush: binding.brushes.detail, diameterPx: line * lineWeight, seed: key, charge: solid(lineColor),
-    }])] });
+  // One silhouette, each stretch inked as the part it bounds is: its line options, and its edge (a lost one left out).
+  const stretches = context.options.contours ? subjectSilhouetteStretches(context, 'lines', line) : [];
+  const silhouette = stretches.flatMap(({ part, stretches: owned }): { ref: PaintableRef; application: DirectApplication }[] => {
+    const weight = SUBJECT_LINE_EDGE_WEIGHTS[context.intent(part.ref).edge ?? 'firm'];
+    if (!weight.width) return [];
+    const { lineWeight, lineColor } = context.optionsFor(part.ref), name = context.paintKey('lines', 'silhouette', part.ref), diameterPx = line * lineWeight * weight.width;
+    return [{ ref: part.ref, application: {
+      key: name, kind: 'stroke', subpaths: subjectStretchRuns(owned, runPx, diameterPx), hand, brush: binding.brushes.detail, diameterPx, seed: name, charge: solid(lineColor),
+    } }];
+  });
+  if (silhouette.length) {
+    const key = context.paintKey('lines', 'silhouette');
+    contributions.push({ key, slot: 'lines', targets: silhouette.map(({ ref }) => ref), layers: [directSubjectLayer(key, silhouette.map(({ application }) => application))] });
   }
   for (const feature of context.paintedFeatures('lines')) {
     if (feature.kind !== 'path' || (feature.line === 'occluding-edge' && !context.options.contours)) continue;

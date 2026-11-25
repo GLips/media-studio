@@ -1,9 +1,9 @@
 // subject-paint-plan.ts: what the subject painters plan alike before they lay paint. Parts are washed together by
-// material, split only where an author's intent or tune treats some differently, so tuning the belly never reseeds
-// the body. Eyes and cheeks are found by the tags a subject gives them.
+// material, split only where an author's intent or tune treats some differently in what a pass reads, so tuning the
+// belly never reseeds the body. Eyes and cheeks are found by the tags a subject gives them.
 
 import type { Footprint, Region } from '#lib/paint/document/models/painting-document.ts';
-import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { subjectAreaBox, type SubjectArea } from '#lib/paint/subject/models/subject-geometry.ts';
 import { subjectAreasUnion } from '#lib/paint/subject/models/subject-area-union.ts';
 import { hasSubjectTag, SUBJECT_WELL_KNOWN_TAGS } from '#lib/paint/subject/models/subject-tags.ts';
@@ -23,8 +23,9 @@ export function isSubjectPainterEye(subject: Subject, feature: SubjectFeature): 
 }
 
 /**
- * Parts a painter washes as one: one material, one resolved intent and one set of tuned options. `segments` name it
- * in keys: the material alone while it is treated as the material is, else the material and a variant of its treatment.
+ * Parts a pass washes as one: one material, intent and set of the options it reads. `segments` name it in keys and
+ * seeds by what it paints, never its treatment's values: the material alone for parts painted as the material is, the
+ * material and its parts for parts an author treats apart. So retuning a value reseeds nothing.
  */
 export type SubjectPaintGroup<O> = {
   readonly material: SubjectMaterial;
@@ -36,19 +37,13 @@ export type SubjectPaintGroup<O> = {
   readonly area: SubjectArea;
 };
 
-/** FNV-1a, 32 bits, in base 36: a short, stable name for a treatment. */
-function treatmentHash(text: string): string {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
-  return (hash >>> 0).toString(36);
-}
-
+/** What a pass batches parts by: equal text, one wash. It never reaches a key. */
 const treatmentText = <O>(intent: ResolvedSubjectIntent, options: O, controls: readonly (keyof O)[]) =>
   JSON.stringify([intent.localColor, intent.preserveLocalColor, intent.emphasis, intent.edge ?? null, controls.map((control) => options[control])]);
 
 /**
  * The parts painted in `slot` that `include` keeps, grouped by material and treatment, materials in declaration
- * order. `controls` are the options the painter reads per group; a tune of any other leaves the group whole.
+ * order. `controls` are the options this pass reads per group; a tune of any other leaves its group whole.
  */
 export function planSubjectPaintGroups<S extends Subject, O, Slot extends string>(
   context: SubjectPainterContext<S, O, Slot>, slot: Slot, controls: readonly (keyof O)[], include: (part: VisibleSubjectPart) => boolean = () => true,
@@ -75,7 +70,7 @@ export function planSubjectPaintGroups<S extends Subject, O, Slot extends string
       return [];
     }
     const plain = treatmentText({ localColor: material.localColor, preserveLocalColor: material.preserveLocalColor, emphasis: 'normal' }, context.options, controls);
-    const segments = text === plain ? [material.ref] : [material.ref, `variant-${treatmentHash(text)}`];
+    const segments = text === plain ? [material.ref] : [material.ref, ...parts.map(({ ref }) => ref)];
     return [{ material, segments, intent, options, parts, area: union.geometry }];
   });
 }
@@ -129,22 +124,26 @@ export function subjectEyeMarks({ centre, radiusPx }: SubjectEyeSpot, pupilShare
   };
 }
 
+const boxesMeet = (a: StampBox, b: StampBox) => a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1;
+
 /**
- * Region features kept clear under a group's paint, so each lands on paper rather than over a colour it can't hide:
- * an eye always, and with `lights` any region lighter than the group. A feature replaced in the slot that would paint
- * it (`slots.eyes`, `slots.regions`) keeps no hole, since its replacement paints over the form.
+ * What a group's paint keeps clear, so each feature lands on paper rather than over a colour it can't hide: an eye
+ * always, and with `lights` any region lighter than the group, painted automatically or by a replacement keeping its
+ * ground; and every area a replacement reserves as its own ground.
  */
 export function subjectGroupFeatureReserves<S extends Subject, O, Slot extends string>(
-  context: SubjectPainterContext<S, O, Slot>, group: SubjectPaintGroup<O>, which: 'eyes' | 'lights', slots: { readonly eyes: Slot; readonly regions: Slot },
+  context: SubjectPainterContext<S, O, Slot>, group: SubjectPaintGroup<O>, which: 'eyes' | 'lights',
 ): Footprint[] {
   const owners = new Set<string>(group.parts.map(({ id }) => id));
   const groupLuminance = subjectHexLuminance(group.intent.localColor);
-  return [...context.subject.features.values()].flatMap((feature): Footprint[] => {
-    if (feature.kind !== 'region' || feature.visibility.kind === 'hidden' || !owners.has(feature.owner)) return [];
-    if (!context.paints(feature.ref, isSubjectPainterEye(context.subject, feature) ? slots.eyes : slots.regions)) return [];
+  const features = [...context.subject.features.values()].flatMap((feature): Footprint[] => {
+    if (feature.kind !== 'region' || feature.visibility.kind === 'hidden' || !owners.has(feature.owner) || !context.keepsGround(feature.ref)) return [];
     const lighter = which === 'lights' && feature.material !== undefined && subjectHexLuminance(context.intent(feature.ref).localColor) > groupLuminance + 0.05;
     return hasSubjectTag(feature, SUBJECT_WELL_KNOWN_TAGS.eye) || lighter ? [{ kind: 'region', region: subjectAreaRegion(feature.visibility.geometry) }] : [];
   });
+  const box = subjectAreaBox(group.area);
+  const grounds = context.reservedGrounds.filter((area) => boxesMeet(subjectAreaBox(area), box)).map((area): Footprint => ({ kind: 'region', region: subjectAreaRegion(area) }));
+  return [...features, ...grounds];
 }
 
 type RegionFeature = Extract<VisibleSubjectFeature, { kind: 'region' }>;

@@ -4,11 +4,13 @@
 // shared wash.
 //
 // Intents cascade: a feature inherits its owner part's resolved intent, then its own apply; within each, overrides
-// apply in order and a later value wins per field. Replacements whose targets meet in a slot are an error.
+// apply in order and a later value wins per field. Each target's options are checked whole, once every tune reaching
+// it is applied. Replacements whose targets meet in a slot are an error.
 
 import type { LayerNode } from '#lib/paint/document/models/painting-document.ts';
 import type { SubjectResult } from '#lib/paint/subject/models/subject-diagnostic.ts';
 import type { SubjectFrameBasis } from '#lib/paint/subject/models/subject-frame.ts';
+import { subjectAreaProblems, type SubjectArea } from '#lib/paint/subject/models/subject-geometry.ts';
 import type { SubjectIds } from '#lib/paint/subject/models/subject-id.ts';
 import {
   isSubjectSelectionHidden, resolveSubjectSelector, subjectSelectorText,
@@ -37,13 +39,20 @@ export type SubjectIntentOverride<I extends SubjectIds = SubjectIds, O = object,
 };
 
 /**
+ * What a replacement paints on, known before any wash is planned. `keep` (default): paper the painter keeps under its
+ * targets (an eye, a feature lighter than its part) stays clear for a transparent hand glaze. `over`: automatic paint
+ * runs on under it. `{ reserve }`: that area kept as paper instead, for a shape that isn't its targets'.
+ */
+export type SubjectReplacementGround = 'keep' | 'over' | { readonly reserve: SubjectArea };
+
+/**
  * `slot: 'all'` takes every automatic contribution the selection owns, its lines and details included, and sits at
  * the painter's `replaceAllAt`; a named slot takes that slot alone and sits in it. With `frame`, it paints only once
  * the frame is available, and an unavailable one is a `missing-frame` error while its targets show.
  */
 export type SubjectReplaceOverride<I extends SubjectIds = SubjectIds, Slot extends string = string> =
-  | { readonly kind: 'replace'; readonly select: PaintableSelector<I>; readonly slot: Slot | 'all'; readonly frame?: undefined; readonly paint: (context: SubjectReplacementContext<undefined>) => readonly LayerNode[] }
-  | { readonly kind: 'replace'; readonly select: PaintableSelector<I>; readonly slot: Slot | 'all'; readonly frame: I['frame']; readonly paint: (context: SubjectReplacementContext<SubjectFrameBasis>) => readonly LayerNode[] };
+  | { readonly kind: 'replace'; readonly select: PaintableSelector<I>; readonly slot: Slot | 'all'; readonly ground?: SubjectReplacementGround; readonly frame?: undefined; readonly paint: (context: SubjectReplacementContext<undefined>) => readonly LayerNode[] }
+  | { readonly kind: 'replace'; readonly select: PaintableSelector<I>; readonly slot: Slot | 'all'; readonly ground?: SubjectReplacementGround; readonly frame: I['frame']; readonly paint: (context: SubjectReplacementContext<SubjectFrameBasis>) => readonly LayerNode[] };
 
 /** One override, as subjectIntent, subjectTune and subjectReplace build them, applied in order. */
 export type SubjectOverride<I extends SubjectIds = SubjectIds, O = object, Slot extends string = string, Control extends keyof O = keyof O> =
@@ -57,12 +66,14 @@ export const subjectIntent = <const S extends SubjectSelector>(select: S, intent
 export const subjectTune = <const S extends SubjectSelector, const T extends object>(select: S, painterOptions: T) =>
   ({ kind: 'intent', select, intent: {}, painterOptions }) as const;
 
-type ReplaceSpec<Slot extends string> = { readonly slot: Slot; readonly paint: (context: SubjectReplacementContext<undefined>) => readonly LayerNode[] };
+type ReplaceSpec<Slot extends string> = {
+  readonly slot: Slot; readonly ground?: SubjectReplacementGround; readonly paint: (context: SubjectReplacementContext<undefined>) => readonly LayerNode[];
+};
 type FramedReplaceSpec<Slot extends string, R extends string> = {
-  readonly slot: Slot; readonly frame: R; readonly paint: (context: SubjectReplacementContext<SubjectFrameBasis>) => readonly LayerNode[];
+  readonly slot: Slot; readonly ground?: SubjectReplacementGround; readonly frame: R; readonly paint: (context: SubjectReplacementContext<SubjectFrameBasis>) => readonly LayerNode[];
 };
 
-/** A hand-painted replacement for what `select` owns, in `slot` (or `all`), optionally drawn in a frame. */
+/** A hand-painted replacement for what `select` owns, in `slot` (or `all`), on the `ground` it needs, optionally drawn in a frame. */
 // The framed form comes first: TS fixes a callback's parameter type on the first overload it tries.
 export function subjectReplace<const S extends PaintableSelector, const Slot extends string, const R extends string>(select: S, spec: FramedReplaceSpec<Slot, R>):
   { readonly kind: 'replace'; readonly select: S } & FramedReplaceSpec<Slot, R>;
@@ -84,6 +95,7 @@ export type ResolvedSubjectReplacement = {
   readonly owned: readonly SubjectTarget[];
   /** Every target it owns is hidden: it matched, and draws nothing. */
   readonly hidden: boolean;
+  readonly ground: SubjectReplacementGround;
   readonly draw: (context: Omit<SubjectReplacementContext, 'frame'>) => readonly LayerNode[];
 };
 
@@ -92,6 +104,10 @@ export type ResolvedSubjectOverrides<O> = {
   readonly optionsFor: (target: PaintableRef) => O;
   /** Whether a replacement took `target` over in `slot`. */
   readonly replaced: (target: PaintableRef, slot: string) => boolean;
+  /** False when a replacement owning `target` paints over the automatic paint or reserves a ground of its own. */
+  readonly keepsGround: (target: PaintableRef) => boolean;
+  /** The areas shown replacements keep as paper. */
+  readonly reservedGrounds: readonly SubjectArea[];
   readonly replacements: readonly ResolvedSubjectReplacement[];
   readonly matched: readonly SubjectOverrideMatch[];
   readonly intents: readonly SubjectAppliedIntent[];
@@ -111,7 +127,7 @@ function withSetFields<T extends object, K extends keyof T>(base: T, over: Parti
 
 const keysOf = (targets: readonly SubjectTarget[]) => targets.map(({ ref }) => subjectRefKey(ref));
 
-type IntentEntry<O, Control extends keyof O> = { readonly intent: SubjectIntent; readonly painterOptions: Partial<Pick<O, Control>> };
+type IntentEntry<O, Control extends keyof O> = { readonly override: number; readonly intent: SubjectIntent; readonly painterOptions: Partial<Pick<O, Control>> };
 
 /**
  * Every override checked against `subject` and the painter, with ownership, the intent cascade and per-target options
@@ -121,7 +137,7 @@ export function resolveSubjectOverrides<I extends SubjectIds, O extends object, 
   subject: Subject<I>, painter: OverridePainter<O>, options: O, overrides: readonly SubjectOverride<I, O, Slot, Control>[],
 ): SubjectResult<ResolvedSubjectOverrides<O>, SubjectPaintingDiagnostic> {
   const diagnostics: SubjectPaintingDiagnostic[] = [];
-  const entries = new Map<string, IntentEntry<O, Control>[]>();
+  const entries = new Map<string, IntentEntry<O, Control>[]>(), tuned = new Map<string, PaintableRef>();
   const matched: SubjectOverrideMatch[] = [], intents: SubjectAppliedIntent[] = [], replacements: ResolvedSubjectReplacement[] = [];
 
   // Widened to plain ids: a frame id typed by I keeps TS from narrowing the replace union on `frame`.
@@ -152,12 +168,10 @@ export function resolveSubjectOverrides<I extends SubjectIds, O extends object, 
       for (const control of controls.filter((name) => !painter.controls.some((declared) => declared === name))) {
         diagnostics.push(problem('error', 'unsupported-control', `${address}.painterOptions.${control}`, `painter '${painter.id}' can't tune ${control} per target`, `tune one of: ${painter.controls.join(', ') || 'none'}`));
       }
-      for (const report of painter.checkOptions?.(withSetFields(options, painterOptions)) ?? []) {
-        diagnostics.push(problem('error', 'invalid-options', `${address}.painterOptions${report.address ? `.${report.address}` : ''}`, report.message, report.fix));
-      }
       for (const target of selection.direct) {
         const key = subjectRefKey(target.ref);
-        entries.set(key, [...(entries.get(key) ?? []), { intent: override.intent, painterOptions }]);
+        entries.set(key, [...(entries.get(key) ?? []), { override: i, intent: override.intent, painterOptions }]);
+        if (controls.length) tuned.set(key, target.ref);
       }
       intents.push({ override: i, intents: fields, controls, targets: keysOf(selection.direct) });
       return;
@@ -166,8 +180,12 @@ export function resolveSubjectOverrides<I extends SubjectIds, O extends object, 
       diagnostics.push(problem('error', 'unsupported-slot', `${address}.slot`, `painter '${painter.id}' has no slot '${override.slot}'`, `replace in 'all' or one of: ${painter.slots.join(', ')}`));
       return;
     }
+    if (typeof override.ground === 'object') diagnostics.push(...subjectAreaProblems(override.ground.reserve, `${address}.ground.reserve`));
     const hidden = isSubjectSelectionHidden(selection);
-    const base = { override: i, selector: subjectSelectorText(override.select), slot: override.slot, at: override.slot === 'all' ? painter.replaceAllAt : override.slot, owned: selection.owned, hidden };
+    const base = {
+      override: i, selector: subjectSelectorText(override.select), slot: override.slot, at: override.slot === 'all' ? painter.replaceAllAt : override.slot,
+      owned: selection.owned, hidden, ground: override.ground ?? 'keep',
+    };
     if (override.frame === undefined) {
       const { paint } = override;
       replacements.push({ ...base, draw: (context) => paint({ ...context, frame: undefined }) });
@@ -197,8 +215,7 @@ export function resolveSubjectOverrides<I extends SubjectIds, O extends object, 
       'replace each target once: narrow one selection, or replace them in different slots'));
   }));
 
-  const errors = diagnostics.filter(({ severity }) => severity === 'error');
-  if (errors.length) return { ok: false, diagnostics };
+  if (diagnostics.some(({ severity }) => severity === 'error')) return { ok: false, diagnostics };
 
   const intentMemo = new Map<string, ResolvedSubjectIntent>(), optionsMemo = new Map<string, O>();
   const targetOf = (ref: PaintableRef): SubjectTarget => {
@@ -227,13 +244,37 @@ export function resolveSubjectOverrides<I extends SubjectIds, O extends object, 
     optionsMemo.set(key, resolved);
     return resolved;
   };
-  const replacedSlots = new Map<string, Set<string>>();
+  // Each tune may be valid over the call's options and still clash with another reaching the same target, so the
+  // options a target is painted with are checked whole. A target without tunes of its own has its owner's, checked there.
+  const tunesOf = (ref: PaintableRef): number[] => {
+    const target = targetOf(ref), own = (entries.get(subjectRefKey(ref)) ?? []).filter(({ painterOptions }) => Object.keys(painterOptions).length);
+    return [...('owner' in target ? tunesOf({ kind: 'part', id: target.owner }) : []), ...own.map(({ override }) => override)];
+  };
+  for (const [key, ref] of tuned) {
+    const reaching = tunesOf(ref).map((override) => `override[${override}]`).join(', ');
+    for (const report of painter.checkOptions?.(optionsOf(ref)) ?? []) {
+      diagnostics.push(problem('error', 'invalid-options', `${key}${report.address ? `.${report.address}` : ''}`, `${report.message}, with ${reaching} applied`, report.fix));
+    }
+  }
+  if (diagnostics.some(({ severity }) => severity === 'error')) return { ok: false, diagnostics };
+
+  const replacedSlots = new Map<string, Set<string>>(), groundsGiven = new Set<string>();
   for (const replacement of replacements) {
-    for (const key of keysOf(replacement.owned)) replacedSlots.set(key, (replacedSlots.get(key) ?? new Set()).add(replacement.slot));
+    for (const key of keysOf(replacement.owned)) {
+      replacedSlots.set(key, (replacedSlots.get(key) ?? new Set()).add(replacement.slot));
+      if (replacement.ground !== 'keep') groundsGiven.add(key);
+    }
   }
   const replaced = (target: PaintableRef, slot: string) => {
     const slots = replacedSlots.get(subjectRefKey(target));
     return slots !== undefined && (slots.has('all') || slots.has(slot));
   };
-  return { ok: true, value: { intent: intentOf, optionsFor: optionsOf, replaced, replacements, matched, intents, warnings: diagnostics } };
+  const reservedGrounds = replacements.flatMap(({ ground, hidden }) => (typeof ground === 'object' && !hidden ? [ground.reserve] : []));
+  return {
+    ok: true,
+    value: {
+      intent: intentOf, optionsFor: optionsOf, replaced, keepsGround: (target) => !groundsGiven.has(subjectRefKey(target)), reservedGrounds,
+      replacements, matched, intents, warnings: diagnostics,
+    },
+  };
 }

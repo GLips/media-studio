@@ -140,3 +140,15 @@ test('a painting check problem on a key the subject painting made names the over
   assert.deepEqual(problem.origin?.targets, ['part:belly']);
   assert.match(problem.origin?.maker ?? '', /override\[0\] replacing part:belly/);
 });
+
+test('tunes valid one by one are checked as the options they resolve to: min 8 and max 5 on one part clash', () => {
+  const rangePainter = defineSubjectPainter<{ min: number; max: number }>()({
+    id: 'range-test', evidence: [], defaults: { min: 0, max: 10 }, slots: ['form'], replaceAllAt: 'form', controls: ['min', 'max'], intents: [],
+    checkOptions: ({ min, max }) => (min <= max ? [] : [{ severity: 'error', address: 'min', message: `min ${min} exceeds max ${max}`, fix: 'keep min at or below max' }]),
+    paint: () => [],
+  });
+  const result = paintSubject(frog(), rangePainter, {}, [subjectTune(selectPart('head'), { min: 8 }), subjectTune(selectPart('head'), { max: 5 })]);
+  assert.ok(!result.ok);
+  assert.deepEqual(result.diagnostics.map(({ code, address }) => [code, address]), [['invalid-options', 'part:head.min']]);
+  assert.match(result.diagnostics[0].message, /override\[0\], override\[1\]/);
+});

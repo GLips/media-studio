@@ -14,16 +14,15 @@ import {
   STAMP_CARD_CUT_LINE, STAMP_CARD_LIP, STAMP_CARD_RIM_REACH, STAMP_CARD_SHADOW_STRENGTH, STAMP_CARD_SHADOW_TINT, stampCardLipToward, stampCardShadow, type StampCardReliefStep,
 } from '../models/stamp-card-relief.ts';
 import type { PaintLight } from '../models/stamp-form.ts';
-import { STAMP_OPAQUE_COVER } from '../models/stamp-paint-recipe-compile.ts';
 import { stampStageTexelsGrown, stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
 import { stampPaintTargetWgsl, type StampPaintCompositor } from './stamp-paint-compositor.ts';
 import { dispatchStampCompute, STAMP_WORKGROUP } from './stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from './stamp-paint-gpu-owner.ts';
-import { STAMP_BILINEAR_OR_ZERO_WGSL, STAMP_CARD_UNION_WGSL, stampHexRgb } from './stamp-paint-lay-pass.ts';
+import { STAMP_BILINEAR_OR_ZERO_WGSL, STAMP_CARD_COVER_WGSL, stampHexRgb } from './stamp-paint-lay-pass.ts';
 import type { StampUniformArena } from './stamp-uniform-arena.ts';
 
 /**
- * What casts: a card's union `edge` (r32float over stage texels `edgeBox`) laid over `box` through `rest` when moved;
+ * What casts: a card's cover `edge` (r32float over stage texels `edgeBox`) laid over `box` through `rest` when moved;
  * or a premultiplied `picture` (a rig's pieces, stage-sized) over `box`. Either cut by `mask` (r32float over the
  * stage) when given, as its paint is.
  */
@@ -50,14 +49,14 @@ ${CARD_CAST.wgsl}
 ${kind === 'card' ? `@group(0) @binding(2) var edge: texture_2d<f32>;
 @group(0) @binding(3) var rest: texture_2d<f32>;
 ${STAMP_BILINEAR_OR_ZERO_WGSL}
-${STAMP_CARD_UNION_WGSL}` : '@group(0) @binding(2) var picture: texture_2d<f32>;'}
+${STAMP_CARD_COVER_WGSL}` : '@group(0) @binding(2) var picture: texture_2d<f32>;'}
 ${masked ? '@group(0) @binding(4) var mask: texture_2d<f32>;' : ''}
 @compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn cardCast(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   let pixel = u.origin + id.xy;
   let m = ${masked ? 'textureLoad(mask, pixel, 0).r' : '1.0'};
   let cover = ${kind === 'card'
-    ? `min(1.0, cardUnionAt(pixel, u.edgeOrigin, u.edgeExtent, u.moved == 1u).z * m * ${STAMP_OPAQUE_COVER.toFixed(1)})`
+    ? 'cardCoverAt(pixel, u.edgeOrigin, u.edgeExtent, u.moved == 1u).z * m'
     : 'clamp(textureLoad(picture, pixel, 0).a, 0.0, 1.0) * m'};
   textureStore(level, pixel, vec4f(cover, 0.0, 0.0, 0.0));
 }`;

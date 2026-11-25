@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DoubleSide, Group, Mesh, MeshBasicMaterial, Path, PlaneGeometry, Shape, ShapeGeometry, SphereGeometry, Vector2, type Object3D } from 'three';
+import { Bone, DoubleSide, Float32BufferAttribute, Group, InstancedMesh, Mesh, MeshBasicMaterial, Path, PlaneGeometry, Shape, ShapeGeometry, Skeleton, SkinnedMesh, SphereGeometry, Vector2, type Object3D } from 'three';
 import { shotCameraLookingAt } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import { defineSubjectFromThree, projectSubjectFromThree, type SubjectThreeAnnotation } from './subject-three.ts';
 import { findSubjectFeature, findSubjectPart } from './subject.ts';
@@ -91,4 +91,33 @@ test('normals are unit length and face the viewer; a single-sided back face is c
   const centre = (layout.rows >> 1) * layout.columns + (layout.columns >> 1);
   assert.ok(normals[3 * centre + 2] > 0.999, 'the ball faces the viewer at its middle');
   assert.deepEqual([...parts.values()].map(({ visibility }) => visibility.kind), ['visible', 'hidden', 'visible']);
+});
+
+test('a mesh the GPU deforms is refused by name and annotation; a morph weighted zero projects as its geometry', () => {
+  const material = new MeshBasicMaterial();
+  const skinned = Object.assign(new SkinnedMesh(new PlaneGeometry(1, 1), material), { name: 'arm' });
+  skinned.bind(new Skeleton([new Bone()]));
+  const instanced = Object.assign(new InstancedMesh(new PlaneGeometry(1, 1), material, 3), { name: 'leaves' });
+  const morphGeometry = new PlaneGeometry(1, 1);
+  morphGeometry.morphAttributes.position = [new Float32BufferAttribute(new Float32Array(morphGeometry.getAttribute('position').count * 3), 3)];
+  const morphed = Object.assign(new Mesh(morphGeometry, material), { name: 'cheek' });
+  morphed.morphTargetInfluences = [0.5];
+  const resting = Object.assign(new Mesh(morphGeometry, material), { name: 'brow' });
+  resting.morphTargetInfluences = [0];
+  const root = Object.assign(new Group(), { name: 'face' });
+  root.add(skinned, instanced, morphed, resting);
+  const annotations = new Map<Object3D, SubjectThreeAnnotation<'arm' | 'brow', 'leaf'>>([
+    [skinned, { kind: 'part', part: 'arm' }], [instanced, { kind: 'region', feature: 'leaf' }],
+    [morphed, { kind: 'part', part: 'arm' }], [resting, { kind: 'part', part: 'brow' }],
+  ]);
+  const result = projectSubjectFromThree({
+    id: 'deformed', root, camera, cellPx: 1, annotations, materials: [{ id: 'skin', localColor: '#e0b090' }],
+    parts: [{ id: 'arm', material: 'skin' }, { id: 'brow', material: 'skin' }], features: [{ kind: 'region', id: 'leaf', owner: 'arm' }],
+  });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.ok ? [] : result.diagnostics.map(({ code, address, message }) => `${code} ${address}: ${message.split(':')[0]}`), [
+    "deformed-mesh face/arm: the mesh annotated part 'arm' can't be projected",
+    "deformed-mesh face/leaves: the mesh annotated region 'leaf' can't be projected",
+    "deformed-mesh face/cheek: the mesh annotated part 'arm' can't be projected",
+  ]);
 });

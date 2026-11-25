@@ -1,6 +1,6 @@
 // shot-mask-passes.ts: a painted plane's presentation masks on the GPU. Before its sheets are laid, its
 // masks multiply into one factor over the stage, 1 where all shows: each alphaOf mask's drawable's laid coverage,
-// read where the camera shows it. The lay takes each film's opacity, card's union and pieces picture times it, glow
+// read where the camera shows it. The lay takes each film's opacity, card's cover and pieces picture times it, glow
 // and all, never the ground.
 //
 // The lay also gathers what other planes' alphaOf masks read of this one: each step's cover, a channel per drawable
@@ -10,12 +10,11 @@
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { paintSimilarityAfter, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { StampPixelBox } from '#lib/paint/painting/models/stamp-blur-region.ts';
-import { STAMP_OPAQUE_COVER } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampStageWgsl, type StampStage, type StampStageTexels } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { StampPaintCompositor } from '#lib/paint/painting/studio/stamp-paint-compositor.ts';
 import { dispatchStampCompute, STAMP_WORKGROUP } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
-import { STAMP_BILINEAR_OR_ZERO_WGSL, STAMP_CARD_UNION_WGSL, STAMP_NO_REST, type StampLayVariant } from '#lib/paint/painting/studio/stamp-paint-lay-pass.ts';
+import { STAMP_BILINEAR_OR_ZERO_WGSL, STAMP_CARD_COVER_WGSL, STAMP_NO_REST, type StampLayVariant } from '#lib/paint/painting/studio/stamp-paint-lay-pass.ts';
 import { stampLaidCoverWgsl } from '#lib/paint/painting/studio/stamp-paint-plane-passes.ts';
 import type { StampPlanePicture } from '#lib/paint/painting/studio/stamp-plane-picture-pass.ts';
 import type { StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
@@ -71,25 +70,25 @@ ${STAMP_BILINEAR_OR_ZERO_WGSL}
   textureStore(mask, id.xy, textureLoad(mask, id.xy) * shown);
 }`;
 
-/** What a step lays that a coverage gathers: a film through its rest map, a card's union, a rig's pieces, or a placed ground's reach. */
+/** What a step lays that a coverage gathers: a film through its rest map, a card's cover, a rig's pieces, or a placed ground's reach. */
 type ShotCoverKind = 'film' | 'card' | 'pieces' | 'ground';
 
 const SHOT_COVER = gpuUniformLayout('ShotCover', [
   ['origin', 'vec2u'], ['extent', 'vec2u'], ['amount', 'f32'], ['edgeOrigin', 'vec2u'], ['edgeExtent', 'vec2u'], ['layer', 'u32'], ['member', 'vec4f'],
 ]);
 // A step's cover over the coverage in layer `layer` of (1), for each drawable `member` marks: a + (1 − a) · cover, cut
-// by the mask (2) as its paint was. Bound: a film's layer (3), rest map (4) and reveals' cut (5); a card's union (4)
+// by the mask (2) as its paint was. Bound: a film's layer (3), rest map (4) and reveals' cut (5); a card's cover (4)
 // and rest map (5); pieces' render (3); a ground's rest map (4).
 function coverWgsl(kind: ShotCoverKind, { masked, revealed }: Pick<StampLayVariant, 'masked' | 'revealed'>, stage: StampStage, compositor: StampPaintCompositor | null) {
   const declared = {
     film: () => stampLaidCoverWgsl(compositor!, 'moved group', STAMP_NO_REST, 'true', { revealed }),
-    card: () => `@group(0) @binding(4) var edge: texture_2d<f32>;\n@group(0) @binding(5) var rest: texture_2d<f32>;\n${STAMP_BILINEAR_OR_ZERO_WGSL}\n${STAMP_CARD_UNION_WGSL}`,
+    card: () => `@group(0) @binding(4) var edge: texture_2d<f32>;\n@group(0) @binding(5) var rest: texture_2d<f32>;\n${STAMP_BILINEAR_OR_ZERO_WGSL}\n${STAMP_CARD_COVER_WGSL}`,
     pieces: () => '@group(0) @binding(3) var pieces: texture_2d<f32>;',
     ground: () => '@group(0) @binding(4) var rest: texture_2d<f32>;',
   }[kind]();
   const cover = {
     film: 'clamp(coverAt(pixel), 0.0, 1.0) * u.amount * m',
-    card: `min(1.0, cardUnionAt(pixel, u.edgeOrigin, u.edgeExtent, true).z * m * ${STAMP_OPAQUE_COVER.toFixed(1)})`,
+    card: 'cardCoverAt(pixel, u.edgeOrigin, u.edgeExtent, true).z * m',
     pieces: 'clamp(textureLoad(pieces, pixel, 0).a, 0.0, 1.0) * m',
     ground: `select(0.0, 1.0, textureLoad(rest, pixel, 0).x >= ${STAMP_NO_REST / 2}.0)`,
   }[kind];

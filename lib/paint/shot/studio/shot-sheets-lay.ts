@@ -24,7 +24,7 @@ import type { StampPaintBacking } from '#lib/paint/painting/studio/stamp-paint-l
 import { createStampPlaneGlows } from '#lib/paint/painting/studio/stamp-plane-glow-pass.ts';
 import { createStampRevealPass } from '#lib/paint/painting/studio/stamp-reveal-pass.ts';
 import { stampPlainFaded, type StampFadedTarget, type StampSpanFade, type StampSpanKept } from '#lib/paint/painting/studio/stamp-span-fade-pass.ts';
-import { stampSheetEdge, type StampSheetsLays } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
+import { stampCardCover, type StampSheetsLays } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
 import { keptStampSheetFilm, type StampSheetFilmKept } from '#lib/paint/painting/studio/stamp-sheet-films.ts';
 import type { StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
 import type { ShotLattice } from '../models/shot-lattice.ts';
@@ -314,7 +314,7 @@ export function createShotSheetsLayer(owner: StampPaintGpuOwner, { stage, arena,
           const lay = step.lay, { pass, span, box } = staging, compositor = compositors[lay.sheet];
           if (lay.kind === 'card') {
             tones.set(lay.sheet, Math.min(1, lay.shade));
-            const edge = stampSheetEdge(owner, device, encoder, arena, lay.films.map(({ film, shown }) => ({ film: films[lay.sheet][film], shown })), {
+            const edge = stampCardCover(owner, device, encoder, arena, lay.cardEdge, lay.films.map(({ film, shown }) => ({ film: films[lay.sheet][film], shown })), {
               reveals: lay.films.map(({ film }) => frame.reveals[lay.sheet][film] ?? []), pass: revealing, stage, size: layerSize(frame), periods: frame.document.periods,
             });
             if (edge) {

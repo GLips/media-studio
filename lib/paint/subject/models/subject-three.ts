@@ -7,8 +7,8 @@
 // an `outline` gets a path feature tracing each of its meshes' edges where that mesh stands in front of another
 // surface, as a toon's inverted hull draws; the hull against the background is the subject's silhouette.
 
-import { Matrix4, Vector3 } from 'three';
-import type { BackSide, BufferGeometry, DoubleSide, Material, Mesh, Object3D } from 'three';
+import { BackSide, DoubleSide, Matrix4, Vector3 } from 'three';
+import type { BufferGeometry, InstancedMesh, Material, Mesh, Object3D, SkinnedMesh } from 'three';
 import { shotCameraAxes, shotCameraFocalPx, shotCameraProject, type ShotCamera, type ShotPoint } from '#lib/picture/shot-camera/models/shot-camera.ts';
 import { SubjectDiagnosticError, subjectError, type SubjectDiagnostic, type SubjectDiagnosticCode, type SubjectResult } from './subject-diagnostic.ts';
 import type { IlluminationEvidence, SubjectSampleLayout, SubjectVector3, SurfaceEvidence } from './subject-evidence.ts';
@@ -87,8 +87,11 @@ export type SubjectThreeInput<P extends string, M extends string, F extends stri
   readonly mirrorPairs?: readonly (readonly [NoInfer<P>, NoInfer<P>])[];
 };
 
-export type SubjectThreeDiagnosticCode = SubjectDiagnosticCode | 'unannotated-mesh' | 'invalid-annotation' | 'behind-camera';
-/** A projection problem: any subject diagnostic, or a mesh left unannotated, an annotation that doesn't fit, or a scene behind the camera. */
+export type SubjectThreeDiagnosticCode = SubjectDiagnosticCode | 'unannotated-mesh' | 'invalid-annotation' | 'behind-camera' | 'deformed-mesh';
+/**
+ * A projection problem: any subject diagnostic, or a mesh left unannotated, an annotation that doesn't fit, a scene
+ * behind the camera, or a mesh the GPU deforms (skinned, morphed or instanced), whose drawn shape isn't its geometry.
+ */
 export type SubjectThreeDiagnostic = SubjectDiagnostic<SubjectThreeDiagnosticCode>;
 
 type SubjectThreeIds<P, M, F, R, G, T> = { readonly part: P; readonly material: M; readonly feature: F; readonly frame: R; readonly group: G; readonly tag: T };
@@ -98,11 +101,28 @@ type DrawUnit = { readonly mesh: number; readonly address: string; readonly anno
 type PathSource = { readonly feature: string; readonly world: Matrix4; readonly centerline: SubjectThreeCenterline };
 type WalkedMesh = { readonly mesh: Mesh; readonly world: Matrix4; readonly address: string; readonly annotation: Exclude<SubjectThreeAnnotation, { kind: 'path' }> };
 
-// three's side constants by value: a model may load only three's maths, and the types hold these to three's own.
-const THREE_BACK_SIDE: typeof BackSide = 1;
-const THREE_DOUBLE_SIDE: typeof DoubleSide = 2;
-
 const isThreeMesh = (object: Object3D): object is Mesh => 'isMesh' in object && object.isMesh === true;
+const isSkinned = (mesh: Mesh): mesh is SkinnedMesh => 'isSkinnedMesh' in mesh && mesh.isSkinnedMesh === true;
+const isInstanced = (mesh: Mesh): mesh is InstancedMesh => 'isInstancedMesh' in mesh && mesh.isInstancedMesh === true;
+
+/**
+ * How the GPU moves `mesh`'s vertices off its geometry, or undefined when it draws them where they lie. The projector
+ * reads geometry only, so a deformed mesh is refused rather than projected in its rest shape.
+ */
+function threeMeshDeformation(mesh: Mesh): string | undefined {
+  if (isSkinned(mesh)) return 'it is skinned to a skeleton';
+  if (isInstanced(mesh)) return `it is instanced ${mesh.count} times`;
+  if (Object.keys(mesh.geometry.morphAttributes).length && mesh.morphTargetInfluences?.some((weight) => weight !== 0)) return 'its morph targets are weighted';
+  return undefined;
+}
+
+/** What an annotation says a mesh is, for a diagnostic. */
+const describeSubjectThreeAnnotation = (annotation: WalkedMesh['annotation']): string => {
+  if (annotation.kind === 'part') return `part '${annotation.part}'`;
+  if (annotation.kind === 'region') return `region '${annotation.feature}'`;
+  if (annotation.kind === 'unpainted') return 'unpainted';
+  return `by material (${annotation.slots.map(describeSubjectThreeAnnotation).join(', ')})`;
+};
 const localMatrixOf = (object: Object3D) =>
   (object.matrixAutoUpdate ? new Matrix4().compose(object.position, object.quaternion, object.scale) : object.matrix.clone());
 
@@ -165,6 +185,11 @@ function projectMesh(walked: WalkedMesh, index: number, camera: ShotCamera, prob
     return surface.kind === 'unpainted' || !range.material.visible ? [] : [{ ...range, surface }];
   });
   if (!ranges.length) return [];
+  const deformation = threeMeshDeformation(mesh);
+  if (deformation) {
+    problems.push(subjectError('deformed-mesh', address, `the mesh annotated ${describeSubjectThreeAnnotation(annotation)} can't be projected: ${deformation}, and only its undeformed geometry could be read`, 'bake the pose into a plain Mesh\'s geometry (or one Mesh per instance) before projecting it'));
+    return [];
+  }
   const position = geometry.getAttribute('position'), count = position.count;
   const screen = new Float64Array(2 * count), depth = new Float64Array(count), v = new Vector3();
   for (let i = 0; i < count; i++) {
@@ -188,7 +213,7 @@ function projectMesh(walked: WalkedMesh, index: number, camera: ShotCamera, prob
   return ranges.map(({ start, count: length, material, surface }) => {
     const corners = new Uint32Array(length);
     for (let k = 0; k < length; k++) corners[k] = geometry.index ? geometry.index.getX(start + k) : start + k;
-    const faces = { front: material.side !== THREE_BACK_SIDE, back: material.side === THREE_BACK_SIDE || material.side === THREE_DOUBLE_SIDE };
+    const faces = { front: material.side !== BackSide, back: material.side === BackSide || material.side === DoubleSide };
     return { mesh: index, address, annotation: surface, triangles: { screen, depth, corners, frontSign, faces, ...(surface.kind === 'part' && { normals }) } };
   });
 }

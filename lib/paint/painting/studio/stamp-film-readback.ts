@@ -8,6 +8,7 @@
 // caller until the read resolves (holdStampSheetFilms).
 
 import type { StampPaintCostTally } from '../models/stamp-paint-costs.ts';
+import { stampCardEdgeKey, stampCardFigureBox } from '../models/stamp-card-edge.ts';
 import { STAMP_FILMS_WHOLE } from '../models/stamp-reveal.ts';
 import type { StampSheetCompositeStep } from '../models/stamp-sheet-program.ts';
 import { stampCanonicalJson } from '../models/stamp-canonical.ts';
@@ -90,16 +91,16 @@ const emptyPicture = (): StampSheetsPicture => ({ x0: 0, y0: 0, w: 0, h: 0, rgba
 export function readStampFilmPicture(owner: StampPaintGpuOwner, sheet: StampSheetKeptFilms, film: number, backing: StampFilmBacking, costs?: StampPaintCostTally): Promise<StampSheetsPicture> {
   const { program, films } = sheet, kept = films[film], { edge } = program;
   const document = stampPointBox({ x: 0, y: 0, w: program.width, h: program.height });
-  const union = films.reduce<StampPointBox | null>((all, { box }) => stampBoxUnion(all, box), null);
-  const paper = edge === 'document' ? document : union, crop = backing === 'clear' ? kept.box : paper;
-  // The backing's identity: its paper, and for a card the films its edge joins.
-  const backed = backing === 'clear' ? 'clear' : `sheet ${stampCanonicalJson(program.paper)} ${edge === 'union' ? films.map(({ key }) => key).join('+') : 'document'}`;
+  const card = edge === 'document' ? null : edge, union = films.reduce<StampPointBox | null>((all, { box }) => stampBoxUnion(all, box), card && stampCardFigureBox(card, program));
+  const paper = card ? union : document, crop = backing === 'clear' ? kept.box : paper;
+  // The backing's identity: its paper, and for a card its edge and the films its cover joins.
+  const backed = backing === 'clear' ? 'clear' : `sheet ${stampCanonicalJson(program.paper)} ${card ? `${stampCardEdgeKey(card)} ${films.map(({ key }) => key).join('+')}` : 'document'}`;
   const key = `picture ${kept.key} ${backed} ${crop ? `${crop.x},${crop.y},${crop.w},${crop.h}` : 'none'}`;
   return keptStampFilmReadback(owner, key, async () => {
     if (!crop) return emptyPicture();
-    const card: StampSheetCompositeStep[] = backing === 'sheet' && edge === 'union' ? [{ kind: 'card', sheet: 0 }] : [];
+    const cardStep: StampSheetCompositeStep[] = backing === 'sheet' && card ? [{ kind: 'card', sheet: 0 }] : [];
     // The card is the sheet's paper as far as all its films reach, though only one is laid on it.
-    const composite: StampSheetsComposite = { sheets: [{ ...sheet, place: null, reveals: STAMP_FILMS_WHOLE }], steps: [...card, { kind: 'film', sheet: 0, film }], cardFilms: 'kept' };
+    const composite: StampSheetsComposite = { sheets: [{ ...sheet, place: null, reveals: STAMP_FILMS_WHOLE }], steps: [...cardStep, { kind: 'film', sheet: 0, film }], cardFilms: 'kept' };
     return readStampSheetsPicture(owner, composite, crop, backing === 'sheet' && edge === 'document' ? 'paper' : 'clear', costs);
   }, costs);
 }

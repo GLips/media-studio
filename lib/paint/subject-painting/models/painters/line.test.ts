@@ -3,10 +3,10 @@ import { test } from 'node:test';
 import type { AnyApplication, LayerNode } from '#lib/paint/document/models/painting-document.ts';
 import type { SurfaceEvidence } from '#lib/paint/subject/models/subject-evidence.ts';
 import { SUBJECT_HIDDEN, subjectVisible, type SubjectRing } from '#lib/paint/subject/models/subject-geometry.ts';
-import { selectFeatureGroup } from '#lib/paint/subject/models/subject-selector.ts';
+import { selectFeatureGroup, selectPart } from '#lib/paint/subject/models/subject-selector.ts';
 import { defineSubject } from '#lib/paint/subject/models/subject.ts';
 import { paintSubject, requireSubjectPainting, type SubjectPainting } from '../paint-subject.ts';
-import { subjectReplace } from '../subject-overrides.ts';
+import { subjectIntent, subjectReplace } from '../subject-overrides.ts';
 import { lineSubjectPainter } from './line.ts';
 
 /**
@@ -102,4 +102,37 @@ test('overshoot runs each stroke on past the line\'s ends, and none stops short 
   assert.ok(Math.min(...plain) >= 19.5 && Math.max(...plain) <= 380.5);
   // Three widths of a 3.6 px line, each end between 0.6 and 1.2 of it.
   assert.ok(Math.min(...inked) < 20 - 6 && Math.max(...inked) > 380 + 6, `${Math.min(...inked)}..${Math.max(...inked)}`);
+});
+
+/** A band across the page, 400 px wide, from `y0` down to `y1`. */
+const band = (y0: number, y1: number) => subjectVisible({ rings: [[{ x: 0, y: y0 }, { x: 400, y: y0 }, { x: 400, y: y1 }, { x: 0, y: y1 }]] as [SubjectRing] });
+
+test('a stated occluding edge takes over only the stretch it covers: the next seam along is still inked', () => {
+  const stack = defineSubject({
+    id: 'stack',
+    materials: [{ id: 'tin', localColor: '#c0a060' }],
+    parts: [{ id: 'top', material: 'tin', visibility: band(0, 120) }, { id: 'middle', material: 'tin', visibility: band(120, 240) }, { id: 'bottom', material: 'tin', visibility: band(240, 400) }],
+    features: [{ kind: 'path', id: 'top-edge', owner: 'top', line: 'occluding-edge', visibility: subjectVisible({ runs: [{ points: [{ x: 0, y: 120 }, { x: 400, y: 120 }], closed: false }] }) }],
+    silhouette: band(0, 400),
+  });
+  const result = requireSubjectPainting(paintSubject(stack, painter));
+  const inking = (seamY: number) => result.report.contributions.filter(({ key }) => applicationsOf(result.layers.filter((layer) => layer.key === key))
+    .some((application) => application.kind === 'stroke' && application.subpaths.some((path) => path.some(({ x, y }) => Math.abs(y - seamY) < 3 && x > 60 && x < 340))))
+    .map(({ key }) => key);
+  assert.deepEqual(inking(120), ['stack.line.feature:top-edge']);
+  assert.equal(inking(240).length, 1);
+  assert.match(inking(240)[0], /^stack\.contour\.part:(middle|bottom)$/);
+});
+
+test('a silhouette facing the key thins but holds; a soft edge intent lets it break, lost and found', () => {
+  const lit = { ...lantern(baseInFront()), illumination: { convention: 'view-x-right-y-down-z-toward-viewer' as const, key: { direction: { x: -0.36, y: -0.48, z: 0.8 }, intensity: 1 }, fills: [] } };
+  /** The lid's contour strokes along the top edge, which faces the key at 0.8. */
+  const topEdge = (result: SubjectPainting) => applicationsOf(result.layers.filter(({ key }) => key === 'lantern.contour.part:lid'))
+    .flatMap((application) => (application.kind === 'stroke' ? application.subpaths.flat() : [])).filter(({ x, y }) => Math.abs(y) < 3 && x > 60 && x < 340);
+  const plain = topEdge(requireSubjectPainting(paintSubject(lit, painter)));
+  assert.ok(plain.length > 0, 'the lit top edge is inked');
+  const shadowSide = applicationsOf(requireSubjectPainting(paintSubject(lit, painter)).layers).flatMap((application) => (application.kind === 'stroke' ? application.subpaths.flat() : []))
+    .filter(({ x, y }) => Math.abs(y - 400) < 3 && x > 60 && x < 340);
+  assert.ok(Math.max(...plain.map(({ scale }) => scale ?? 1)) < Math.max(...shadowSide.map(({ scale }) => scale ?? 1)), 'the lit edge is the thinner');
+  assert.equal(topEdge(requireSubjectPainting(paintSubject(lit, painter, {}, [subjectIntent(selectPart('lid'), { edge: 'soft' })]))).length, 0);
 });

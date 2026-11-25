@@ -18,11 +18,12 @@ import {
   PAINTING_REST_POSE, paintingPoseAfter, paintingPoseMap, paintingPoseText, paintingPoseTurn, paintingSimilarityPose, type PaintingNodePose, type PaintingPoses,
 } from '#lib/paint/document/models/painting-pose.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
-import { paintingSheetInGroup, type PaintingSheet, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
+import { paintingSheetInGroup, paintingSheetName, type PaintingSheet, type PaintingTree } from '#lib/paint/document/models/painting-tree.ts';
 import type { PaintMoment, StampGroupGlow } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampFilmRevealLinks } from '#lib/paint/painting/models/stamp-reveal.ts';
 import type { StampCardLook } from '#lib/paint/painting/models/stamp-card-relief.ts';
-import type { StampBox } from '#lib/paint/painting/models/stamp-region.ts';
+import { stampPolygonBox, type StampBox } from '#lib/paint/painting/models/stamp-region.ts';
+import { stampCardEdgeOf, type StampCardEdge } from '#lib/paint/painting/models/stamp-card-edge.ts';
 import type { StampSheetCompositeShown } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import type { StampPointBox, StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { PaintRigPicture, PaintRigPiece } from '#lib/paint/rig/models/paint-rig-pieces.ts';
@@ -71,12 +72,12 @@ export const shotLayerMarksAt = (tree: PaintingTree, layer: number, poses: Paint
 export type ShotCardFilm = { readonly film: number; readonly shown: number };
 
 /**
- * How a step lays this moment: a card's paper over its sheet's `edge` (document px), cut round its showing `films`,
- * lit as its `look` says; a film through its lattice; a card's rim, once its films are laid; or a rig's pieces in
- * place of its group's sheet. `shade`: the sheet's tone under the light as folded (paint-card-face.ts).
+ * How a step lays this moment: a card's paper over `edge` (document px), cut round its showing `films` and any figure
+ * `cardEdge` names, lit by `look`; a film through its lattice; a card's rim, once its films are laid; or a rig's
+ * pieces for its group's sheet. `shade`: the sheet's tone under the light as folded (paint-card-face.ts).
  */
 export type ShotStepLay =
-  | { readonly kind: 'card'; readonly sheet: number; readonly films: readonly ShotCardFilm[]; readonly edge: StampBox; readonly lattice: ShotLattice; readonly look: StampCardLook; readonly shade: number }
+  | { readonly kind: 'card'; readonly sheet: number; readonly films: readonly ShotCardFilm[]; readonly edge: StampBox; readonly cardEdge: StampCardEdge; readonly lattice: ShotLattice; readonly look: StampCardLook; readonly shade: number }
   | { readonly kind: 'film'; readonly sheet: number; readonly film: number; readonly layer: NodeKey; readonly lattice: ShotLattice; readonly shade: number }
   | { readonly kind: 'rim'; readonly sheet: number }
   | { readonly kind: 'pieces'; readonly rig: string; readonly look: StampCardLook };
@@ -136,8 +137,9 @@ export function shotSelectionStepLays({ compiled, filmBoxes, solved, at, shutter
         const shown = shotLayerMarkKeys(tree, layer).reduce((product, key) => product * visibilityOf(key), 1);
         return shown > 0 ? [{ film: f, shown }] : [];
       });
-      const edge = films.reduce<StampBox | undefined>((union, { film }) => paintingBoxUnion(union, filmBoxes[step.sheet][film]!), undefined);
-      return edge ? { kind: 'card', sheet: step.sheet, films, edge, lattice: shotPlacedLattice(edge, placed.at, placed.shutter), look: sheet.card, shade: placed.shade } : null;
+      const cardEdge = stampCardEdgeOf({ name: paintingSheetName(sheet), edge: sheet.edge }), figure = films.length && cardEdge !== 'union' ? stampPolygonBox(cardEdge.rings.flat(), 1) : undefined;
+      const edge = films.reduce<StampBox | undefined>((union, { film }) => paintingBoxUnion(union, filmBoxes[step.sheet][film]!), figure);
+      return edge ? { kind: 'card', sheet: step.sheet, films, edge, cardEdge, lattice: shotPlacedLattice(edge, placed.at, placed.shutter), look: sheet.card, shade: placed.shade } : null;
     }
     const box = filmBoxes[step.sheet][step.film];
     if (!box) return null;

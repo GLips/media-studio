@@ -14,7 +14,7 @@ import type { SubjectArea, SubjectRing } from '#lib/paint/subject/models/subject
 export type LitSubject = SubjectWithEvidence<'surface' | 'illumination'>;
 
 /**
- * How a painter models the light. `soft`: graded shade melting into the light, from the light field. `cel`: the shade
+ * How a painter models the light. `soft`: graded shade melting into the light, read over the whole mass. `cel`: the shade
  * as one crisp band, the quiet cel of vid-144's hand-painted frog. `cel-full`: a half-tone, the shade and a core.
  */
 export type SubjectLightTreatment = 'soft' | 'cel' | 'cel-full';
@@ -40,7 +40,12 @@ export type SubjectLightField = {
 /** Rounds of reaching uncovered samples from covered ones: past the one-sample growth a zone's mask takes. */
 const EXTEND_ROUNDS = 3;
 
-export function subjectLightField(subject: LitSubject, painterTerminator: number): SubjectLightField {
+/**
+ * `massPx`: how wide a reach the light is read over, px; 0 reads each sample's own normal. Read wider, the small turns
+ * where a figure's pieces meet (an arm on a body, a primitive's seams) melt into the light on the whole mass, as a
+ * painter squints to see it.
+ */
+export function subjectLightField(subject: LitSubject, painterTerminator: number, massPx = 0): SubjectLightField {
   const { layout, coverage, normals } = subject.surface, { direction } = subject.illumination.key;
   const size = layout.columns * layout.rows;
   const cosine = new Float32Array(size), known = new Uint8Array(size);
@@ -49,8 +54,35 @@ export function subjectLightField(subject: LitSubject, painterTerminator: number
     cosine[at] = normals[3 * at] * direction.x + normals[3 * at + 1] * direction.y + normals[3 * at + 2] * direction.z;
     known[at] = 1;
   }
+  const reach = Math.round(massPx / layout.cell / 2);
+  if (reach > 0) massLightField(layout, cosine, known, reach);
   for (let round = 0; round < EXTEND_ROUNDS; round++) extendLightField(layout, cosine, known);
   return { layout, cosine, known, terminator: subject.illumination.terminator ?? painterTerminator };
+}
+
+/** Three box blurs `reach` samples wide each way, near a Gaussian, over known samples only: the silhouette's outside never darkens its edge. */
+function massLightField({ columns, rows }: SubjectSampleLayout, cosine: Float32Array, known: Uint8Array, reach: number) {
+  const sum = new Float32Array(cosine.length), weight = new Float32Array(cosine.length);
+  for (let at = 0; at < cosine.length; at++) [sum[at], weight[at]] = known[at] ? [cosine[at], 1] : [0, 0];
+  const pass = (values: Float32Array, along: 'row' | 'column') => {
+    const out = new Float32Array(values.length), [lines, length] = along === 'row' ? [rows, columns] : [columns, rows];
+    for (let line = 0; line < lines; line++) {
+      const at = (k: number) => (along === 'row' ? line * columns + k : k * columns + line);
+      let running = 0;
+      for (let k = -reach; k < length + reach; k++) {
+        if (k + reach < length && k + reach >= 0) running += values[at(k + reach)];
+        if (k - reach - 1 >= 0 && k - reach - 1 < length) running -= values[at(k - reach - 1)];
+        if (k >= 0 && k < length) out[at(k)] = running;
+      }
+    }
+    return out;
+  };
+  let s = sum, w = weight;
+  for (let round = 0; round < 3; round++) {
+    s = pass(pass(s, 'row'), 'column');
+    w = pass(pass(w, 'row'), 'column');
+  }
+  for (let at = 0; at < cosine.length; at++) if (known[at] && w[at] > 0) cosine[at] = s[at] / w[at];
 }
 
 /** One round: every unknown sample beside a known one takes its known neighbours' mean. */

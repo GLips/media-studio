@@ -1,13 +1,12 @@
 // stamp-paint-lay-pass.ts: films laid over paper, and the painting shown. The paper (its colour, or its photograph
 // covering the frame and mirrored past it) is laid first; each group's film over it by its compositor's layGroup,
-// at rest or through a lattice's rest points (a moved or warped group); an own sheet's card, its paper as far as its
-// paint reaches, where its first layer goes; the painting is output in screen colour. The renderer, the sheet
+// at rest or through a lattice's rest points (a moved or warped group); an own sheet's card, its paper by its cover,
+// where its first layer goes; the painting is output in screen colour. The renderer, the sheet
 // solver's composites and a shot all lay through it, a lay per paper.
 
 import { gpuUniformLayout, gpuUniformStruct, gpuUniformWriter, type GpuUniformViews } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { GPU_FULL_FRAME_WGSL, GPU_SRGB_WGSL } from '#lib/platform/gpu/models/gpu-wgsl.ts';
 import type { StampPixelBox } from '../models/stamp-blur-region.ts';
-import { STAMP_OPAQUE_COVER } from '../models/stamp-paint-recipe-compile.ts';
 import type { StampPaintPaper } from '../models/stamp-paint-recipe-types.ts';
 import { STAMP_REST_POINT_WGSL, type StampRestMap } from '../models/stamp-rest-map.ts';
 import { stampStageWgsl, type StampStage } from '../models/stamp-stage.ts';
@@ -191,12 +190,13 @@ fn stampBilinearOrZero(source: texture_2d<f32>, s: vec2f, extent: vec2u) -> vec4
 }`;
 
 /**
- * `cardUnionAt(pixel, origin, extent, moved)`: an own sheet's union (z) and paper point (xy, stage px) where its card's
- * texel at `pixel` was painted, read bilinearly through `rest` when moved. The union is `edge` (r32float) over stage
- * texels `origin` `extent`. The includer declares `edge`, `rest`, the stage's WGSL and STAMP_BILINEAR_OR_ZERO_WGSL.
+ * `cardCoverAt(pixel, origin, extent, moved)`: an own sheet's card cover (z, stampCardCover's) and paper point (xy,
+ * stage px) where its card's texel at `pixel` was painted, read bilinearly through `rest` when moved. The cover is
+ * `edge` (r32float) over stage texels `origin` `extent`. The includer declares `edge`, `rest`, the stage's WGSL and
+ * STAMP_BILINEAR_OR_ZERO_WGSL.
  */
-export const STAMP_CARD_UNION_WGSL = /* wgsl */ `
-fn cardUnionAt(pixel: vec2u, origin: vec2u, extent: vec2u, moved: bool) -> vec3f {
+export const STAMP_CARD_COVER_WGSL = /* wgsl */ `
+fn cardCoverAt(pixel: vec2u, origin: vec2u, extent: vec2u, moved: bool) -> vec3f {
   if (!moved) { return vec3f(stagePoint(vec2i(pixel)), stampTexelOrZero(edge, vec2i(pixel) - vec2i(origin), extent).r); }
   let at = textureLoad(rest, pixel, 0).xy;
   if (at.x < ${STAMP_NO_REST / 2}.0) { return vec3f(at, 0.0); }
@@ -206,9 +206,8 @@ fn cardUnionAt(pixel: vec2u, origin: vec2u, extent: vec2u, moved: bool) -> vec3f
 const STAMP_LAY_CARD = gpuUniformLayout('Card', [
   ['paper', gpuUniformStruct(PAPER)], ['origin', 'vec2u'], ['extent', 'vec2u'], ['edgeOrigin', 'vec2u'], ['edgeExtent', 'vec2u'], ['moved', 'u32'],
 ]);
-// An own sheet's card: its paper over what's behind as far as its union reaches, cover = min(1, STAMP_OPAQUE_COVER
-// × union), read where each pixel was painted when moved. `masked`: the union taken where a shot's mask leaves its
-// paint, so a masked word's card follows its ink. `traced`: its travel laid by that cover, not over its whole box.
+// An own sheet's card: its paper over what's behind by its cover, read where each pixel was painted when moved.
+// `masked`: the cover taken where a shot's mask leaves its paint, so a masked word's card follows its ink. `traced`: its travel laid by that cover, not over its whole box.
 const cardWgsl = (compositor: StampPaintCompositor, stage: StampStage, masked: boolean, traced: boolean) => /* wgsl */ `
 ${stampStageWgsl(stage)}
 ${stampPaintTargetWgsl('painting', 2, compositor.targets.painting, 'read_write')}
@@ -225,12 +224,12 @@ ${masked ? '@group(0) @binding(6) var mask: texture_2d<f32>;' : ''}
 ${traced ? `@group(0) @binding(7) var travel: texture_2d<f32>;
 @group(0) @binding(8) var motion: texture_storage_2d<rgba16float, read_write>;` : ''}
 ${STAMP_BILINEAR_OR_ZERO_WGSL}
-${STAMP_CARD_UNION_WGSL}
+${STAMP_CARD_COVER_WGSL}
 @compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn card(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   let pixel = u.origin + id.xy;
-  let read = cardUnionAt(pixel, u.edgeOrigin, u.edgeExtent, u.moved == 1u);
-  let cover = min(1.0, read.z${masked ? ' * textureLoad(mask, pixel, 0).r' : ''} * ${STAMP_OPAQUE_COVER.toFixed(1)});
+  let read = cardCoverAt(pixel, u.edgeOrigin, u.edgeExtent, u.moved == 1u);
+  let cover = read.z${masked ? ' * textureLoad(mask, pixel, 0).r' : ''};
   if (cover <= 0.0) { return; }${traced ? `
   let was = textureLoad(motion, pixel);
   let moved = textureLoad(travel, pixel, 0).xy;
@@ -252,9 +251,9 @@ ${STAMP_LAY_PLACE.wgsl}
 }`;
 
 /**
- * An own sheet's card laid: `edge`, its union's coverage over stage texels `edgeBox` (r32float, its texel 0 the box's
- * first), onto `painting` over `box`; through `rest`, a placement's rest points, when the sheet is moved; its union
- * cut by `mask` (a shot's presentation mask, r32float over the stage) when given.
+ * An own sheet's card laid: `edge`, its cover (stampCardCover's) over stage texels `edgeBox` (r32float, its texel 0
+ * the box's first), onto `painting` over `box`; through `rest`, a placement's rest points, when the sheet is moved; its
+ * cover cut by `mask` (a shot's presentation mask, r32float over the stage) when given.
  */
 export type StampCardLay = {
   edge: GPUTextureView; edgeBox: StampPixelBox; painting: GPUTextureView; box: StampPixelBox; rest: GPUTextureView | null; mask?: GPUTextureView | null;

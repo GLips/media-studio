@@ -2,9 +2,9 @@
 // the depth of the occlusion it marks and which side of the light it faces, as far as the evidence tells. Near-black
 // design colours are spotted solid, as an inker blacks in a pupil.
 //
-// Lines the subject states (its path features) are drawn as stated, never doubled from an area's outline. When it
-// states its occluding edges, a part's area adds only the silhouette they leave; when not, as built by hand, each
-// shared edge is inked once, by the part in front.
+// Lines the subject states (its path features) are drawn as stated, never doubled from an area's outline: a part's
+// outline hands over just the stretches a stated line covers. Every other edge two parts share is inked once, by the
+// part in front.
 //
 // Slots: `contours` (parts' outlines and spot blacks), then `features`, so a face replacement leaves the outlines.
 
@@ -52,8 +52,8 @@ export type LineSubjectOptions = {
 /** The brushes a style binds for each tool. Engine painters never import a style; `work/styles/<name>/` binds them. */
 export type LineSubjectBrushes = { readonly [T in LineTool]: BrushRef };
 
-/** The line painter's options when a painting gives none: ink at full detail, near-black spotted solid. */
-export const LINE_SUBJECT_DEFAULTS: LineSubjectOptions = { tool: 'ink', lineWeight: 1, detail: 1, lineColor: '#1c1a19', spotBlacks: true, overshoot: 0 };
+/** The line painter's options when a painting gives none: ink at full detail, near-black spotted solid, each stroke run on past its ends about a line's width, as fast inking does. */
+export const LINE_SUBJECT_DEFAULTS: LineSubjectOptions = { tool: 'ink', lineWeight: 1, detail: 1, lineColor: '#1c1a19', spotBlacks: true, overshoot: 1.2 };
 
 /**
  * The kinds of line, by how much they carry: the silhouette most, a crease least. `contour` is a part's edge against
@@ -76,11 +76,14 @@ const EMPHASIS_WEIGHT: Record<ResolvedSubjectIntent['emphasis'], number> = { sub
 const EDGE_WEIGHT: Record<SubjectEdgeIntent, number> = { lost: 0, soft: 0.65, firm: 1, hard: 1.15 };
 
 /**
- * How squarely a silhouette may face the key before it breaks, lost and found; firm and hard edges hold everywhere.
- * Left unset, an edge breaks only where it faces the key almost straight on.
+ * How squarely a silhouette may face the key before a soft or lost edge breaks, lost and found. Firm and hard hold at
+ * full weight; with no intent a line holds and thins toward the key, an accent that never loses a glove's shape.
  */
 const EDGE_BREAK_AT: Record<SubjectEdgeIntent, number> = { lost: 0.82, soft: 0.55, firm: Infinity, hard: Infinity };
-const DEFAULT_BREAK_AT = 0.82;
+
+/** A holding silhouette thins as it turns to the key: from LIT_THINNING_FROM on, to LIT_THINNEST of its width facing it squarely. */
+const LIT_THINNING_FROM = 0.35;
+const LIT_THINNEST = 0.35;
 
 /** Scale headroom: a stroke's diameter is this times its base width, so the heaviest line still fits under scale 1. */
 const WEIGHT_HEADROOM = 1.8;
@@ -101,8 +104,6 @@ type LineScene = {
   readonly edges: LineEdgeReader;
   /** Every visible path feature's points: a contour or region outline they already draw is left to them. */
   readonly stated: LineStatedEdges;
-  /** Whether the subject states its occluding edges, so area contours add only the silhouette those leave. */
-  readonly statesOcclusion: boolean;
   readonly outlines: ReadonlyMap<PartId, readonly LineContourPoint[][]>;
 };
 
@@ -128,17 +129,18 @@ function edgeWeight(scene: LineScene, point: LineOutlinePoint, stated: 'contour'
   if (onSilhouette) category = 'silhouette';
   else if (gapness !== undefined && gapness > 0.5) category = 'occluding-edge';
   if (detail < LINE_CATEGORY_DETAIL[category]) return undefined;
-  const facing = scene.light ? nx * scene.light.x + ny * scene.light.y : 0;
-  if (onSilhouette && facing > (intent.edge ? EDGE_BREAK_AT[intent.edge] : DEFAULT_BREAK_AT)) return undefined;
+  const facing = scene.light ? nx * scene.light.x + ny * scene.light.y : 0, breakAt = intent.edge ? EDGE_BREAK_AT[intent.edge] : Infinity;
+  if (onSilhouette && facing > breakAt) return undefined;
   const base = !onSilhouette && gapness !== undefined ? 0.5 + 0.4 * gapness : LINE_CATEGORY_WEIGHT[category];
   const inside = { x: point.x - nx * scene.edges.probe, y: point.y - ny * scene.edges.probe };
-  return base * (1 - 0.3 * facing) * nearnessWeight(scene, inside.x, inside.y);
+  const lit = onSilhouette && !intent.edge ? 1 - (1 - LIT_THINNEST) * subjectSmoothStep((facing - LIT_THINNING_FROM) / (1 - LIT_THINNING_FROM)) : 1;
+  return base * (1 - 0.3 * facing) * lit * nearnessWeight(scene, inside.x, inside.y);
 }
 
 /** Whether a stated line or another part's outline inks this outline point, so this part's leaves it to them. */
 function contourHandedOver(scene: LineScene, point: LineContourPoint): boolean {
   const { edge } = point;
-  return scene.stated.covers(point) || (scene.statesOcclusion ? edge.kind !== 'silhouette' : edge.kind === 'shared' && !edge.owned);
+  return scene.stated.covers(point) || (edge.kind === 'shared' && !edge.owned);
 }
 
 /** A part's outline point's weight: only where no stated line or other part draws it. */
@@ -259,7 +261,7 @@ function paintLineSubject(context: LineContext, brushes: LineSubjectBrushes): Su
   const paths = [...subject.features.values()].flatMap((feature) => (feature.kind === 'path' && feature.visibility.kind === 'visible' ? [{ ...feature, visibility: feature.visibility }] : []));
   const stated = lineStatedEdges(paths.flatMap(({ visibility }) => visibility.geometry.runs.flatMap((run) => linePathOutline(run, step))), edges.tolerance);
   const scene: LineScene = {
-    basePx, unit, step, depth, light, edges, stated, statesOcclusion: paths.some(({ line }) => line === 'occluding-edge'), outlines: lineContourOutlines(visible, edges, step, depth),
+    basePx, unit, step, depth, light, edges, stated, outlines: lineContourOutlines(visible, edges, step, depth),
   };
   const minLength = basePx * 2.5;
   // How far a line handing its edge over inks on: past the gap the edge tolerance leaves between two lines' ends.

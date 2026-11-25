@@ -18,13 +18,20 @@ import { globalNamed, globalReferencesIn } from '../lexical-scope.ts';
 const ID = 'model-purity';
 
 /**
- * The only packages a model may import, by name: three's math classes, Remotion's pure easing, Effect's data modules
- * (schemas, tagged data, exits) and XState's machine definitions and pure transitions. Anything else from three or
- * Remotion pulls in its renderer; Effect's runtime modules (Effect, Stream, Layer) and XState's running actors are the
- * engine's.
+ * What a model may import, by specifier: the names listed, or every export. three's maths, scene graph, geometry and
+ * node materials build in plain Node (a subject projects from a character's meshes); TSL only describes shader graphs.
+ * Renderers, loaders and canvas textures stay out, as do Effect's runtime and XState's actors.
  */
-export const MODEL_PACKAGE_ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
-  three: ['Vector3', 'Matrix4', 'Quaternion', 'Euler', 'MathUtils'],
+export const MODEL_PACKAGE_ALLOWLIST: Readonly<Record<string, readonly string[] | 'every-export'>> = {
+  three: ['Vector3', 'Matrix4', 'Quaternion', 'Euler', 'MathUtils', 'BackSide', 'DoubleSide'],
+  'three/webgpu': [
+    'Vector2', 'Vector3', 'Matrix3', 'Matrix4', 'Quaternion', 'Euler', 'MathUtils', 'Color', 'BackSide', 'DoubleSide',
+    'Object3D', 'Group', 'Mesh', 'BufferGeometry', 'BufferAttribute', 'Float32BufferAttribute',
+    'BoxGeometry', 'CircleGeometry', 'CylinderGeometry', 'ExtrudeGeometry', 'LatheGeometry', 'ShapeGeometry', 'SphereGeometry', 'TubeGeometry',
+    'Shape', 'CurvePath', 'LineCurve3', 'CubicBezierCurve3', 'CatmullRomCurve3',
+    'Material', 'NodeMaterial', 'MeshBasicNodeMaterial', 'Node', 'ConstNode', 'VarNode',
+  ],
+  'three/tsl': 'every-export',
   remotion: ['interpolate', 'Easing', 'spring'],
   effect: [
     'Schema', 'SchemaGetter', 'SchemaIssue', 'SchemaTransformation', 'Data', 'Exit', 'Cause', 'Option', 'Result', 'Match',
@@ -45,7 +52,7 @@ const GLOBAL_OBJECTS = new Set(['globalThis', 'self']);
 
 /** Positions a model may pass through: pure until shown otherwise, and scanned in turn. A library item's JSON is data. */
 const isScannable = (position: StudioPosition) =>
-  position.kind === 'models' || position.kind === 'library-item' ||
+  position.kind === 'models' || position.kind === 'library-item' || position.kind === 'style' || position.kind === 'brand-kit' ||
   (position.kind === 'project' && ['model', 'painting-source', 'storyboard', 'shared', 'unclassified', 'media', 'sfx', 'brand'].includes(position.role));
 
 const isModel = (position: StudioPosition) =>
@@ -99,10 +106,12 @@ function offenseOf(context: CheckContext, edge: ImportEdge): string | undefined 
   if (target.kind === 'outside') return `${target.specifier}, outside the repo`;
   if (target.kind === 'computed') return "a computed import(), whose module can't be read";
   if (target.kind === 'package') {
-    const allowed = MODEL_PACKAGE_ALLOWLIST[target.name];
-    if (!allowed) return `the package ${target.name}`;
-    const extra = target.names === '*' ? ['*'] : target.names.filter((name) => !allowed.includes(name));
-    return extra.length ? `${extra.join(', ')} from ${target.name}` : undefined;
+    const { specifier, names } = edge.scanned;
+    const allowed = MODEL_PACKAGE_ALLOWLIST[specifier];
+    if (!allowed) return `the package ${specifier}`;
+    if (allowed === 'every-export') return undefined;
+    const extra = names === '*' ? ['*'] : names.filter((name) => !allowed.includes(name));
+    return extra.length ? `${extra.join(', ')} from ${specifier}` : undefined;
   }
   const position = context.positionOf(target.path);
   if (!isScannable(position)) {

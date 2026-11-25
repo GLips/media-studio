@@ -8,6 +8,7 @@
 // stamp-gate-in-time-page.ts's and the lit cards' stamp-gate-card-shadows-page.ts's, handed on.
 
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import { checkStampGateFigureCard, stampGateFigureCardShot } from '../models/stamp-gate-figure-card.ts';
 import { checkStampGateCardShutter, STAMP_GATE_CARD_SHUTTER, stampGateCardShutterShot } from '../models/stamp-gate-card-shutter.ts';
 import { STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_POSED_AT, stampGateCardsPosedShot, stampGateCardsShot } from '../models/stamp-gate-cards.ts';
 import { STAMP_GATE_FRAME_TOLERANCE, stampGateFrameDifference, stampGateFrameDifferenceText, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
@@ -386,6 +387,11 @@ async function checkPieces(): Promise<StampGateWashCheck[]> {
   ];
 }
 
+/** shot/figure-card: the figure card and the cut card beside it over dark footage, at rest. */
+async function checkFigureCard(): Promise<StampGateWashCheck[]> {
+  return checkStampGateFigureCard(stampGateRgb((await stampGateShotFrames(stampGateFigureCardShot(), [0])).frames[0]));
+}
+
 /** Shot case `id`'s checks. */
 export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGateWashCheck[]> {
   if (id === 'shot/rain') return checkStampGateRain();
@@ -401,6 +407,7 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/properties-in-time') return checkStampGateInTime();
   if (id === 'shot/card-shadows') return checkStampGateCardShadowsCase();
   if (id === 'shot/card-shutter') return checkCardShutter();
+  if (id === 'shot/figure-card') return checkFigureCard();
   return checkStampGateShotMasksCase(id);
 }
 

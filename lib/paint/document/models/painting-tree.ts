@@ -4,7 +4,9 @@
 // from here; each sheet's order, the compiler and the solver read its layers, groups and sheets.
 
 import { STAMP_CARD_FLAT, STAMP_CARD_LOOK, type StampCardLook } from '#lib/paint/painting/models/stamp-card-relief.ts';
+import { STAMP_FIGURE_CARD_FADE_PX, type StampCardEdge, type StampSheetEdge } from '#lib/paint/painting/models/stamp-card-edge.ts';
 import type { DryingScale, GroupKey, Key, Layer, LayerGroup, LayerNode, MediumName, Paper, PaintingDocument, SheetCard } from './painting-document.ts';
+import { stampRegionPolygon } from '#lib/paint/painting/models/stamp-region.ts';
 
 /**
  * A resolved sheet: the node that declared it (null for the root's), its paper, its edge (`document`, the root's;
@@ -14,7 +16,7 @@ import type { DryingScale, GroupKey, Key, Layer, LayerGroup, LayerNode, MediumNa
 export type PaintingSheet = {
   readonly owner: Key | null;
   readonly paper: Paper;
-  readonly edge: 'document' | 'union';
+  readonly edge: StampSheetEdge;
   readonly card: StampCardLook;
   readonly water: MediumName;
   readonly dryingScale: DryingScale;
@@ -50,15 +52,25 @@ export type PaintingTree = {
   readonly groups: readonly PaintingGroupPlace[];
 };
 
-/** How an own sheet's `card` catches the light: as cut paper, flat, or as cut paper with what it names changed. */
-export const paintingSheetCardLook = (card: SheetCard | undefined): StampCardLook =>
-  card === 'flat' ? STAMP_CARD_FLAT : { ...STAMP_CARD_LOOK, ...card };
+/** How an own sheet's `card` catches the light: as cut paper, flat (a figure too), or as cut paper with what it names changed. */
+export function paintingSheetCardLook(card: SheetCard | undefined): StampCardLook {
+  if (card === 'flat' || card?.figure) return STAMP_CARD_FLAT;
+  return { ...STAMP_CARD_LOOK, ...card };
+}
+
+/** Where an own sheet's paper lies: round its figure, or as far as its paint does. */
+function paintingSheetCardEdge(card: SheetCard | undefined): StampCardEdge {
+  if (card === 'flat' || !card?.figure) return 'union';
+  const { figure } = card, fadePx = card.fadePx ?? STAMP_FIGURE_CARD_FADE_PX;
+  if (figure.kind === 'polygon') return { kind: 'figure', rings: figure.rings, fadePx };
+  return { kind: 'figure', rings: [stampRegionPolygon({ kind: 'ellipse', x: figure.center.x, y: figure.center.y, radiusX: figure.radiusX, radiusY: figure.radiusY })], fadePx };
+}
 
 /** The sheet `node` lies on: its parent's, the root's for `scene`, or a new one of its own. */
 function paintingNodeSheet(node: LayerNode, medium: MediumName, parent: PaintingSheet, root: PaintingSheet): PaintingSheet {
   if (!node.sheet) return parent;
   if (node.sheet.kind === 'scene') return root;
-  return { owner: node.key, paper: node.sheet.paper, edge: 'union', card: paintingSheetCardLook(node.sheet.card), water: medium, dryingScale: node.sheet.dryingScale ?? 1 };
+  return { owner: node.key, paper: node.sheet.paper, edge: paintingSheetCardEdge(node.sheet.card), card: paintingSheetCardLook(node.sheet.card), water: medium, dryingScale: node.sheet.dryingScale ?? 1 };
 }
 
 /** A sheet as problems and summaries name it: "the root's sheet", "heron's own sheet". */

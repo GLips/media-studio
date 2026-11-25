@@ -136,16 +136,19 @@ export type Paper = {
 export type DryingScale = number | 'instant' | 'never';
 
 /**
- * How an own sheet's card catches its shot's light. Left out, as cut paper: a short soft shadow away from the light,
- * lifted `lift` px (0.7), and a `rim`, a dark cut line with a pale lip where the edge faces the light. `flat`:
- * neither. A field left out stays on.
+ * How an own sheet's card catches the light. Left out, as cut paper: a soft shadow lifted `lift` px (0.7), and
+ * a `rim`, a dark cut line with a pale lip; a field left out stays on. `flat`: neither. `figure`: a
+ * figure over footage, unlit: its paper covers the region, thinning `fadePx` (10) past it under its paint.
  */
-export type SheetCard = 'flat' | { readonly shadow?: boolean; readonly rim?: boolean; readonly lift?: number };
+export type SheetCard =
+  | 'flat'
+  | { readonly shadow?: boolean; readonly rim?: boolean; readonly lift?: number; readonly figure?: never; readonly fadePx?: never }
+  | { readonly figure: Region; readonly fadePx?: number; readonly shadow?: never; readonly rim?: never; readonly lift?: never };
 
 /**
  * What a layer or group is painted on. Left out: its parent's sheet. `own`: a new sheet of `paper`, a card hiding
- * what's behind as far as its layers' paint lies, at its own `dryingScale` (1), lit as `card` says. `scene`: the
- * root's sheet, at the root's scale. Layers on one sheet share its wet history and clock.
+ * what's behind where its paint (or `card`'s figure) lies, at its own `dryingScale` (1), lit as `card` says.
+ * `scene`: the root's sheet, at the root's scale. Layers on one sheet share its wet history and clock.
  */
 export type Sheet =
   | { readonly kind: 'own'; readonly paper: Paper; readonly dryingScale?: DryingScale; readonly card?: SheetCard }

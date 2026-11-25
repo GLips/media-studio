@@ -68,6 +68,8 @@ export function paintSubject<I extends SubjectIds, O extends object, Slot extend
     paints,
     paintedParts: (slot) => [...subject.parts.values()].filter(isVisiblePart).filter((part) => !owned.replaced(part.ref, slot)),
     paintedFeatures: (slot) => [...subject.features.values()].filter(isVisibleFeature).filter((feature) => !owned.replaced(feature.ref, slot)),
+    keepsGround: owned.keepsGround,
+    reservedGrounds: owned.reservedGrounds,
     intent: owned.intent,
     optionsFor: owned.optionsFor,
     report: ({ severity, address, message, fix }) => diagnostics.push(problem(severity, 'painter-report', address, message, fix)),

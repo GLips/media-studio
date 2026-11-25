@@ -4,7 +4,8 @@
 // options a tune may set per target and the intent fields it interprets; paintSubject refuses the rest.
 //
 // The context hands it ownership already resolved: what a replacement took over and what is hidden is left out of
-// paintedParts and paintedFeatures, so a shared wash is planned without them rather than dropped.
+// paintedParts and paintedFeatures, so a shared wash is planned without them rather than dropped; and the ground
+// each replacement needs, so paper under a glaze is kept.
 
 import type { LayerNode } from '#lib/paint/document/models/painting-document.ts';
 import type { SubjectWithEvidence } from '#lib/paint/subject/models/subject-check.ts';
@@ -87,8 +88,8 @@ export type SubjectPainterReport = { readonly severity: 'error' | 'warning'; rea
 
 /**
  * What a painter's `paint` reads: the subject, narrowed to its evidence; options; the key builder; which targets it
- * still paints in each slot (`paintedParts`, `paintedFeatures`: visible and not replaced); each target's resolved
- * intent and options; and `report` for anything it noticed.
+ * still paints in each slot (`paintedParts`, `paintedFeatures`: visible and not replaced); the ground replacements
+ * need; each target's resolved intent and options; and `report` for anything it noticed.
  */
 export type SubjectPainterContext<S extends Subject, O, Slot extends string> = {
   readonly subject: S;
@@ -102,6 +103,13 @@ export type SubjectPainterContext<S extends Subject, O, Slot extends string> = {
   readonly paintedParts: (slot: Slot) => readonly VisibleSubjectPart[];
   /** The features the painter paints in `slot`, in declaration order. */
   readonly paintedFeatures: (slot: Slot) => readonly VisibleSubjectFeature[];
+  /**
+   * Whether the paper the painter would keep clear under `target` stays clear: true while it paints the target, and
+   * for a replacement's targets unless it paints over the automatic paint or reserves a ground of its own.
+   */
+  readonly keepsGround: (target: PaintableRef) => boolean;
+  /** Areas replacements keep as paper: reserve each from every automatic wash laid over it. */
+  readonly reservedGrounds: readonly SubjectArea[];
   readonly intent: (target: PaintableRef) => ResolvedSubjectIntent;
   /** `options` with every tune that reaches `target` over them, its owner part's first. */
   readonly optionsFor: (target: PaintableRef) => O;

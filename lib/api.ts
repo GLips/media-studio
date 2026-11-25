@@ -161,6 +161,7 @@ export { subjectIntent, subjectReplace, subjectTune, type SubjectOverride, type 
 export { paintSubject, requireSubjectPainting, type SubjectOverridesFor, type SubjectPainting } from '#lib/paint/subject-painting/models/paint-subject.ts';
 export { type SubjectPaintingDiagnostic, type SubjectPaintingReport } from '#lib/paint/subject-painting/models/subject-painting-report.ts';
 export { subjectAreaRegion, subjectPathSubpaths } from '#lib/paint/subject-painting/models/subject-document-geometry.ts';
+export { SUBJECT_FIGURE_CARD_FADE, SUBJECT_GROUND_SLOT, subjectFigureCard } from '#lib/paint/subject-painting/models/subject-figure-card.ts';
 export { subjectAreasUnion } from '#lib/paint/subject/models/subject-area-union.ts';
 export {
   WATERCOLOR_SUBJECT_DEFAULTS, watercolorSubjectPainter,

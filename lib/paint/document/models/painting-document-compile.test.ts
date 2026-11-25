@@ -10,6 +10,7 @@ import { painting, type PaintingEvaluation } from './painting-source.ts';
 import { paintingTestBrushOf, paintingTestBrushSpanning } from './painting-test-brush.ts';
 import * as meadow from './meadow.painting.ts';
 import { stampMarksList } from '#lib/paint/brush/models/stamp-mark-rows.ts';
+import { STAMP_FIGURE_CARD_FADE_PX } from '#lib/paint/painting/models/stamp-card-edge.ts';
 
 const brushOf = paintingTestBrushOf;
 /** `evaluation`'s root sheet as its program, every layer selected. */
@@ -102,7 +103,7 @@ test("a selection's sheets: an own sheet's card before all under its owner, a ne
   assert.deepEqual(wing.sheets[0].program.entries.map(({ chain }) => chain), [[1, 3, 7]]);
 });
 
-test("a flat own sheet lays its card and no rim; one turning only its shadow off keeps its rim", () => {
+test("a flat own sheet lays its card and no rim; one turning only its shadow off keeps its rim; a figure card lies flat, cut round its figure", () => {
   const document = (card: SheetCard): PaintingDocument => ({
     widthPx: 100, heightPx: 100, paper: { color: '#ffffff', absorbency: 0.5 }, medium: 'watercolour',
     layers: [{ key: 'leaf', sheet: { ...OWN, card }, children: [dab('blade')] }],
@@ -110,6 +111,10 @@ test("a flat own sheet lays its card and no rim; one turning only its shadow off
   const steps = (card: SheetCard) => compilePaintingSelection(painting({ default: () => document(card) }), brushOf).steps.map(stepText);
   assert.deepEqual(steps('flat'), ['card 1', '1/0']);
   assert.deepEqual(steps({ shadow: false }), ['card 1', '1/0', 'rim 1']);
+  const figure = { kind: 'polygon', rings: [[{ x: 10, y: 10 }, { x: 60, y: 10 }, { x: 60, y: 60 }]] } as const;
+  assert.deepEqual(steps({ figure }), ['card 1', '1/0']);
+  const { program } = compilePaintingSelection(painting({ default: () => document({ figure }) }), brushOf).sheets[1];
+  assert.deepEqual(program.edge, { kind: 'figure', rings: figure.rings, fadePx: STAMP_FIGURE_CARD_FADE_PX });
 });
 
 test("a boil epoch reseeds its layer's marks and keys alone: each epoch lays them anew, the same epoch alike", () => {
