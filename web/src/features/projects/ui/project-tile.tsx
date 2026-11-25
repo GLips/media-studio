@@ -49,7 +49,7 @@ export function ProjectTile({ project, row, now, name, siblings, cell }: Project
   return (
     <ProjectTargetLink target={{ project, on: 'file', path: artifact.path }} xstyle={styles.tile}>
       <ProjectThumbnail project={project} thumbnail={row.thumbnail} tile={cell} />
-      <Text component="span" size="md" {...stylex.props(styles.name)}><StudioSiblingName name={name} siblings={siblings} /></Text>
+      <Text component="span" size="md" {...stylex.props(styles.name)}><StudioSiblingName name={name} siblings={siblings} lines={2} /></Text>
       <Group gap="gap" {...stylex.props(styles.meta)}>
         <ProjectRowStatus threads={row.threads} />
         <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>
