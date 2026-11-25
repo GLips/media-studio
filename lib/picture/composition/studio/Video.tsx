@@ -8,7 +8,8 @@ import { Audio } from '@remotion/media';
 import { useMemo, useRef } from 'react';
 import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useRemotionEnvironment, useVideoConfig, type VideoConfig } from 'remotion';
 import { sfxSoundLabel } from '#lib/timing/sound/models/library.ts';
-import { levelGain, musicBedGainAt, VOICE_LUFS } from '#lib/timing/sound/models/mix.ts';
+import { edgeFadeGain, levelGain, musicBedGainAt, VOICE_LUFS } from '#lib/timing/sound/models/mix.ts';
+import type { LibraryVoiceSound } from '#lib/timing/voice/models/recorded-speech.ts';
 import { libraryMediaUrl } from '#lib/footage/library/studio/library-media.ts';
 import { previsRequestFor, previsSpan, type PrevisClip } from '#lib/footage/previs/studio/previs.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
@@ -148,7 +149,8 @@ export function Video({ video, previsClips, sfxCues, captions, probe, blockouts,
               ? <Audio src={cue.src} volume={levelGain(cue.lufs!, VOICE_LUFS, `line ${cue.id}`)} />
               // A stretch of a recording plays from where it starts in the file, with no copy cut.
               // …and stops at its out point: unlike a clip, the recording runs on past it.
-              : <Audio src={libraryMediaUrl(cue.src.item, cue.src.file)} trimBefore={cue.src.start * fps} trimAfter={(cue.src.start + cue.end - cue.start) * fps} volume={levelGain(cue.lufs!, VOICE_LUFS, `line ${cue.id}`)} />}
+              // …and fades at its edges, longer where an edge cuts into sound (RecordedSpeech's edges).
+              : <RecordedLineAudio src={cue.src} duration={cue.end - cue.start} gain={levelGain(cue.lufs!, VOICE_LUFS, `line ${cue.id}`)} fps={fps} />}
           </Sequence>
         ) : null,
       )}
@@ -161,6 +163,13 @@ export function Video({ video, previsClips, sfxCues, captions, probe, blockouts,
   );
 }
 
+
+function RecordedLineAudio({ src, duration, gain, fps }: { src: LibraryVoiceSound; duration: number; gain: number; fps: number }) {
+  return (
+    <Audio src={libraryMediaUrl(src.item, src.file)} trimBefore={src.start * fps} trimAfter={(src.start + duration) * fps}
+      volume={(frame) => gain * edgeFadeGain(frame / fps, duration, src.fade)} />
+  );
+}
 
 function MusicBedAudio({ video, tl, fps }: { video: VideoDef; tl: LaidVideo; fps: number }) {
   const bed = video.bed!;

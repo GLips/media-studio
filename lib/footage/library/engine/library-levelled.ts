@@ -12,6 +12,7 @@ import { LibraryMediaFolder } from '#lib/footage/library-media/engine/library-me
 import { LibrarySpeechUnmeasured } from '../models/library-errors.ts';
 import { studioUserCacheDir } from '#lib/platform/temp/engine/studio-user-cache.ts';
 import { LIBRARY_LEVELLED_LUFS, libraryLevelledProcessing, librarySpokenTracks } from '../models/library-item.ts';
+import { LIBRARY_QUIET_WINDOW, libraryQuietSpans } from '../models/library-quiet.ts';
 import { LibraryStore } from './library-store.ts';
 
 // Speech's usual range and a ceiling under clipping once the mix brings it down to the voice's level.
@@ -70,7 +71,7 @@ const levelLibraryTrack = Effect.fn('LibraryLevelled.levelTrack')(function* (id:
   const fs = yield* FileSystem.FileSystem, path = yield* Path.Path;
   const item = yield* store.readItem(id);
   const track = item.tracks[name], processing = libraryLevelledProcessing(name);
-  if (track.levelled?.processing === processing) return item;
+  if (track.levelled?.processing === processing && track.levelled.quiet) return item;
   yield* Effect.log(`levelling ${name} for the mix (${processing})`);
   // Measured and levelled after the denoise, so the loudness is the cleaned speech's. A path inside a filter is quoted.
   const denoise = processing === 'loudnorm' ? '' : `highpass=f=80:poles=2,arnndn=m='${yield* rnnoiseModel(id, name)}':mix=0.8,`;
@@ -97,5 +98,21 @@ const levelLibraryTrack = Effect.fn('LibraryLevelled.levelTrack')(function* (id:
   if (check.exitCode !== 0) return yield* new LibrarySpeechUnmeasured({ id, track: name, why: lastLine(check.stderr) });
   const lufs = ebur128IntegratedLufs(check.stderr);
   if (lufs === undefined) return yield* new LibrarySpeechUnmeasured({ id, track: name, why: `its levelled copy ${file} measures silent` });
-  return yield* store.updateItem(id, (now) => ({ ...now, tracks: { ...now.tracks, [name]: { ...now.tracks[name], levelled: { file, lufs: Math.round(lufs * 10) / 10, processing } } } }));
+  const quiet = libraryQuietSpans(yield* windowLevels(out));
+  return yield* store.updateItem(id, (now) => ({ ...now, tracks: { ...now.tracks, [name]: { ...now.tracks[name], levelled: { file, lufs: Math.round(lufs * 10) / 10, processing, quiet } } } }));
+});
+
+// Digital silence reads -inf; a floor this low is as quiet as any.
+const SILENT_DB = -120;
+
+/** `wav`'s RMS level in dBFS per LIBRARY_QUIET_WINDOW, through a file beside it: ffmpeg's stderr comes back cut short. */
+const windowLevels = Effect.fn('LibraryLevelled.windowLevels')(function* (wav: string) {
+  const ffmpeg = yield* StudioFfmpeg, fs = yield* FileSystem.FileSystem;
+  const rate = 16000, levels = `${wav}.levels.txt`;
+  const graph = `aresample=${rate},asetnsamples=n=${Math.round(rate * LIBRARY_QUIET_WINDOW)}:p=0,astats=metadata=1:reset=1:measure_overall=RMS_level:measure_perchannel=none,`
+    + `ametadata=print:key=lavfi.astats.Overall.RMS_level:file='${levels}'`;
+  yield* ffmpeg.run(['-v', 'error', '-y', '-i', wav, '-af', graph, '-f', 'null', '-']);
+  const text = yield* fs.readFileString(levels);
+  yield* fs.remove(levels);
+  return [...text.matchAll(/RMS_level=(\S+)/g)].map(([, db]) => Number.isFinite(Number.parseFloat(db)) ? Math.max(SILENT_DB, Number.parseFloat(db)) : SILENT_DB);
 });

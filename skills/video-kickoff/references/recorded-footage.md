@@ -31,6 +31,10 @@ A line is `{ speech: recording.speech(from, to) }`: timed by its stretch, worded
 recording's levelled speech. `text` cleans up the captions, its words timed from the transcript. The storyboard
 needs no `voice` unless some lines are read too. A line not yet levelled is flagged: `studio library finish <item>`.
 
+Each edge lands in the quiet beside the words, keeping the breath and the decay, and fades. An edge with no quiet
+before the next word cuts into sound and is flagged: ask for a stretch ending at a pause, or mark the line
+`hardEdge: true` when the cut-off is meant.
+
 ## The scenes
 
 Each component's props: `studio api <name>`.

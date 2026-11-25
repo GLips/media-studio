@@ -50,6 +50,8 @@ export const LibraryTrackLevelled = Schema.Struct({
   lufs: Schema.Finite,
   /** The chain it was made with, libraryLevelledProcessing's; a copy made with another (or none recorded) is stale. */
   processing: Schema.optionalKey(Schema.String),
+  /** Where the copy is quiet ([start, end] media seconds, libraryQuietSpans), which a line's edges land in. */
+  quiet: Schema.optionalKey(Schema.Array(Schema.Tuple([Schema.Finite, Schema.Finite]))),
 });
 export type LibraryTrackLevelled = typeof LibraryTrackLevelled.Type;
 

@@ -10,6 +10,17 @@ export const VOICE_LUFS = -20;
 
 export const dbToGain = (db: number) => 10 ** (db / 20);
 
+const quarterSine = (x: number) => Math.sin((Math.PI / 2) * Math.min(1, Math.max(0, x)));
+
+/**
+ * A recorded line's gain `t` seconds into its `duration`: rising over `fade.in` at its start and falling over
+ * `fade.out` at its end on a quarter sine,
+ * so a cut from a room's sound to silence (or another track's) ramps instead of clicking.
+ */
+export function edgeFadeGain(t: number, duration: number, fade: { in: number; out: number }): number {
+  return Math.min(fade.in > 0 ? quarterSine(t / fade.in) : 1, fade.out > 0 ? quarterSine((duration - t) / fade.out) : 1);
+}
+
 /** The gain that brings a source measured at `lufs` to `targetLufs`; throws if that would need a boost. */
 export function levelGain(lufs: number, targetLufs: number, what: string): number {
   const gain = dbToGain(targetLufs - lufs);

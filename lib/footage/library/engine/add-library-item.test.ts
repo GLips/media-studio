@@ -20,7 +20,7 @@ import { makeLibraryStoreLayer } from './library-store.ts';
 
 /**
  * ffprobe as a 10 s screen recording and a mic; loudnorm hears the mic at -30 LUFS and ebur128 its levelled copy at
- * -16.2; an encode writes its output file.
+ * -16.2, loud for 20 ms then quiet; an encode writes its output file.
  */
 const fakeFfmpeg = StudioFfmpeg.of({
   probe: (args) => Effect.succeed(args.includes('-show_streams')
@@ -32,7 +32,11 @@ const fakeFfmpeg = StudioFfmpeg.of({
       : '{ "input_i": "-30.0", "input_tp": "-12.0", "input_lra": "4.0", "input_thresh": "-40.0", "target_offset": "0.0" }',
     exitCode: 0,
   }),
-  run: (args) => Effect.sync(() => writeFileSync(args.at(-1) ?? '', 'encoded')),
+  run: (args) => Effect.sync(() => {
+    const levels = /file='([^']+)'/.exec(args.join(' '))?.[1];
+    if (levels) writeFileSync(levels, [-14, -14, -40, -40, -40, -40, -40].map((db, k) => `frame:${k}\nlavfi.astats.Overall.RMS_level=${db}\n`).join(''));
+    else writeFileSync(args.at(-1) ?? '', 'encoded');
+  }),
 });
 
 const fakeTranscriber = FootageTranscriber.of({ transcribe: () => Effect.succeed({ duration: 10, words: [{ text: 'Hello', start: 1, end: 1.4 }], pauses: [] }) });
@@ -92,7 +96,7 @@ test('a complete take is moved into the library, transcribed and its speech leve
   assert.equal(existsSync(take), false);
   assert.deepEqual(readdirSync(join(root, 'work/library/media', item.id)).toSorted(), ['input.jsonl', 'mic.m4a', 'proxies', 'recording.json', 'screen.mp4']);
   assert.deepEqual(heardTracks(join(root, 'work/library/items', item.id)), ['mic']);
-  assert.deepEqual(item.tracks.mic.levelled, { file: 'proxies/mic-levelled.wav', lufs: -16.2, processing: 'highpass80+rnnoise-sh-0.8+loudnorm' });
+  assert.deepEqual(item.tracks.mic.levelled, { file: 'proxies/mic-levelled.wav', lufs: -16.2, processing: 'highpass80+rnnoise-sh-0.8+loudnorm', quiet: [[0.02, 0.07]] });
   // A copy levelled before the denoise records no processing, so finish remakes it.
   const itemJson = join(root, 'work/library/items', item.id, 'item.json');
   writeFileSync(itemJson, JSON.stringify({ ...item, tracks: { ...item.tracks, mic: { ...item.tracks.mic, levelled: { file: 'proxies/mic-levelled.wav', lufs: -16.2 } } } }));

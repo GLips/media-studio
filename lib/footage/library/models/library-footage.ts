@@ -13,7 +13,7 @@ import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 import { inputLogWaypoints, type InputLog, type InputWaypoint } from '#lib/footage/input-log/models/input-log.ts';
 import type { TimedPoint } from '#lib/picture/camera/models/follow-point.ts';
 import type { SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
-import type { RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
+import type { RecordedSpeech, SpokenEdge } from '#lib/timing/voice/models/recorded-speech.ts';
 import { LibraryFileUnreadable } from './library-errors.ts';
 import { LIBRARY_ITEM_FORMAT, LibraryItem, type LibraryTrack, libraryItemTimeOf, libraryMediaTimeOf, libraryScreenPointOf } from './library-item.ts';
 
@@ -45,9 +45,9 @@ export type LibraryFootage = {
   /** Every word said on any spoken track, each with its track, in reading order (libraryTranscriptLines's); none before its transcript. */
   words: readonly LibraryWord[];
   /**
-   * The words on spoken `track` (the item's speech unless named; `system` for a call's far side) whose middles lie
-   * between `from` and `to` (item seconds), as a line's `speech`: what's said and its levelled sound. Each edge moves
-   * into the pause beside the words, so `studio library show`'s times cut cleanly. Throws when no word lies between.
+   * The words on spoken `track` (the item's speech unless named; `system` for a call's far side) with middles between
+   * `from` and `to` (item seconds), as a line's `speech` with its levelled sound. Each edge moves into the quiet
+   * beside the words; one with none to land in is `rough`, which the plan flags. Throws when no word lies between.
    */
   speech(from: number, to: number, track?: string): RecordedSpeech;
   /**
@@ -73,15 +73,26 @@ export type LibraryFootage = {
  */
 type LibraryItemJsonImport = { readonly format: string; readonly id: string };
 
-// Quiet a spoken line keeps beside its words, at most half the pause it's cut in: a soft first consonant can sit under
-// the quiet level, and a last word's decay runs longer than its attack.
-const CUT_QUIET_BEFORE = 0.15, CUT_QUIET_AFTER = 0.25;
-// A transcript places a word's edge at the pause beside it (wordsTimedAtPauses), give or take a frame of rounding.
-const WORD_EDGE_SLACK = 0.02;
+// Sound kept past an edge's quiet onset (a last word's decay into the room) and before its words (the breath).
+const EDGE_PAD_OUT = 0.1, EDGE_PAD_IN = 0.12;
+const EDGE_QUIET_MIN = 0.1;
+// Fades a recorded line plays with, by edge: a clean edge only needs the click taken off; a rough one cuts into sound.
+const EDGE_FADES = { clean: { in: 0.03, out: 0.06 }, rough: { in: 0.06, out: 0.12 } } as const;
 const round = (seconds: number) => Math.round(seconds * 1000) / 1000;
 
-/** A track a line can be spoken from, its words and pauses on item time. `untranscribed`: its transcript wasn't given. */
-type LibraryVoice = { track: LibraryTrack; words: LibraryWord[]; pauses: { start: number; end: number }[]; untranscribed?: true };
+// An edge with no quiet: midway to the neighbouring word, or with no neighbour, padded past the line's own words.
+const unquietEdge = (word: number, beside: number, pad: number) => (Number.isFinite(beside) ? (word + beside) / 2 : word + pad);
+
+/** Where `track`'s levelled copy is quiet, on item time; none before it's levelled. */
+const quietOf = (track: LibraryTrack): Span[] =>
+  (track.levelled?.quiet ?? []).map(([start, end]) => ({ start: libraryItemTimeOf(track, start), end: libraryItemTimeOf(track, end) }));
+
+type Span = { start: number; end: number };
+/**
+ * A track a line can be spoken from, on item time: its words and pauses, and where its levelled copy is quiet (none
+ * before it's levelled). `untranscribed`: its transcript wasn't given.
+ */
+type LibraryVoice = { track: LibraryTrack; words: LibraryWord[]; pauses: Span[]; quiet: Span[]; untranscribed?: true };
 
 const decodeLibraryItem = Schema.decodeUnknownResult(LibraryItem);
 const decodeLibraryTranscript = Schema.decodeUnknownResult(LibraryTranscriptFile);
@@ -105,6 +116,7 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
       track,
       words: heard.words.map((w) => ({ text: w.text, start: libraryItemTimeOf(track, w.start), end: libraryItemTimeOf(track, w.end), track: name })),
       pauses: heard.pauses.map((p) => ({ start: libraryItemTimeOf(track, p.start), end: libraryItemTimeOf(track, p.end) })),
+      quiet: quietOf(track),
     };
     return [name, voice] as const;
   }));
@@ -115,24 +127,27 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
   const voiceOf = (name: string): LibraryVoice | undefined => {
     if (voices.has(name)) return voices.get(name);
     const track = item.tracks[name];
-    return track ? { track, words: [], pauses: [], untranscribed: true } : undefined;
+    return track ? { track, words: [], pauses: [], quiet: quietOf(track), untranscribed: true } : undefined;
   };
   /**
-   * `from` and `to` moved into the pauses touching the words whose middles lie between them: a cut on a word's raw
-   * time clips its first or last sound. Words that run into the next with no pause are cut midway. With no transcript
-   * there are no pauses to cut in, so they stay.
+   * `from` and `to` moved into the quiet beside the words whose middles lie between them: the out-point a little past
+   * where the last word decays into quiet, the in-point a little before the first word's breath. With no quiet before
+   * the neighbouring word, an edge falls midway between the two, cutting into sound. Untranscribed, they stay.
    */
-  const cutInPauses = ({ words, pauses, untranscribed }: LibraryVoice, from: number, to: number) => {
+  const placeEdges = ({ words, quiet, untranscribed }: LibraryVoice, from: number, to: number) => {
     if (untranscribed) return { from, to };
     const first = words.findIndex((w) => (w.start + w.end) / 2 >= from);
     const last = words.findLastIndex((w) => (w.start + w.end) / 2 <= to);
     if (first < 0 || last < first) throw new Error(`${item.id} has no words said between ${from} and ${to} s to speak a line from`);
     const start = words[first].start, end = words[last].end;
-    const before = pauses.findLast((p) => Math.abs(p.end - start) <= WORD_EDGE_SLACK && p.start < start);
-    const after = pauses.find((p) => Math.abs(p.start - end) <= WORD_EDGE_SLACK && p.end > end);
+    const before = words[first - 1]?.end ?? -Infinity, after = words[last + 1]?.start ?? Infinity;
+    // A short quiet beside a word is often inside it (the stop before "it"'s t); prefer a pause long enough to be one.
+    const leads = quiet.filter((q) => q.start < start && q.end > before), decays = quiet.filter((q) => q.end > end && q.start < after);
+    const long = (q: Span) => q.end - q.start >= EDGE_QUIET_MIN;
+    const lead = leads.findLast(long) ?? leads.at(-1), decay = decays.find(long) ?? decays[0];
     return {
-      from: round(before ? before.end - Math.min(CUT_QUIET_BEFORE, (before.end - before.start) / 2) : (start + (words[first - 1]?.end ?? start)) / 2),
-      to: round(after ? after.start + Math.min(CUT_QUIET_AFTER, (after.end - after.start) / 2) : (end + (words[last + 1]?.start ?? end)) / 2),
+      from: round(lead ? Math.max(lead.start, Math.min(lead.end, start) - EDGE_PAD_IN) : unquietEdge(start, before, -EDGE_PAD_IN)),
+      to: round(decay ? Math.min(decay.end, Math.max(decay.start, end) + EDGE_PAD_OUT) : unquietEdge(end, after, EDGE_PAD_OUT)),
     };
   };
   const waypointsOn = (name: string, log: InputLog): LibraryScreenWaypoint[] => {
@@ -153,15 +168,18 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
       const { track } = voice;
       // A track starting on a fraction of a millisecond can round an edge on its first or last word just outside it.
       const first = libraryItemTimeOf(track, 0), last = libraryItemTimeOf(track, track.mediaSeconds);
-      const cut = cutInPauses(voice, asked, askedTo);
+      const cut = placeEdges(voice, asked, askedTo);
       const from = Math.max(first, cut.from), to = Math.min(last, cut.to);
       const heard = voice.words.filter((w) => (w.start + w.end) / 2 >= from && (w.start + w.end) / 2 <= to)
         .map((w) => ({ text: w.text, start: Math.max(0, w.start - from), end: Math.min(to - from, w.end - from) }));
       // A stretch reaching outside the track has no sound there to play.
       if (from < first || to > last) throw new Error(`${item.id}'s ${name} runs ${first.toFixed(3)}–${last.toFixed(3)} s: a line can't be spoken from ${from}–${to} s`);
+      const edgeAt = (t: number): SpokenEdge => (voice.quiet.some((q) => q.start <= t && t <= q.end) ? 'clean' : 'rough');
+      const edges = { in: edgeAt(from), out: edgeAt(to) };
+      const fade = { in: EDGE_FADES[edges.in].in, out: EDGE_FADES[edges.out].out };
       const { levelled } = track;
-      const sound = levelled ? { item: item.id, file: levelled.file, start: libraryMediaTimeOf(track, from), lufs: levelled.lufs } : null;
-      return { item: item.id, from, to, heard, sound };
+      const sound = levelled ? { item: item.id, file: levelled.file, start: libraryMediaTimeOf(track, from), fade, lufs: levelled.lufs } : null;
+      return { item: item.id, from, to, heard, edges, sound };
     },
     waypointsOn,
     cursorOn(name, log) {

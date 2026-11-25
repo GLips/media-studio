@@ -38,7 +38,12 @@ export type StoryboardReadLine = StoryboardLineMarks & {
  * captions and sounds it. `text`, when given, is how it's captioned and cued in place of what the transcript heard
  * (a misheard name, `*emphasis*`), a word for each word said.
  */
-export type StoryboardSpokenLine = StoryboardLineMarks & { speech: RecordedSpeech; text?: string };
+export type StoryboardSpokenLine = StoryboardLineMarks & {
+  speech: RecordedSpeech;
+  text?: string;
+  /** An edge cutting into sound is meant (a word cut off on purpose), so the plan doesn't flag it. */
+  hardEdge?: true;
+};
 
 export type StoryboardLine = StoryboardReadLine | StoryboardSpokenLine;
 

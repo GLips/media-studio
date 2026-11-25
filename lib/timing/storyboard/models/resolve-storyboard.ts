@@ -111,6 +111,10 @@ function spokenLine(scene: string, id: string, line: StoryboardSpokenLine, diagn
     diagnostics.push({ scene, line: id, message: `${speech.item}'s speech isn't levelled for the mix yet: run studio library finish ${speech.item}` });
     return { line: { src: null, duration, words: alignSpokenWords(text, speech.heard, duration).words, text, caption, paragraph, lufs: null, pauseBefore: null }, read: 'estimated' };
   }
+  for (const edge of (['in', 'out'] as const).filter((e) => speech.edges[e] === 'rough' && !line.hardEdge)) {
+    const at = edge === 'in' ? speech.from : speech.to;
+    diagnostics.push({ scene, line: id, message: `its ${edge}-point (${at} s of ${speech.item}) cuts into sound, with no quiet ${edge === 'in' ? 'after the word before' : 'before the next word'}: move the edge to a pause, take another take, split the line, or mark it hardEdge` });
+  }
   const { lufs, ...src } = speech.sound;
   return { line: { src, lufs, speech: { item: speech.item, from: speech.from, to: speech.to }, duration, words: alignSpokenWords(text, speech.heard, duration).words, text, caption, paragraph, pauseBefore: null }, read: 'spoken' };
 }
