@@ -3,10 +3,10 @@
 // side (stampGridContours, so an outline is sub-pixel and as fine as the field, not stair-stepped), then
 // Douglas–Peucker, then Chaikin rounds so a corner the grid cut reads drawn.
 //
-// Negative space: holes are dropped. A StampRegion is one loop, so a piece is its outer loop with any hole filled; a
-// part seen through a hole is painted after, over it.
+// Holes: tracePaintFigureArea keeps them, for an area read even-odd; tracePaintFigurePieces fills them, since a
+// StampRegion is one loop and a part seen through a hole is painted after, over it.
 
-import { stampGridContours, stampRingArea, type StampGrid, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
+import { stampGridContours, stampRingArea, stampRingsCross, type StampGrid, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 
 /** How a traced outline is cleaned: points within `tolerance` px of a straight run are dropped, then `smoothing` Chaikin rounds. */
 export type PaintFigureTraceSettings = { readonly tolerance: number; readonly smoothing: number };
@@ -67,19 +67,30 @@ function cropToInside(grid: StampGrid): StampGrid | undefined {
   return { x0: grid.x0 + i0 * grid.cell, y0: grid.y0 + j0 * grid.cell, cell: grid.cell, columns, rows, values };
 }
 
+/** A field's traced area: its outer loops and its holes, each largest first, simplified and smoothed. */
+export type PaintFigureTracedArea = { readonly outers: readonly StampPoint[][]; readonly holes: readonly StampPoint[][] };
+
 /**
- * The separate pieces where `grid` is above 0, largest first, each its outer loop simplified and smoothed. The grid's
- * border must lie below 0 (sources pad their grids), or a piece touching it comes back open and is dropped.
+ * Where `grid` is above 0, as outer loops and holes. The grid's border must lie below 0 (sources pad their grids), or
+ * a piece touching it comes back open and is dropped. A hole whose smoothed loop crosses another loop is dropped: its
+ * rim was under a pixel, not a gap anyone drew.
  */
-export function tracePaintFigurePieces(grid: StampGrid, settings: PaintFigureTraceSettings = PAINT_FIGURE_TRACE_DEFAULTS): StampPoint[][] {
+export function tracePaintFigureArea(grid: StampGrid, settings: PaintFigureTraceSettings = PAINT_FIGURE_TRACE_DEFAULTS): PaintFigureTracedArea {
   const cropped = cropToInside(grid);
-  if (!cropped) return [];
+  if (!cropped) return { outers: [], holes: [] };
   // Specks under a cell across are the grid's noise, not a shape anyone drew.
   const smallest = grid.cell * grid.cell;
-  return stampGridContours(cropped, 0)
-    // An outer loop's area is positive as stampGridContours walks it; a hole's is negative, and dropped here.
+  const loops = stampGridContours(cropped, 0)
+    // An outer loop's area is positive as stampGridContours walks it; a hole's is negative.
     .map((loop) => ({ loop, area: stampRingArea(loop) }))
-    .filter(({ area }) => area > smallest)
-    .toSorted((a, b) => b.area - a.area)
-    .map(({ loop }) => smoothPaintFigureLoop(simplifyPaintFigureLoop(loop, settings.tolerance), settings.smoothing));
+    .filter(({ area }) => Math.abs(area) > smallest)
+    .toSorted((a, b) => Math.abs(b.area) - Math.abs(a.area))
+    .map(({ loop, area }) => ({ ring: smoothPaintFigureLoop(simplifyPaintFigureLoop(loop, settings.tolerance), settings.smoothing), outer: area > 0 }));
+  const outers = loops.filter(({ outer }) => outer).map(({ ring }) => ring);
+  const holes = loops.filter(({ outer }) => !outer).map(({ ring }) => ring);
+  return { outers, holes: holes.filter((hole, i) => ![...outers, ...holes.slice(0, i)].some((other) => stampRingsCross(hole, other))) };
 }
+
+/** The separate pieces where `grid` is above 0, largest first, each its outer loop with any hole filled. */
+export const tracePaintFigurePieces = (grid: StampGrid, settings: PaintFigureTraceSettings = PAINT_FIGURE_TRACE_DEFAULTS): StampPoint[][] =>
+  [...tracePaintFigureArea(grid, settings).outers];

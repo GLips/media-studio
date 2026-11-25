@@ -7,10 +7,15 @@ export type SubjectIdKind = 'subject' | 'part' | 'feature' | 'material' | 'frame
 /** A string that has passed the id grammar for one kind of id. */
 export type SubjectIdOf<K extends SubjectIdKind> = string & { readonly [subjectIdKind]: K };
 
+/** A subject's id, kebab-case: the first segment of every key its painting makes. */
 export type SubjectId = SubjectIdOf<'subject'>;
+/** A part's id, kebab-case, stable while the part is hidden: `glove-left`, `head`. */
 export type PartId = SubjectIdOf<'part'>;
+/** A feature's id, kebab-case: a line, region or landmark on its owner part, as `mouth` or `brow-left`. */
 export type FeatureId = SubjectIdOf<'feature'>;
+/** A material's id, kebab-case: what parts wear, holding a local colour, as `skin` or `brand-blue`. */
 export type MaterialId = SubjectIdOf<'material'>;
+/** A local frame's id, kebab-case, as `face`: where a replacement paints in the subject's own coordinates. */
 export type FrameId = SubjectIdOf<'frame'>;
 /** A set of features painted or replaced together, such as `face`. */
 export type FeatureGroupId = SubjectIdOf<'feature-group'>;

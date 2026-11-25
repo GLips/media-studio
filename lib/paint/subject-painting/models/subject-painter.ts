@@ -85,6 +85,11 @@ export type SubjectContribution<Slot extends string = string> = {
 /** Something the painter noticed while painting, as a structured report: a warning, or an error that fails the painting. */
 export type SubjectPainterReport = { readonly severity: 'error' | 'warning'; readonly address: string; readonly message: string; readonly fix: string };
 
+/**
+ * What a painter's `paint` reads: the subject, narrowed to its evidence; options; the key builder; which targets it
+ * still paints in each slot (`paintedParts`, `paintedFeatures`: visible and not replaced); each target's resolved
+ * intent and options; and `report` for anything it noticed.
+ */
 export type SubjectPainterContext<S extends Subject, O, Slot extends string> = {
   readonly subject: S;
   /** The painter's defaults with the call's options over them. */

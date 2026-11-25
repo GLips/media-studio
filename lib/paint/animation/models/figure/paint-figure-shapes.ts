@@ -7,7 +7,7 @@
 // edge) and `depth` (px from the eye; a 2D source ranks its parts), and `union`, the silhouette, signed as `visible`.
 
 import { stampGridAt, type StampGrid, type StampPoint, type StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
-import { PAINT_FIGURE_TRACE_DEFAULTS, tracePaintFigurePieces, type PaintFigureTraceSettings } from './paint-figure-trace.ts';
+import { PAINT_FIGURE_TRACE_DEFAULTS, tracePaintFigureArea, type PaintFigureTracedArea, type PaintFigureTraceSettings } from './paint-figure-trace.ts';
 
 /** One part as it shows: hidden in this pose and view, or shown as its visible pieces, largest first, holes filled. */
 export type PaintFigurePart = { readonly kind: 'hidden' } | { readonly kind: 'shown'; readonly pieces: readonly [StampRegion, ...StampRegion[]] };
@@ -95,25 +95,47 @@ function partLines(loop: readonly StampPoint[], index: number, cell: number, uni
   return runs.filter((points) => points.length >= 3 && longEnough(points));
 }
 
+/** A part as traced: its area's outer loops and holes, and the interior lines it draws (the edges where it is in front). */
+export type PaintFigureTracedPart = PaintFigureTracedArea & { readonly lines: readonly (readonly StampPoint[])[] };
+
+/** Every part's traced area and lines, and the silhouette's area, before they become regions. */
+export type PaintFigureTrace<P extends string> = {
+  readonly silhouette: PaintFigureTracedArea;
+  readonly parts: Readonly<Record<P, PaintFigureTracedPart>>;
+};
+
+/** Traces every part's visible field, the union, and the lines between parts. */
+export function tracePaintFigureFields<P extends string>(fields: PaintFigureFields<P>, trace: PaintFigureTraceSettings = PAINT_FIGURE_TRACE_DEFAULTS): PaintFigureTrace<P> {
+  const union = gridOf(fields.sampling, fields.union);
+  const grids = fields.parts.map((part) => ({ visible: gridOf(fields.sampling, part.visible), depth: gridOf(fields.sampling, part.depth) }));
+  // SAFETY: filled below from fields.parts, which a source builds with every name its declaration has, once each.
+  const parts = {} as Record<P, PaintFigureTracedPart>;
+  fields.parts.forEach((part, k) => {
+    const area = tracePaintFigureArea(grids[k].visible, trace);
+    parts[part.name] = { ...area, lines: area.outers.flatMap((loop) => partLines(loop, k, fields.sampling.cell, union, grids)) };
+  });
+  return { silhouette: tracePaintFigureArea(union, trace), parts };
+}
+
 /** The shared stage: traces every part's visible field, the union and the lines between parts. */
 export function paintFigureShapesFromFields<P extends string, A extends string>(
   fields: PaintFigureFields<P>,
   anchors: Readonly<Record<A, StampPoint>>,
   trace: PaintFigureTraceSettings = PAINT_FIGURE_TRACE_DEFAULTS,
 ): PaintFigureShapes<P, A> {
-  const union = gridOf(fields.sampling, fields.union);
-  const outlines = tracePaintFigurePieces(union, trace);
+  const traced = tracePaintFigureFields(fields, trace);
+  const outlines = traced.silhouette.outers;
   if (outlines.length === 0) throw new Error('paintFigureShapesFromFields: the figure has no area; its parts are all empty');
-  const grids = fields.parts.map((part) => ({ visible: gridOf(fields.sampling, part.visible), depth: gridOf(fields.sampling, part.depth) }));
-  const traced = fields.parts.map((part, k) => ({ name: part.name, pieces: tracePaintFigurePieces(grids[k].visible, trace) }));
   // SAFETY: filled below from fields.parts, which a source builds with every name its declaration has, once each.
   const parts = {} as Record<P, PaintFigurePart>;
-  for (const { name, pieces: [largest, ...rest] } of traced) parts[name] = largest ? { kind: 'shown', pieces: [polygon(largest), ...rest.map(polygon)] } : { kind: 'hidden' };
-  const lines = traced.flatMap(({ pieces }, k) => pieces.flatMap((loop) => partLines(loop, k, fields.sampling.cell, union, grids)));
+  for (const { name } of fields.parts) {
+    const [largest, ...rest] = traced.parts[name].outers;
+    parts[name] = largest ? { kind: 'shown', pieces: [polygon(largest), ...rest.map(polygon)] } : { kind: 'hidden' };
+  }
   return {
     parts,
     silhouette: { region: polygon(outlines[0]), pieces: outlines.map(polygon), outline: [...outlines[0], outlines[0][0]] },
-    lines,
+    lines: fields.parts.flatMap(({ name }) => traced.parts[name].lines),
     anchors,
   };
 }

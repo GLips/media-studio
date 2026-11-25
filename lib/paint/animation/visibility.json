@@ -4,5 +4,6 @@
   "lib/paint/shot": "A shot's camera, clocks, motion nodes and plays are the animation feature's, over occurrences.",
   "lib/paint/document": "A sheet program is posed before its solve by each group's map, a similarity (painting-pose.ts).",
   "lib/paint/gate": "The gate poses its paper heron by a similarity, and checks where the pose puts its paint by the same map.",
-  "lib/paint/paper-kit": "A construction folds by a rise that may vary in time, a presentation value; the diorama focus is a paint camera focus."
+  "lib/paint/paper-kit": "A construction folds by a rise that may vary in time, a presentation value; the diorama focus is a paint camera focus.",
+  "lib/paint/subject": "A primitive figure becomes a subject from its analytic projection: its traced areas, lines, anchors' sight and the normals of its primitives."
 }

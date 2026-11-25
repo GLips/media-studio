@@ -16,6 +16,7 @@ import type { PaintingStill, PaintingStillOutcome, PaintingStillRequest } from '
 import { checkPaintingSourceFile, paintingStylesBrushOf, readPaintingSourceStyles } from './painting-source-load.ts';
 
 const STILL_PAGE = fileURLToPath(new URL('../studio/painting-still-page.ts', import.meta.url));
+const STILL_PAGE_STYLES = fileURLToPath(new URL('../studio/painting-still-styles.ts', import.meta.url));
 
 /**
  * A still's run: the source's problems; its still when none is an error and the solve painted it; else what the solve
@@ -39,7 +40,7 @@ export async function paintPaintingSourceStill(
     packUrls: Object.fromEntries([...styles.values()].flatMap(({ packUrls }) => Object.entries(packUrls))),
   };
   const outcome = await withBrowserModulePage(
-    { entry: STILL_PAGE, filesDir: STUDIO_STYLES_DIR, alias: { '@painting-source': resolve(file) } },
+    { entry: STILL_PAGE, filesDir: STUDIO_STYLES_DIR, alias: { '@painting-source': resolve(file), '@stamp-paint-styles': STILL_PAGE_STYLES } },
     (call) => call<PaintingStillOutcome>('drawPaintingStill', request),
   );
   return 'still' in outcome ? { problems, still: outcome.still, refused: null } : { problems, still: null, refused: outcome.refused };

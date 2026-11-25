@@ -24,6 +24,7 @@ export type SubjectHex = `#${string}`;
 export type PartRef = { readonly kind: 'part'; readonly id: PartId };
 export type FeatureRef = { readonly kind: 'feature'; readonly id: FeatureId };
 export type MaterialRef = { readonly kind: 'material'; readonly id: MaterialId };
+/** A typed reference to a part, feature or material, as reports and contributions name them. */
 export type SubjectRef = PartRef | FeatureRef | MaterialRef;
 /** What paint is laid for: a part or a feature. A material is painted through the parts that wear it. */
 export type PaintableRef = PartRef | FeatureRef;
@@ -40,6 +41,10 @@ export type SubjectMaterial = { readonly id: MaterialId; readonly ref: MaterialR
 /** `far`: the projection found the part on the far side of the figure, turned from the viewer. */
 export type SubjectPartSide = 'near' | 'far';
 
+/**
+ * A part: what exists, by a stable id. `side` is the view's fact (far: across the subject from the viewer), and
+ * `visibility` its area in this view, with holes and pieces, hidden when nothing of it shows.
+ */
 export type SubjectPart = {
   readonly id: PartId;
   readonly ref: PartRef;
@@ -49,7 +54,11 @@ export type SubjectPart = {
   readonly visibility: Visibility<SubjectArea>;
 };
 
-/** Where a line comes from: drawn by the design, where materials meet, where a form turns past an occluder, or a crease. */
+/**
+ * Where a line comes from: drawn by the design, where materials meet, a crease, or `occluding-edge`, where a part's
+ * form turns past another part behind it. The outline against the background is never a feature: it is the subject's
+ * `silhouette`, which a painter outlines or not as its style asks.
+ */
 export type SubjectLineKind = 'authored' | 'material-boundary' | 'occluding-edge' | 'crease';
 
 type SubjectFeatureCommon = {
@@ -61,9 +70,13 @@ type SubjectFeatureCommon = {
 };
 
 export type SubjectPathFeature = SubjectFeatureCommon & { readonly kind: 'path'; readonly line: SubjectLineKind; readonly visibility: Visibility<SubjectPath> };
-/** A region on its owner part, such as a pupil or a mouth. `material` when it wears its own; its owner's otherwise. */
+/**
+ * A region on its owner part, such as a pupil or a mouth: a decal lying within the owner's area, which takes it in.
+ * `material` when it wears its own; its owner's otherwise.
+ */
 export type SubjectRegionFeature = SubjectFeatureCommon & { readonly kind: 'region'; readonly material?: MaterialId; readonly visibility: Visibility<SubjectArea> };
 export type SubjectLandmarkFeature = SubjectFeatureCommon & { readonly kind: 'landmark'; readonly visibility: Visibility<SubjectLandmarkPoint> };
+/** A feature on its owner part: a path (a line of some kind), a region (a decal within its owner) or a landmark. */
 export type SubjectFeature = SubjectPathFeature | SubjectRegionFeature | SubjectLandmarkFeature;
 
 declare const subjectDeclaredIds: unique symbol;
@@ -264,8 +277,11 @@ export function defineSubject<
 
 /** The part named `id`, or undefined. Takes a plain string, as a selector or a binding's data holds one. */
 export const findSubjectPart = (subject: Subject, id: string) => subject.parts.get(subjectIdFromChecked('part', id));
+/** The feature named `id`, or undefined. */
 export const findSubjectFeature = (subject: Subject, id: string) => subject.features.get(subjectIdFromChecked('feature', id));
+/** The material named `id`, or undefined. */
 export const findSubjectMaterial = (subject: Subject, id: string) => subject.materials.get(subjectIdFromChecked('material', id));
+/** The frame named `id`, or undefined. */
 export const findSubjectFrame = (subject: Subject, id: string) => subject.frames.get(subjectIdFromChecked('frame', id));
 
 /** The material a part or feature wears: a region feature's own, else its owner part's. */

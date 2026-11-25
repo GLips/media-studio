@@ -22,6 +22,7 @@ export type SubjectPaintingDiagnosticCode =
   | 'painter-report'
   | 'solve-failure';
 
+/** A subject painting's problem: any subject diagnostic, or one about the painter, its options, an override, or a key. */
 export type SubjectPaintingDiagnostic = SubjectDiagnostic<SubjectPaintingDiagnosticCode>;
 
 /** What one override reached. `hidden`: the targets it matched that don't show in this view, so drew nothing. */
@@ -61,6 +62,11 @@ export type SubjectKeyProvenance = {
   readonly targets: readonly string[];
 };
 
+/**
+ * What a painting did, targets as `part:belly`: what overrides matched, which were hidden, each target's intent, the
+ * replacements, every contribution in order, and `provenance` from each document key back to the contribution and
+ * targets that made it; warnings too.
+ */
 export type SubjectPaintingReport = {
   readonly subject: string;
   readonly painter: string;

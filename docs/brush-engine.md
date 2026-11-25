@@ -10,9 +10,11 @@ gate               → shot, document, style, three-layers, animation, brush-pac
 studies            → style, brush-packs, painting, materials, brush
 brush-fidelity     → brush-packs, photoshop-brushes, procreate-brushes, painting, brush
 shot               → document, style, three-layers, animation, rig, painting, brush, picture/lens, picture/profiling
+subject-painting   → document, subject, painting, picture/motion
 document           → style, animation, brush-packs, painting, materials, brush
 style              → three-layers, animation, brush-packs, painting, materials, brush
 three-layers       → animation, painting
+subject            → animation, painting, picture/shot-camera
 animation          → painting, brush
 rig                → painting
 brush-packs        → photoshop-brushes, procreate-brushes, painting, materials, brush, platform/zip
@@ -576,7 +578,45 @@ its caller releases them, and places each own sheet by its owner chain's map; `s
 a selected layer's film back through its prefix (a `LayerSelection`, `painting-selection.ts`), its coverage
 (`paintingFilmCoverage`) or its picture (`paintingFilmPicture`); `engine/painting-still.ts` resolves its
 brushes and papers from `work/styles/` and has `studio/painting-still-page.ts` solve and lay it, for `studio paint
-still` and `studio paint check --solve`.
+still` and `studio paint check --solve`. The page bundles the source with `@stamp-paint-styles` as an empty stand-in
+(`studio/painting-still-styles.ts`), so a source importing `#studio` bundles; its brushes come from Node.
+
+**subject** and **subject-painting** paint a figure whole in a style, with nothing written for the pairing. Two
+questions stay apart: what the figure is and what shows (the subject), and how a style paints it (the painter).
+
+A `Subject` (`subject/models/subject.ts`, built by `defineSubject`) names its materials, parts, features and frames by
+kebab-case id, each id typed through to the selectors. A part holds its visibility in page pixels: a `SubjectArea`, rings
+read even-odd, or hidden. Parts' areas tile the silhouette, which the subject holds once (`silhouette`); the painting
+check refuses rings that cross or touch, so a painter washing parts together asks `subjectAreasRegion`, which redraws
+their union (`subject-area-union.ts`) rather than handing over touching rings. A feature is a landmark, a region (a decal
+lying inside its owner's area, which its owner's area already covers) or a path with a line kind: `authored` (a brow),
+`crease`, `material-boundary` or `occluding-edge`, which is only where one part lies in front of another, never the
+silhouette. Evidence is optional and named: `surface` (normals and depth on a sample grid) and `illumination` (a key and
+fills in view space). A painter declares the evidence it reads; `requireSubjectEvidence` refuses a subject without it.
+Two adapters build subjects. `defineSubjectFromThree` (`subject-three.ts`) projects an annotated three.js scene: each
+mesh is a part, a region, a path or unpainted, rasterised on a sample grid, nearest surface wins, outlines drawn only
+where a nearer part covers a farther one. `definePrimitiveSubject` (`subject-primitive.ts`) projects a posed primitive
+figure: each part's area is the samples where it is the nearest inside, traced with no smoothing so neighbours share
+their seam (`traceArea` on the figure's projection).
+
+A painter (`subject-painting/models/subject-painter.ts`, made by `defineSubjectPainter`) declares its id, the evidence
+it reads, its defaults, its slots back to front, the slot a whole replacement sits at, the controls a tune may set per
+target and the intent fields it reads. Its `paint` returns contributions, each a slot, the targets it painted and layers
+keyed by `subjectPaintKey`, so a key names the subject, the pass and the target and never moves when another part is
+hidden or tuned. `paintSubject` (`paint-subject.ts`) resolves overrides first: `subjectIntent` and `subjectTune` reach a
+selection's targets (a tuned target washes apart under a key of its own), and `subjectReplace` takes targets out of a
+slot, or out of every slot with `all`, and calls the replacement's own `paint`, in a frame when it names one
+(`subject-frame.ts`). The painter plans from `paintedParts` and `paintedFeatures`, which leave out what is hidden or
+replaced; contributing a replaced target is an error. The report (`subject-painting-report.ts`) maps each document key
+back to its slot and targets, so `traceSubjectPaintingProblems` names the part behind a painting-check problem.
+
+The painters live in `subject-painting/models/painters/`: `watercolor.ts`, `gouache.ts` and `line.ts`, over shared
+helpers for grouping parts by material and intent (`subject-paint-plan.ts`), light zones read from the surface normals
+(`subject-light-zones.ts`, three treatments: `soft`, `cel`, `cel-full`), colour arithmetic and line strokes. Each is a
+factory over a binding: a style's brushes, pigments and paper colour. A style adds its painter in
+`work/styles/<name>/subject-painter.ts`, binding one of these to its brushes; a new medium is a new painter here, with
+its slots, its defaults and `checkOptions` for their ranges. A painter's tests paint a small subject of rectangles on a
+ball's surface and assert keys, contributions and order, never pixels (`watercolor.test.ts`).
 
 **shot** is what a scene puts on screen from evaluations: a plane shows a `LayerSelection` (`layersOf`, the
 document's, as a film readback reads one), `dissolve` blends two, `paintedSourceShares` weighs the selections a dissolve blends (linear in

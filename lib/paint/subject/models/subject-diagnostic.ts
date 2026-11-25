@@ -17,6 +17,10 @@ export type SubjectDiagnosticCode =
   | 'missing-frame'
   | 'unmatched-selector';
 
+/**
+ * One problem, structured: its code, whether it stops the painting, the address of the target or override it is
+ * about (`part:belly`, `overrides[2]`), what is wrong and how to fix it.
+ */
 export type SubjectDiagnostic<C extends string = SubjectDiagnosticCode> = {
   readonly code: C;
   readonly severity: SubjectDiagnosticSeverity;

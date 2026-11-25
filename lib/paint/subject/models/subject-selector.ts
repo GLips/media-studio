@@ -19,15 +19,21 @@ export type SubjectSelector<I extends SubjectIds = SubjectIds> =
 /** What a replacement may take over: geometry with an owner, so parts, features and groups of features. */
 export type PaintableSelector<I extends SubjectIds = SubjectIds> = PartSelector<I['part']> | FeatureSelector<I['feature']> | FeatureGroupSelector<I['group']>;
 
+/** Selects one part by id; with a declared subject, an id it lacks fails to compile. A part owns its features. */
 export const selectPart = <const P extends string>(id: P): PartSelector<P> => ({ kind: 'part', id });
+/** Selects one feature (a line, region or landmark) by id. */
 export const selectFeature = <const F extends string>(id: F): FeatureSelector<F> => ({ kind: 'feature', id });
+/** Selects every feature in a group, as `face`: what a face replacement takes over. */
 export const selectFeatureGroup = <const G extends string>(id: G): FeatureGroupSelector<G> => ({ kind: 'feature-group', id });
+/** Selects every part and region wearing a material: for intents and tunes, never a replacement. */
 export const selectMaterial = <const M extends string>(id: M): MaterialSelector<M> => ({ kind: 'material', id });
+/** Selects every part and feature carrying a tag, as `eye` or `belly`: for intents and tunes. */
 export const selectTag = <const T extends string>(id: T): TagSelector<T> => ({ kind: 'tag', id });
 
 /** A selector as a diagnostic or report prints it: `part:belly`, `feature-group:face`. */
 export const subjectSelectorText = (selector: SubjectSelector) => `${selector.kind}:${selector.id}`;
 
+/** What a selector reaches and an intent or tune applies to: a part or a feature. */
 export type SubjectTarget = SubjectPart | SubjectFeature;
 
 /**

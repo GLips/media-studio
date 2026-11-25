@@ -45,6 +45,7 @@ export type SubjectReplaceOverride<I extends SubjectIds = SubjectIds, Slot exten
   | { readonly kind: 'replace'; readonly select: PaintableSelector<I>; readonly slot: Slot | 'all'; readonly frame?: undefined; readonly paint: (context: SubjectReplacementContext<undefined>) => readonly LayerNode[] }
   | { readonly kind: 'replace'; readonly select: PaintableSelector<I>; readonly slot: Slot | 'all'; readonly frame: I['frame']; readonly paint: (context: SubjectReplacementContext<SubjectFrameBasis>) => readonly LayerNode[] };
 
+/** One override, as subjectIntent, subjectTune and subjectReplace build them, applied in order. */
 export type SubjectOverride<I extends SubjectIds = SubjectIds, O = object, Slot extends string = string, Control extends keyof O = keyof O> =
   | SubjectIntentOverride<I, O, Control>
   | SubjectReplaceOverride<I, Slot>;

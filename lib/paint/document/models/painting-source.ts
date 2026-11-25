@@ -1,5 +1,5 @@
 // painting-source.ts: a `*.painting.ts` module and what evaluating it gives. painting() runs its factory at checked
-// property values, checks the document, and keeps the evaluation for those values, so a scene asking again each frame
+// property values, checks the document, and keeps the evaluations last asked for, so a scene asking again each frame
 // gets the same one; checkPaintingSource() is the same checks as a list, for a test or `studio paint check`. A render
 // may override a painting's values over every scene's (`studio look --set`), installed before any scene loads.
 
@@ -60,7 +60,13 @@ export function setPaintingValueOverrides(overrides: PaintingValueOverrides): vo
 
 /** Each source's schema problems, found once. */
 const schemaProblemsOf = new WeakMap<object, readonly PaintingProblem[]>();
-/** Each source's evaluations, by its full values' key. */
+/**
+ * How many evaluations painting() keeps a source, the least recently asked for given up first. A source posed by a
+ * value each frame (a subject in motion) makes a new one per drawing, about 2 MB each for the clapper; enough for a
+ * shot's key drawings or a short cycle to be met again.
+ */
+export const PAINTING_EVALUATIONS_KEPT = 64;
+/** Each source's evaluations, by its full values' key, in the order last asked for. */
 const evaluationsOf = new WeakMap<object, Map<string, PaintingEvaluation>>();
 /** How many evaluations painting() has made, and answered from its memo, since the module loaded. */
 const evaluationCounts = { made: 0, memoHits: 0 };
@@ -107,8 +113,8 @@ function evaluateAt<S extends PropertySchema>(
 
 /**
  * `source` evaluated at `values` (defaults for the rest), any override set for it laid over them, checked, and kept
- * for those values. Throws one Error listing every problem when it has errors; a throw inside the factory keeps its own
- * stack.
+ * among the last PAINTING_EVALUATIONS_KEPT asked for. Throws one Error listing every problem when it has errors; a
+ * throw inside the factory keeps its own stack.
  */
 export function painting<S extends PropertySchema>(source: PaintingSourceModule<S>, values: Partial<PropertyValues<S>> = {}): PaintingEvaluation {
   const name = paintingSourceName(source), overrides = Object.hasOwn(paintingValueOverrides, name) ? paintingValueOverrides[name] : {};
@@ -121,12 +127,16 @@ export function painting<S extends PropertySchema>(source: PaintingSourceModule<
   const kept = evaluations.get(key);
   if (kept) {
     evaluationCounts.memoHits++;
+    evaluations.delete(key);
+    evaluations.set(key, kept);
     return kept;
   }
   evaluationCounts.made++;
   const { problems, evaluation } = evaluateAt(source, checked.values, false);
   if (!evaluation) throw paintingProblemsError(name, problems);
   evaluations.set(key, evaluation);
+  // A Map iterates in insertion order and a hit re-inserts, so the first key is the least recently asked for.
+  if (evaluations.size > PAINTING_EVALUATIONS_KEPT) evaluations.delete(evaluations.keys().next().value!);
   return evaluation;
 }
 

@@ -7,6 +7,7 @@
 
 import { subjectError, type SubjectDiagnostic } from './subject-diagnostic.ts';
 
+/** A direction or normal in the evidence's convention: x right, y down the page, z toward the viewer. */
 export type SubjectVector3 = { readonly x: number; readonly y: number; readonly z: number };
 
 /** The one coordinate convention evidence is written in, named so an adapter states it rather than assumes it. */
@@ -42,6 +43,7 @@ export type IlluminationEvidence = {
   readonly terminator?: number;
 };
 
+/** The evidence bundles a painter can require: `surface` (normals, depth, coverage) and `illumination` (its lights). */
 export type SubjectEvidenceKind = 'surface' | 'illumination';
 
 /** How far from 1 a unit vector's length may stray: float32 round-off, not an unnormalised interpolation. */

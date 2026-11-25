@@ -26,6 +26,7 @@ export type SubjectOverridesFor<S, P> = S extends Subject<infer I>
     : never
   : never;
 
+/** A subject painted: its layers, back to front, to put in a document (finishing layers go after), and its report. */
 export type SubjectPainting = { readonly layers: readonly LayerNode[]; readonly report: SubjectPaintingReport };
 
 const isVisiblePart = (part: SubjectPart): part is VisibleSubjectPart => part.visibility.kind === 'visible';
@@ -43,7 +44,7 @@ const problem = (severity: 'error' | 'warning', code: SubjectPaintingDiagnostic[
  * breaking its contract, duplicate keys), each with its address and fix.
  */
 export function paintSubject<I extends SubjectIds, O extends object, Slot extends string, Control extends keyof O & string, E extends SubjectEvidenceKind>(
-  subject: Subject<I>, painter: SubjectPainter<O, Slot, Control, E>, options: Partial<O> = {}, overrides: readonly SubjectOverride<I, O, Slot, Control>[] = [],
+  subject: Subject<I>, painter: SubjectPainter<O, Slot, Control, E>, options: Partial<O> = {}, overrides: readonly SubjectOverride<I, O, NoInfer<Slot>, NoInfer<Control>>[] = [],
 ): SubjectResult<SubjectPainting, SubjectPaintingDiagnostic> {
   const narrowed = requireSubjectEvidence(subject, painter.evidence, `painter '${painter.id}'`);
   if (!narrowed.ok) return narrowed;

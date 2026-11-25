@@ -10,10 +10,12 @@ import type { FrameId, PartId } from './subject-id.ts';
 /** An affine frame on the page: local (x, y) lands at `origin + x·xAxis + y·yAxis`, in document px. */
 export type SubjectFrameBasis = { readonly origin: StampPoint; readonly xAxis: StampPoint; readonly yAxis: StampPoint };
 
+/** A frame's basis in this view, or why it has none (its landmarks hidden, seen edge-on or from behind). */
 export type SubjectFrameStatus =
   | { readonly kind: 'available'; readonly basis: SubjectFrameBasis }
   | { readonly kind: 'unavailable'; readonly reason: string };
 
+/** A local frame on its owner part, as `face`: a replacement paints in it, and an unavailable one isn't called. */
 export type SubjectFrame = { readonly id: FrameId; readonly owner: PartId; readonly status: SubjectFrameStatus };
 
 /**

@@ -20,13 +20,17 @@ export type SubjectPathRun = { readonly points: readonly StampPoint[]; readonly 
 /** A line as it shows: the runs an occluder left of it. */
 export type SubjectPath = { readonly runs: readonly [SubjectPathRun, ...SubjectPathRun[]] };
 
+/** A landmark as it shows: one point on the page, as an eye's centre or a cheek. */
 export type SubjectLandmarkPoint = { readonly at: StampPoint };
 
 /** Whether something shows in this view. Hidden keeps its identity and owns nothing to paint. */
 export type Visibility<G> = { readonly kind: 'hidden' } | { readonly kind: 'visible'; readonly geometry: G };
+/** What shows, with its geometry: the visible case of Visibility. */
 export type Visible<G> = Extract<Visibility<G>, { kind: 'visible' }>;
 
+/** Nothing of it shows in this view; it keeps its id, matches selectors and draws nothing. */
 export const SUBJECT_HIDDEN: Visibility<never> = { kind: 'hidden' };
+/** `geometry` as showing. An adapter tracing a view uses subjectAreaVisibility or subjectPathVisibility, hidden when empty. */
 export const subjectVisible = <G>(geometry: G): Visible<G> => ({ kind: 'visible', geometry });
 
 /** Traced rings as an area: hidden when the trace found none, as an occluded part's does. */
@@ -41,9 +45,6 @@ export const isFiniteSubjectPoint = ({ x, y }: StampPoint) => Number.isFinite(x)
 
 /** The box round every ring of `area`. */
 export const subjectAreaBox = (area: SubjectArea, pad = 0): StampBox => stampPolygonBox(area.rings.flat(), pad);
-
-/** The rings of every visible area, side by side: what a painter fills when it washes several parts as one. */
-export const subjectAreaRings = (areas: readonly SubjectArea[]): readonly SubjectRing[] => areas.flatMap(({ rings }) => rings);
 
 /** Problems with `area`: rings of fewer than 3 finite points, rings enclosing nothing, and rings that cross. */
 export function subjectAreaProblems(area: SubjectArea, address: string): SubjectDiagnostic[] {

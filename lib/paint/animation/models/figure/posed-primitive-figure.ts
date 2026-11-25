@@ -9,8 +9,10 @@
 // yaw swings round toward the front.
 
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { paintFigureSampling, paintFigureShapesFromFields, type PaintFigureShapes } from './paint-figure-shapes.ts';
-import { PAINT_FIGURE_TRACE_DEFAULTS, type PaintFigureTraceSettings } from './paint-figure-trace.ts';
+import {
+  paintFigureSampling, paintFigureShapesFromFields, tracePaintFigureFields, type PaintFigureFields, type PaintFigureSampling, type PaintFigureShapes, type PaintFigureTrace,
+} from './paint-figure-shapes.ts';
+import { PAINT_FIGURE_TRACE_DEFAULTS, tracePaintFigureArea, type PaintFigureTracedArea, type PaintFigureTraceSettings } from './paint-figure-trace.ts';
 
 export type PaintFigureVector = readonly [number, number, number];
 
@@ -196,15 +198,84 @@ function meetRay(primitive: CameraPrimitive, ray: Ray, met: RayMeeting): void {
   met.depth = front;
 }
 
+/** The outward unit normal where `ray` meets `primitive` at `t`, in camera space, into `out`. */
+function primitiveNormal(primitive: CameraPrimitive, ray: Ray, t: number, out: [number, number, number]): void {
+  const [ox, oy, oz] = ray.origin, [dx, dy, dz] = ray.direction;
+  const px = ox + t * dx, py = oy + t * dy, pz = oz + t * dz;
+  let nx: number, ny: number, nz: number;
+  if (primitive.kind === 'ellipsoid') {
+    // On the unit sphere the normal is the point itself; the inverse's transpose carries it back.
+    const m = primitive.inverse, c = primitive.centre;
+    const cx = px - c[0], cy = py - c[1], cz = pz - c[2];
+    const qx = m[0] * cx + m[1] * cy + m[2] * cz, qy = m[3] * cx + m[4] * cy + m[5] * cz, qz = m[6] * cx + m[7] * cy + m[8] * cz;
+    nx = m[0] * qx + m[3] * qy + m[6] * qz; ny = m[1] * qx + m[4] * qy + m[7] * qz; nz = m[2] * qx + m[5] * qy + m[8] * qz;
+  } else {
+    const { a, b } = primitive, ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], uu = ux * ux + uy * uy + uz * uz;
+    const s = uu > 1e-12 ? Math.min(1, Math.max(0, ((px - a[0]) * ux + (py - a[1]) * uy + (pz - a[2]) * uz) / uu)) : 0;
+    nx = px - (a[0] + s * ux); ny = py - (a[1] + s * uy); nz = pz - (a[2] + s * uz);
+  }
+  const length = Math.hypot(nx, ny, nz);
+  out[0] = nx / length; out[1] = ny / length; out[2] = nz / length;
+}
+
 /**
- * The posed figure's shapes, in px: each part's visible region, the silhouette, the lines where parts meet, and the
- * anchors projected. Pure and deterministic: the same figure, pose and view give the same value, to the bit.
+ * The surface nearest the eye at each sample of `sampling`, for shading from evidence rather than guessing it.
+ * `coverage`: the silhouette, signed px, positive inside. `normals`: three per sample, unit where covered, in view
+ * space with x right, y down the page and z toward the viewer. `depth`: px from the eye along the view.
  */
-export function posedFigureShapes<J extends string, P extends string, A extends string>(
+export type PaintFigureSurface = {
+  readonly sampling: PaintFigureSampling;
+  readonly coverage: Float32Array;
+  readonly normals: Float32Array;
+  readonly depth: Float32Array;
+};
+
+/**
+ * What an anchor's line of sight meets. `open`: no part, the anchor stands clear of the figure. `on`: the nearest
+ * part along it, and whether the anchor lies in that part's near half, so a mark set just under a surface shows from
+ * its own side and hides from the other.
+ */
+export type PaintFigureAnchorSight<P extends string> =
+  | { readonly kind: 'open' }
+  | { readonly kind: 'on'; readonly part: P; readonly nearSide: boolean };
+
+export type PaintFigureAnchorSeen<P extends string> = { readonly at: StampPoint; readonly sight: PaintFigureAnchorSight<P> };
+
+/**
+ * `far`: the part's centre is on the figure's far side, turned from the viewer. The declaration's convention puts the
+ * near side at +z, so this is which side of the z = 0 plane faces away; seen head-on, nothing is far.
+ */
+export type PaintFigurePartSide = 'near' | 'far';
+
+/** The posed figure as a subject adapter reads it: traced areas with holes, lines by part, the surface, anchors' sight. */
+export type PosedFigureProjection<P extends string, A extends string> = {
+  readonly trace: PaintFigureTrace<P>;
+  readonly sides: Readonly<Record<P, PaintFigurePartSide>>;
+  readonly surface: PaintFigureSurface;
+  readonly anchors: Readonly<Record<A, PaintFigureAnchorSeen<P>>>;
+  /**
+   * What shows of `parts` as one area, its edge against every other part traced from the same field theirs is, so
+   * areas traced here tile the silhouette, meeting without crossing, where trace's are each smoothed alone.
+   */
+  readonly traceArea: (parts: readonly P[]) => PaintFigureTracedArea;
+};
+
+/** How far off the mid plane, as a share of the farthest part centre's offset, a part must sit toward the back to be far. */
+const FAR_SIDE_SHARE = 0.25;
+
+type PosedFigureSamples<P extends string, A extends string> = {
+  fields: PaintFigureFields<P>;
+  sides: Record<P, PaintFigurePartSide>;
+  surface: PaintFigureSurface;
+  anchors: Record<A, PaintFigureAnchorSeen<P>>;
+};
+
+/** Rays through every sample meeting every primitive, keeping each part's fields and the nearest surface's normal and depth. */
+function samplePosedFigure<J extends string, P extends string, A extends string>(
   figure: PosedPrimitiveFigure<J, P, A>,
   pose: PaintFigurePose<J, P>,
   view: PaintFigureView,
-): PaintFigureShapes<P, A> {
+): PosedFigureSamples<P, A> {
   const joints = posedJoints(figure, pose);
   const camera = viewTransform(view);
   const { scale, centre } = view;
@@ -231,22 +302,27 @@ export function posedFigureShapes<J extends string, P extends string, A extends 
 
   const parts = partNames.map((name) => {
     const grow = pose.scale?.[name] ?? 1;
-    const toCamera = compose(camera, partAffine(name));
+    const inFigure = partAffine(name);
+    const toCamera = compose(camera, inFigure);
+    const centres: number[] = [];
     const primitives = figure.parts[name].primitives.map((primitive): CameraPrimitive => {
       const onJoint = compose(toCamera, joints.get(primitive.joint)!);
+      const figureJoint = compose(inFigure, joints.get(primitive.joint)!);
       if (primitive.kind === 'ellipsoid') {
+        centres.push(place(figureJoint, primitive.at ?? [0, 0, 0])[2]);
         const [rx, ry, rz] = primitive.radii;
         const local: Affine = { m: multiply(turnMatrix(primitive.turn ?? {}), [rx, 0, 0, 0, ry, 0, 0, 0, rz]), t: [...(primitive.at ?? [0, 0, 0])] };
         const whole = compose(onJoint, local);
         const extent = [0, 3, 6].map((row) => Math.hypot(whole.m[row], whole.m[row + 1], whole.m[row + 2]));
         return { kind: 'ellipsoid', inverse: invert(whole.m), centre: whole.t, edgeScale: Math.min(rx, ry, rz) * grow, box: boxOf(cornersAround(whole.t, extent)) };
       }
+      centres.push((place(figureJoint, primitive.from ?? [0, 0, 0])[2] + place(figureJoint, primitive.to)[2]) / 2);
       const a = place(onJoint, primitive.from ?? [0, 0, 0]), b = place(onJoint, primitive.to), radius = primitive.radius * grow;
       const lo = [0, 1, 2].map((i) => Math.min(a[i], b[i])), hi = [0, 1, 2].map((i) => Math.max(a[i], b[i]));
       return { kind: 'capsule', a, b, radius, box: boxOf(cornersAround(lo.map((v, i) => (v + hi[i]) / 2), lo.map((v, i) => (hi[i] - v) / 2 + radius))) };
     });
     const box = [Math.min(...primitives.map((p) => p.box[0])), Math.min(...primitives.map((p) => p.box[1])), Math.max(...primitives.map((p) => p.box[2])), Math.max(...primitives.map((p) => p.box[3]))];
-    return { name, primitives, box };
+    return { name, primitives, box, sideZ: centres.reduce((sum, z) => sum + z, 0) / centres.length };
   });
 
   const sampling = paintFigureSampling({ x0: Math.min(...parts.map((p) => p.box[0])), y0: Math.min(...parts.map((p) => p.box[1])), x1: Math.max(...parts.map((p) => p.box[2])), y1: Math.max(...parts.map((p) => p.box[3])) }, cell);
@@ -257,28 +333,44 @@ export function posedFigureShapes<J extends string, P extends string, A extends 
     j0: Math.max(0, Math.floor((box[1] - sampling.y0) / cell) - 2), j1: Math.min(rows - 1, Math.ceil((box[3] - sampling.y0) / cell) + 2),
   }));
   const own = parts.map(() => new Float32Array(count).fill(EMPTY)), depth = parts.map(() => new Float64Array(count).fill(FAR));
+  const nearest = new Float64Array(count).fill(Infinity), normals = new Float32Array(3 * count), viewDepth = new Float32Array(count).fill(FAR);
+  const normal: [number, number, number] = [0, 0, 0];
   const ray: Ray = { origin: [0, 0, 0], direction: [0, 0, -1] }, met: RayMeeting = { edge: 0, depth: 0, hit: false };
+  /** Points `ray` through the page point (x, y) px, from the eye or, orthographic, from in front. */
+  const aimRay = (x: number, y: number) => {
+    const u = (x - centre.x) / scale, v = (centre.y - y) / scale;
+    if (distance === undefined) {
+      // Orthographic: every ray runs straight in from far in front; depth is measured from there, the same for all.
+      ray.origin[0] = u; ray.origin[1] = v; ray.origin[2] = ORTHOGRAPHIC_EYE;
+      ray.direction[0] = 0; ray.direction[1] = 0; ray.direction[2] = -1;
+    } else {
+      const length = Math.hypot(u, v, distance);
+      ray.origin[0] = 0; ray.origin[1] = 0; ray.origin[2] = distance;
+      ray.direction[0] = u / length; ray.direction[1] = v / length; ray.direction[2] = -distance / length;
+    }
+  };
   parts.forEach((part, k) => {
     const { i0, i1, j0, j1 } = spans[k];
     for (let j = j0; j <= j1; j++) {
-      const v = (centre.y - (sampling.y0 + j * cell)) / scale;
       for (let i = i0; i <= i1; i++) {
-        const u = (sampling.x0 + i * cell - centre.x) / scale, at = j * columns + i;
-        if (distance === undefined) {
-          // Orthographic: every ray runs straight in from far in front; depth is measured from there, the same for all.
-          ray.origin[0] = u; ray.origin[1] = v; ray.origin[2] = ORTHOGRAPHIC_EYE;
-        } else {
-          const length = Math.hypot(u, v, distance);
-          ray.origin[0] = 0; ray.origin[1] = 0; ray.origin[2] = distance;
-          ray.direction[0] = u / length; ray.direction[1] = v / length; ray.direction[2] = -distance / length;
-        }
+        const at = j * columns + i;
         const sx = sampling.x0 + i * cell, sy = sampling.y0 + j * cell;
+        aimRay(sx, sy);
         let edge = EMPTY / scale, nearestHit = Infinity, missDepth = FAR / scale;
         for (const primitive of part.primitives) {
           // Two cells clear of a primitive's box it can't be the nearest edge any outline passes between.
           if (sx < primitive.box[0] - margin || sx > primitive.box[2] + margin || sy < primitive.box[1] - margin || sy > primitive.box[3] + margin) continue;
           meetRay(primitive, ray, met);
-          if (met.hit) nearestHit = Math.min(nearestHit, met.depth);
+          if (met.hit) {
+            nearestHit = Math.min(nearestHit, met.depth);
+            if (met.depth < nearest[at]) {
+              nearest[at] = met.depth;
+              primitiveNormal(primitive, ray, met.depth, normal);
+              // Camera space has y up; evidence has y down the page.
+              normals[3 * at] = normal[0]; normals[3 * at + 1] = -normal[1]; normals[3 * at + 2] = normal[2];
+              viewDepth[at] = -ray.direction[2] * met.depth * scale;
+            }
+          }
           if (met.edge > edge) { edge = met.edge; missDepth = met.depth; }
         }
         own[k][at] = edge * scale;
@@ -303,17 +395,94 @@ export function posedFigureShapes<J extends string, P extends string, A extends 
       }
     }
   });
+
+  /** The nearest and farthest a part's primitives reach along `ray`, or undefined when it misses them all. */
+  const span = (part: (typeof parts)[number]) => {
+    let front = Infinity, back = -Infinity;
+    for (const primitive of part.primitives) {
+      meetRay(primitive, ray, met);
+      if (met.hit) front = Math.min(front, met.depth);
+    }
+    if (!Number.isFinite(front)) return undefined;
+    // The far surface is the near one of the same ray run backward from well past the figure.
+    const reach = 2 * (distance ?? ORTHOGRAPHIC_EYE);
+    const [ox, oy, oz] = ray.origin, [dx, dy, dz] = ray.direction;
+    const reversed: Ray = { origin: [ox + reach * dx, oy + reach * dy, oz + reach * dz], direction: [-dx, -dy, -dz] };
+    for (const primitive of part.primitives) {
+      meetRay(primitive, reversed, met);
+      if (met.hit) back = Math.max(back, reach - met.depth);
+    }
+    return { front, back };
+  };
   const anchors = Object.fromEntries(Object.entries<PaintFigureAnchor<J, P>>(figure.anchors).map(([name, anchor]) => {
     const onJoint = place(joints.get(anchor.joint)!, anchor.at ?? [0, 0, 0]);
     const grown = anchor.part === undefined ? onJoint : place(partAffine(anchor.part), onJoint);
-    return [name, toScreen(place(camera, grown))];
+    const point = place(camera, grown), at = toScreen(point);
+    aimRay(at.x, at.y);
+    const along = distance === undefined ? ORTHOGRAPHIC_EYE - point[2] : Math.hypot(point[0], point[1], point[2] - distance);
+    let first: { part: P; front: number; back: number } | undefined;
+    for (const part of parts) {
+      const reach = span(part);
+      if (reach && (!first || reach.front < first.front)) first = { part: part.name, ...reach };
+    }
+    const sight: PaintFigureAnchorSight<P> = first ? { kind: 'on', part: first.part, nearSide: along - first.front <= first.back - along } : { kind: 'open' };
+    return [name, { at, sight }];
   }));
-  return paintFigureShapesFromFields(
-    { sampling, union, parts: parts.map((part, k) => ({ name: part.name, visible: visible[k], depth: Float32Array.from(depth[k]) })) },
+
+  const facing = camera.m[8], widest = Math.max(...parts.map(({ sideZ }) => Math.abs(sideZ)));
+  // SAFETY: built from partNames, every key of figure.parts.
+  const sides = Object.fromEntries(parts.map(({ name, sideZ }) => [name, widest > 0 && sideZ * facing < -FAR_SIDE_SHARE * widest ? 'far' : 'near'])) as Record<P, PaintFigurePartSide>;
+  return {
+    fields: { sampling, union, parts: parts.map((part, k) => ({ name: part.name, visible: visible[k], depth: Float32Array.from(depth[k]) })) },
+    sides,
+    surface: { sampling, coverage: union, normals, depth: viewDepth },
     // SAFETY: built from the keys of figure.anchors, a Record<A, …>.
-    anchors as Record<A, StampPoint>,
-    view.trace ?? PAINT_FIGURE_TRACE_DEFAULTS,
-  );
+    anchors: anchors as Record<A, PaintFigureAnchorSeen<P>>,
+  };
+}
+
+/**
+ * The posed figure's shapes, in px: each part's visible region, the silhouette, the lines where parts meet, and the
+ * anchors projected. Pure and deterministic: the same figure, pose and view give the same value, to the bit.
+ */
+export function posedFigureShapes<J extends string, P extends string, A extends string>(
+  figure: PosedPrimitiveFigure<J, P, A>,
+  pose: PaintFigurePose<J, P>,
+  view: PaintFigureView,
+): PaintFigureShapes<P, A> {
+  const { fields, anchors } = samplePosedFigure(figure, pose, view);
+  // SAFETY: built from the keys of anchors, a Record<A, …>.
+  const points = Object.fromEntries(Object.entries<PaintFigureAnchorSeen<P>>(anchors).map(([name, { at }]) => [name, at])) as Record<A, StampPoint>;
+  return paintFigureShapesFromFields(fields, points, view.trace ?? PAINT_FIGURE_TRACE_DEFAULTS);
+}
+
+/**
+ * The posed figure as a subject reads it: every part's area with its holes and the lines it draws, which side each
+ * part is on, the nearest surface's analytic normals and depth, and what each anchor's line of sight meets. Pure and
+ * deterministic, as posedFigureShapes is.
+ */
+export function posedFigureProjection<J extends string, P extends string, A extends string>(
+  figure: PosedPrimitiveFigure<J, P, A>,
+  pose: PaintFigurePose<J, P>,
+  view: PaintFigureView,
+): PosedFigureProjection<P, A> {
+  const { fields, sides, surface, anchors } = samplePosedFigure(figure, pose, view);
+  const settings = view.trace ?? PAINT_FIGURE_TRACE_DEFAULTS;
+  const traceArea = (parts: readonly P[]) => {
+    const inside = fields.parts.filter(({ name }) => parts.includes(name)).map(({ visible }) => visible);
+    const outside = fields.parts.filter(({ name }) => !parts.includes(name)).map(({ visible }) => visible);
+    // Against another part the edge is where the nearest inside and outside fields are level, the one difference two
+    // neighbours read negated, so they meet on the same points; against the background it is the silhouette's own.
+    const values = Float32Array.from(fields.union, (silhouette, k) => {
+      let mine = -Infinity, theirs = -Infinity;
+      for (const field of inside) mine = Math.max(mine, field[k]);
+      for (const field of outside) theirs = Math.max(theirs, field[k]);
+      return Math.min(silhouette, mine - theirs);
+    });
+    // Unsmoothed: smoothing each area alone would part the points two neighbours share.
+    return tracePaintFigureArea({ ...fields.sampling, values }, { tolerance: 0, smoothing: 0 });
+  };
+  return { trace: tracePaintFigureFields(fields, settings), sides, surface, anchors, traceArea };
 }
 
 /** Declares a figure, checking its joints form a tree; `NoInfer` makes the joint and part names come from their own records. */
