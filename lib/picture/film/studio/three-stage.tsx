@@ -3,15 +3,16 @@
 // on the aperture and sub-pixel and light offset: depth of field, motion blur, soft shadows and antialiasing from one
 // loop. The lens (lens-compositor.ts) averages them and blooms the average once; tone mapping follows.
 //
-// Every offset comes from a fixed pattern of the exposure's index, and only the device, its targets and its
-// prefiltered rooms outlive a frame, so a frame's bytes depend only on its props, as Remotion's parallel tabs need.
+// Every offset comes from a fixed pattern of the exposure's index, and in a render only the device, its targets and its
+// rooms outlive a frame, so a frame's bytes depend only on its props, as Remotion's tabs need. Played live, a
+// stage drafts: one exposure, kept parts held for its life.
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { useDelayRender } from 'remotion';
+import { getRemotionEnvironment, useDelayRender } from 'remotion';
 import {
   ACESFilmicToneMapping, BackSide, BoxGeometry, DirectionalLight, Mesh, MeshBasicMaterial, MeshLambertMaterial, PCFShadowMap, PerspectiveCamera,
-  Scene, SpotLight, Vector3, type Object3D, type Texture, type ToneMapping,
+  Scene, SpotLight, Vector3, type Material, type Object3D, type Texture, type ToneMapping,
 } from 'three/webgpu';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { fullFrameRect, type FrameSize } from '#lib/picture/frame/models/frame.ts';
@@ -23,7 +24,7 @@ import { setThreeShotCamera } from '#lib/picture/shot-camera/studio/three-shot-c
 import { lensExposures, type LensExposure } from '#lib/picture/lens/models/lens-exposures.ts';
 import { shotCameraExposed, type LensFocusTilt, type ShotCameraLensFocus } from '#lib/picture/lens/models/lens-focus.ts';
 import { shutterMomentAt } from '#lib/picture/lens/models/lens-shutter.ts';
-import { createThreeStageGpu, threeSceneResources, type ThreeBloom, type ThreeEnvironment, type ThreeStageGpu, type ThreeStageLook } from './three-stage-gpu.ts';
+import { createThreeKeptParts, createThreeStageGpu, threeSceneResources, type ThreeBloom, type ThreeEnvironment, type ThreeStageGpu, type ThreeStageLook } from './three-stage-gpu.ts';
 
 export type { ThreeBloom, ThreeEnvironment } from './three-stage-gpu.ts';
 
@@ -43,6 +44,12 @@ export type ThreeSample = {
   count: number;
   /** The stage's prefiltered `environment`, for a draw that gives it to some materials only. */
   environment: Texture | null;
+  /**
+   * The part or material `build` makes, made once under `key` and handed back for every exposure while it's kept: the
+   * frame in a render, the stage's life when played live. Its materials then compile once, not per exposure. `key`
+   * must name everything it's built from; a draw may move a kept part or set a kept material's uniforms, nothing more.
+   */
+  kept: <T extends Object3D | Material>(key: string, build: () => T) => T;
 };
 
 /**
@@ -63,7 +70,7 @@ export function ThreeStage({
   draw: (sample: ThreeSample) => ThreeFrame;
   /**
    * 1 is a plain render; `lens`, motion blur and `softShadows` need 8 or more, and a smear longer than about 10 px an
-   * exposure strobes.
+   * exposure strobes. Played live, a stage draws one, so a blockout plays at its pace.
    */
   samples?: number;
   /** How long the shutter is open, as a fraction of a frame: 0.5 is film's 180°. */
@@ -127,7 +134,7 @@ export function ThreeStage({
       open = false;
     };
     gpu.owner.checked('drawing a three.js stage\'s frame', () => drawThreeStageFrame(gpu, {
-      draw, samples, shutter, lens, softShadows, shadows, environment, fps, w, h,
+      draw, samples: THREE_STAGE_LIVE ? 1 : samples, live: THREE_STAGE_LIVE, shutter, lens, softShadows, shadows, environment, fps, w, h,
       look: { toneMapping, exposure, bloom, transparent, backdrop },
     })).then(release, (error: Error) => {
       if (live) cancelRender(error);
@@ -141,6 +148,9 @@ export function ThreeStage({
   return <canvas ref={canvas} {...unmeasuredAttrs('three.js scene')} width={w} height={h} style={{ position: 'absolute', left: box.x, top: box.y, width: w, height: h }} />;
 }
 
+/** Whether stages here are played live rather than rendered: read once, since a page is one or the other. */
+const THREE_STAGE_LIVE = !getRemotionEnvironment().isRendering;
+
 /**
  * Each canvas's last stage, settling once it has let go of the canvas. A stage made for a new size waits for it: one
  * still being made would otherwise configure the canvas after its successor, and its dispose unconfigure the successor's.
@@ -149,12 +159,12 @@ const threeStageCanvasesInUse = new WeakMap<HTMLCanvasElement, Promise<void>>();
 const threeStageCanvasFreed = (canvas: HTMLCanvasElement) => threeStageCanvasesInUse.get(canvas) ?? Promise.resolve();
 
 type ThreeStageFrame = {
-  draw: (sample: ThreeSample) => ThreeFrame; samples: number; shutter: number; lens: ThreeLens | undefined; softShadows: number; shadows: boolean;
+  draw: (sample: ThreeSample) => ThreeFrame; samples: number; live: boolean; shutter: number; lens: ThreeLens | undefined; softShadows: number; shadows: boolean;
   environment: boolean | ThreeEnvironment; fps: number; w: number; h: number; look: ThreeStageLook;
 };
 
 /** One frame: every exposure drawn and added, then the average shown. */
-function drawThreeStageFrame(stage: ThreeStageGpu, { draw, samples, shutter, lens, softShadows, shadows, environment, fps, w, h, look }: ThreeStageFrame) {
+function drawThreeStageFrame(stage: ThreeStageGpu, { draw, samples, live, shutter, lens, softShadows, shadows, environment, fps, w, h, look }: ThreeStageFrame) {
   const { renderer } = stage;
   renderer.shadowMap.enabled = shadows;
   renderer.shadowMap.type = PCFShadowMap;
@@ -165,10 +175,13 @@ function drawThreeStageFrame(stage: ThreeStageGpu, { draw, samples, shutter, len
   const target = stage.exposureTarget(count), frame = stage.beginFrame(count);
   const camera = new PerspectiveCamera();
   let previous = new Set<{ dispose(): void }>();
+  // A render keeps parts for its frame alone, so no frame's pixels depend on one drawn before it.
+  const parts = live ? stage.parts : createThreeKeptParts(stage.keep);
+  const { part: kept } = parts;
 
   for (const exposure of exposures) {
     const { index, shutter: share } = exposure;
-    const { scene, camera: shot } = draw({ frame: { width: w, height: h }, dt: shutterMomentAt(0, shutter / fps, share), shutter: share, index, count, environment: room });
+    const { scene, camera: shot } = draw({ frame: { width: w, height: h }, dt: shutterMomentAt(0, shutter / fps, share), shutter: share, index, count, environment: room, kept });
     if (room && !scene.environment) scene.environment = room;
     setThreeShotCamera(camera, shotCameraExposed(shot, threeLens ?? null, exposure));
     const restore = softShadows > 0 ? jitterLights(scene, exposure.light, softShadows) : () => {};
@@ -188,6 +201,7 @@ function drawThreeStageFrame(stage: ThreeStageGpu, { draw, samples, shutter, len
   }
   frame.show(look);
   for (const r of previous) r.dispose();
+  if (parts !== stage.parts) parts.dispose();
 }
 
 const ROOM: ThreeEnvironment = { key: 'three-stage-room', scene: () => new RoomEnvironment(), blur: 0.04 };

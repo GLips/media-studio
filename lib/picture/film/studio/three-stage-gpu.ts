@@ -4,7 +4,7 @@
 
 import {
   Color, DirectionalLight, ExternalTexture, InstancedMesh, NodeMaterial, NoToneMapping, PMREMGenerator, PointLight, QuadMesh, SpotLight, Texture, Vector3,
-  type Material, type Node, type RenderTarget, type Scene, type ToneMapping,
+  Material, Scene, type Node, type Object3D, type RenderTarget, type ToneMapping,
 } from 'three/webgpu';
 import { clamp, float, max, mix, pow, screenUV, step, texture, toneMapping, uniform, vec3, vec4 } from 'three/tsl';
 import { createGpuDeviceOwner, type GpuDeviceOwner } from '#lib/platform/gpu/studio/gpu-device-owner.ts';
@@ -106,10 +106,13 @@ export async function createThreeStageGpu(canvas: HTMLCanvasElement, { width, he
   };
 
   const rooms = new Map<string, Texture>();
-  const keep = new Set<Texture>();
+  const keep = new Set<Disposable>();
+  const parts = createThreeKeptParts(keep);
 
   return {
     owner, renderer, keep,
+    /** Parts kept for the stage's life: the live player's, which needs no frame to stand alone. */
+    parts,
     /** The target exposure `index` of `count` renders into: multisampled for the frames too few to antialias themselves. */
     exposureTarget(count: number) {
       if (count >= 4) return single;
@@ -160,6 +163,7 @@ export async function createThreeStageGpu(canvas: HTMLCanvasElement, { width, he
       return made;
     },
     dispose() {
+      parts.dispose();
       for (const t of [single, msaa, shown]) t?.dispose();
       looked?.pass.material.dispose();
       image.dispose();
@@ -175,27 +179,63 @@ export async function createThreeStageGpu(canvas: HTMLCanvasElement, { width, he
 
 const isThreeTexture = (value: unknown): value is Texture => value instanceof Texture;
 
-/** What a drawn scene holds on the GPU, but for `keep` (the stage's rooms). */
-export function threeSceneResources(scene: Scene, keep: ReadonlySet<Texture>): Set<Disposable> {
+/**
+ * Parts and materials a draw builds once and hands to every exposure while they're kept (ThreeSample.kept): what they
+ * hold on the GPU joins `keep`, so the stage never frees it and three.js never recompiles a kept material.
+ */
+export type ThreeKeptParts = ReturnType<typeof createThreeKeptParts>;
+
+export function createThreeKeptParts(keep: Set<Disposable>) {
+  const parts = new Map<string, { part: Object3D | Material; holds: Set<Disposable> }>();
+  return {
+    part: <T extends Object3D | Material>(key: string, build: () => T): T => {
+      const known = parts.get(key);
+      // SAFETY: a key names everything its part is built from (ThreeSample.kept), so it was built by a `build` of this T.
+      if (known) return known.part as T;
+      const part = build();
+      const holds = part instanceof Material ? threeMaterialResources(part, keep) : threeSceneResources(part, keep);
+      for (const r of holds) keep.add(r);
+      parts.set(key, { part, holds });
+      return part;
+    },
+    dispose: () => {
+      for (const { part, holds } of parts.values()) {
+        if (!(part instanceof Material)) part.removeFromParent();
+        for (const r of holds) {
+          keep.delete(r);
+          r.dispose();
+        }
+      }
+      parts.clear();
+    },
+  };
+}
+
+/** A material and its maps, but for `keep`. A material's maps are its own fields, under names that differ by kind. */
+function threeMaterialResources(m: Material, keep: ReadonlySet<Disposable>): Set<Disposable> {
   const out = new Set<Disposable>();
-  const addTexture = (value: Texture) => {
+  for (const value of [m, ...Object.values(m).filter(isThreeTexture)]) if (!keep.has(value)) out.add(value);
+  return out;
+}
+
+/** What a drawn scene (or any part of one) holds on the GPU, but for `keep` (the stage's rooms and kept parts). */
+export function threeSceneResources(scene: Object3D, keep: ReadonlySet<Disposable>): Set<Disposable> {
+  const out = new Set<Disposable>();
+  const add = (value: Disposable) => {
     if (!keep.has(value)) out.add(value);
   };
   const addMaterial = (m: Material | undefined) => {
-    if (!m) return;
-    out.add(m);
-    // A material's maps are its own fields, under names that differ by kind.
-    for (const value of Object.values(m)) if (isThreeTexture(value)) addTexture(value);
+    if (m) for (const r of threeMaterialResources(m, keep)) out.add(r);
   };
   scene.traverse((object) => {
     if (isThreeGeometryDrawable(object)) {
-      out.add(object.geometry);
+      add(object.geometry);
       for (const m of Array.isArray(object.material) ? object.material : [object.material]) addMaterial(m);
       // An instanced mesh's matrices and colours are its own buffers, not its geometry's.
-      if (object instanceof InstancedMesh) out.add(object);
+      if (object instanceof InstancedMesh) add(object);
     }
-    if ((object instanceof DirectionalLight || object instanceof SpotLight || object instanceof PointLight) && object.castShadow) out.add(object.shadow);
+    if ((object instanceof DirectionalLight || object instanceof SpotLight || object instanceof PointLight) && object.castShadow) add(object.shadow);
   });
-  for (const value of [scene.environment, scene.background]) if (isThreeTexture(value)) addTexture(value);
+  if (scene instanceof Scene) for (const value of [scene.environment, scene.background]) if (isThreeTexture(value)) add(value);
   return out;
 }
