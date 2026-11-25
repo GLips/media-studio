@@ -39,7 +39,7 @@ Each gate is a review, run by the `studio-review` skill.
 
 Whichever way in, the plan is the project's `storyboard.ts`. Start the project with `studio new <slug> --capability
 <…>` (`studio new --help`); its scenes start blocked, so `studio render <p> --animatic` shows the plan as it plays
-from the first minute. Write `title`, `target` seconds, the `brief` (headings in order: who it's for, the takeaway,
+from the first minute. Write `title`, a `target` only for a length the user or a platform sets, the `brief` (headings in order: who it's for, the takeaway,
 the angle, the sources, the rules), then a row per scene:
 
 - Scene and line ids are the names everything else uses. A cue sits on its word (`{ phrase, nth }` for a later one),

@@ -84,16 +84,16 @@ export function PlanSceneStrip() {
   const playing = useSyncExternalStore(playback.subscribe, () => playback.getState().playing);
   if (!timing) return null;
   const { fps, end } = timing;
-  const target = plan.storyboard.target.seconds * fps;
+  const target = plan.storyboard.target && plan.storyboard.target.seconds * fps;
   // The strip runs to the longer of the video and its target, so the target's line is always on it.
-  const scale = Math.max(end, target) * 1.02;
+  const scale = Math.max(end, target ?? 0) * 1.02;
   const pct = (frame: number) => (frame / scale) * 100;
   const seekAt = (event: MouseEvent<HTMLElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
     const frame = Math.min(end - 1, ((event.clientX - box.left) / box.width) * scale);
     playback.seek(frame);
   };
-  const over = end - target;
+  const over = target === undefined ? 0 : end - target;
   return (
     <Box {...stylex.props(styles.dock)}>
       <Box {...stylex.props(styles.transport)}>
@@ -146,9 +146,11 @@ export function PlanSceneStrip() {
             </HotkeyTooltip>
           );
         })}
-        <Box {...stylex.props(styles.target, styles.targetAt(pct(target)))}>
-          <Text component="span" size="xs" {...stylex.props(styles.targetLabel)}>{plan.storyboard.target.seconds} s target{over > 0 ? ` · ${formatPlanSeconds(over / fps)} over` : ''}</Text>
-        </Box>
+        {target !== undefined && (
+          <Box {...stylex.props(styles.target, styles.targetAt(pct(target)))}>
+            <Text component="span" size="xs" {...stylex.props(styles.targetLabel)}>{target / fps} s target{over > 0 ? ` · ${formatPlanSeconds(over / fps)} over` : ''}</Text>
+          </Box>
+        )}
         <Box {...stylex.props(styles.playhead, styles.playheadAt(scale))} />
       </Box>
     </Box>

@@ -29,12 +29,12 @@ function PlanLength() {
   const { plan, timing } = usePlanScreen();
   const { target } = plan.storyboard;
   if (!timing) return <Text component="span" {...stylex.props(styles.pill, styles.past)}>Doesn't time: see the scene with the problem</Text>;
-  const seconds = timing.end / timing.fps, gap = seconds - target.seconds;
-  const past = target.max !== undefined && seconds > target.max;
+  const seconds = timing.end / timing.fps, gap = target ? seconds - target.seconds : 0;
+  const past = target?.max !== undefined && seconds > target.max;
   const tone = (past && styles.past) || (gap > 0.05 && styles.over) || styles.ok;
-  const said = (past && `over the ${target.max} s limit`) || (Math.abs(gap) <= 0.05 ? `on the ${target.seconds} s target` : `${formatPlanSeconds(Math.abs(gap))} ${gap > 0 ? 'over' : 'under'} the ${target.seconds} s target`);
+  const said = !target ? '' : (past && `over the ${target.max} s limit`) || (Math.abs(gap) <= 0.05 ? `on the ${target.seconds} s target` : `${formatPlanSeconds(Math.abs(gap))} ${gap > 0 ? 'over' : 'under'} the ${target.seconds} s target`);
   return (
-    <HotkeyTooltip name={target.max === undefined ? `${seconds.toFixed(2)} s long` : `${seconds.toFixed(2)} s long; it may run ${target.max} s at most`}>
+    <HotkeyTooltip name={target?.max === undefined ? `${seconds.toFixed(2)} s long` : `${seconds.toFixed(2)} s long; it may run ${target.max} s at most`}>
       <Text component="span" {...stylex.props(styles.pill)}>
         <Text component="span" inherit {...stylex.props(styles.title)}>{formatPlanSeconds(seconds)}</Text>
         <Text component="span" inherit {...stylex.props(tone)}>{said}</Text>

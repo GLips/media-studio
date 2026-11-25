@@ -143,8 +143,11 @@ export type StoryboardReplays<Scenes> = ReplayTable<StoryboardTimelineScenes<Sce
 
 export type Storyboard<Scenes extends StoryboardScenes = StoryboardScenes, Replays extends StoryboardReplays<Scenes> = StoryboardReplays<Scenes>> = {
   title: string;
-  /** The length it's planned to, and the most it may run (a store's cap, say): a plan past `max` is a diagnostic. */
-  target: { seconds: number; max?: number };
+  /**
+   * The length it's planned to, and the most it may run (a store's cap, say): a plan past `max` is a diagnostic. Leave it
+   * out when the video runs as long as it needs to.
+   */
+  target?: { seconds: number; max?: number };
   /**
    * The TTS voice `studio voice` reads its lines in. Only read lines need one: a line with `speech` is spoken in a
    * recording, and a storyboard of those alone names none. Lines of either kind make the project voiced.

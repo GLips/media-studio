@@ -77,7 +77,7 @@ export function resolveStoryboard<const S extends AnyStoryboard>(storyboard: S, 
     const message = error instanceof Error ? error.message : String(error);
     diagnostics.push({ ...sceneNamedIn(message, Object.keys(storyboard.scenes)), message });
   }
-  if (timeline && storyboard.target.max !== undefined) {
+  if (timeline && storyboard.target?.max !== undefined) {
     const seconds = timeline.end / timeline.fps;
     if (seconds > storyboard.target.max) diagnostics.push({ message: `it runs ${seconds.toFixed(1)} s, past its ${storyboard.target.max} s most` });
   }
