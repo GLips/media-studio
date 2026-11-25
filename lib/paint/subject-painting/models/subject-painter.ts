@@ -12,6 +12,7 @@ import type { SubjectWithEvidence } from '#lib/paint/subject/models/subject-chec
 import type { SubjectEvidenceKind } from '#lib/paint/subject/models/subject-evidence.ts';
 import type { SubjectArea, Visible } from '#lib/paint/subject/models/subject-geometry.ts';
 import { isSubjectIdText, type SubjectId } from '#lib/paint/subject/models/subject-id.ts';
+import type { SubjectSelector } from '#lib/paint/subject/models/subject-selector.ts';
 import { subjectRefKey, type PaintableRef, type Subject, type SubjectFeature, type SubjectHex, type SubjectPart, type SubjectRef } from '#lib/paint/subject/models/subject.ts';
 
 // ---- intent ----------------------------------------------------------------------------------------------------------
@@ -87,6 +88,16 @@ export type SubjectContribution<Slot extends string = string> = {
 export type SubjectPainterReport = { readonly severity: 'error' | 'warning'; readonly address: string; readonly message: string; readonly fix: string };
 
 /**
+ * An intent or tune reaching a target, named by the selection its author wrote: what the target's paint is batched and
+ * keyed by, so a target keeps its identity whatever values it is given and whichever other targets are tuned alike.
+ */
+export type SubjectTreatmentSource = {
+  readonly selector: SubjectSelector;
+  readonly intentFields: readonly SubjectIntentField[];
+  readonly controls: readonly string[];
+};
+
+/**
  * What a painter's `paint` reads: the subject, narrowed to its evidence; options; the key builder; which targets it
  * still paints in each slot (`paintedParts`, `paintedFeatures`: visible and not replaced); the ground replacements
  * need; each target's resolved intent and options; and `report` for anything it noticed.
@@ -113,6 +124,8 @@ export type SubjectPainterContext<S extends Subject, O, Slot extends string> = {
   readonly intent: (target: PaintableRef) => ResolvedSubjectIntent;
   /** `options` with every tune that reaches `target` over them, its owner part's first. */
   readonly optionsFor: (target: PaintableRef) => O;
+  /** The intents and tunes reaching `target`, by the selections their authors wrote: batch and key paint by these, never by values. */
+  readonly treatedBy: (target: PaintableRef) => readonly SubjectTreatmentSource[];
   readonly report: (report: SubjectPainterReport) => void;
 };
 

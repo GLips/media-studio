@@ -387,9 +387,12 @@ async function checkPieces(): Promise<StampGateWashCheck[]> {
   ];
 }
 
-/** shot/figure-card: the figure card and the cut card beside it over dark footage, at rest. */
+/** The figure-card shot's frame at rest, its figure card revealed or not. */
+const figureCardFrame = async (revealed: boolean) => stampGateRgb((await stampGateShotFrames(stampGateFigureCardShot(revealed), [0])).frames[0]);
+
+/** shot/figure-card: the figure card and the cut card beside it over dark footage, at rest; and the figure card unrevealed. */
 async function checkFigureCard(): Promise<StampGateWashCheck[]> {
-  return checkStampGateFigureCard(stampGateRgb((await stampGateShotFrames(stampGateFigureCardShot(), [0])).frames[0]));
+  return checkStampGateFigureCard(await figureCardFrame(true), await figureCardFrame(false));
 }
 
 /** Shot case `id`'s checks. */

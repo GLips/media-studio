@@ -1,13 +1,14 @@
 // subject-paint-plan.ts: what the subject painters plan alike before they lay paint. Parts are washed together by
-// material, split only where an author's intent or tune treats some differently in what a pass reads, so tuning the
-// belly never reseeds the body. Eyes and cheeks are found by the tags a subject gives them.
+// material, split only by the intents and tunes reaching them in what a pass reads, keyed by the selections authors
+// wrote, so retuning the head never reseeds the belly or the body. Eyes and cheeks are found by the tags a subject gives them.
 
 import type { Footprint, Region } from '#lib/paint/document/models/painting-document.ts';
 import type { StampBox, StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { subjectAreaBox, type SubjectArea } from '#lib/paint/subject/models/subject-geometry.ts';
 import { subjectAreasUnion } from '#lib/paint/subject/models/subject-area-union.ts';
+import { subjectSelectorText, type SubjectSelector } from '#lib/paint/subject/models/subject-selector.ts';
 import { hasSubjectTag, SUBJECT_WELL_KNOWN_TAGS } from '#lib/paint/subject/models/subject-tags.ts';
-import type { PaintableRef, Subject, SubjectFeature, SubjectHex, SubjectMaterial } from '#lib/paint/subject/models/subject.ts';
+import { findSubjectFeature, findSubjectMaterial, findSubjectPart, type PaintableRef, type Subject, type SubjectFeature, type SubjectHex, type SubjectMaterial } from '#lib/paint/subject/models/subject.ts';
 import { subjectAreaRegion } from '../subject-document-geometry.ts';
 import type { ResolvedSubjectIntent, SubjectKeySegment, SubjectPainterContext, VisibleSubjectFeature, VisibleSubjectPart } from '../subject-painter.ts';
 import { subjectHexLuminance } from './subject-paint-colour.ts';
@@ -23,9 +24,9 @@ export function isSubjectPainterEye(subject: Subject, feature: SubjectFeature): 
 }
 
 /**
- * Parts a pass washes as one: one material, intent and set of the options it reads. `segments` name it in keys and
- * seeds by what it paints, never its treatment's values: the material alone for parts painted as the material is, the
- * material and its parts for parts an author treats apart. So retuning a value reseeds nothing.
+ * Parts a pass washes as one: one material, and the same intents and tunes reaching them in what the pass reads.
+ * `segments` name it in keys and seeds by what it paints and the selections its authors wrote, never the values they
+ * set nor which other parts are tuned alike: the material alone untouched, else the material and those selections.
  */
 export type SubjectPaintGroup<O> = {
   readonly material: SubjectMaterial;
@@ -37,29 +38,38 @@ export type SubjectPaintGroup<O> = {
   readonly area: SubjectArea;
 };
 
-/** What a pass batches parts by: equal text, one wash. It never reaches a key. */
-const treatmentText = <O>(intent: ResolvedSubjectIntent, options: O, controls: readonly (keyof O)[]) =>
-  JSON.stringify([intent.localColor, intent.preserveLocalColor, intent.emphasis, intent.edge ?? null, controls.map((control) => options[control])]);
+/** A selection as a key segment: a part, feature or material by its ref, a group or tag by its kind and id. */
+function selectorSegment(subject: Subject, selector: SubjectSelector): SubjectKeySegment {
+  switch (selector.kind) {
+    case 'part': return findSubjectPart(subject, selector.id)!.ref;
+    case 'feature': return findSubjectFeature(subject, selector.id)!.ref;
+    case 'material': return findSubjectMaterial(subject, selector.id)!.ref;
+    default: return `${selector.kind}-${selector.id}`;
+  }
+}
 
 /**
- * The parts painted in `slot` that `include` keeps, grouped by material and treatment, materials in declaration
- * order. `controls` are the options this pass reads per group; a tune of any other leaves its group whole.
+ * The parts painted in `slot` that `include` keeps, grouped by material and by the intents and tunes reaching them
+ * that this pass reads, materials in declaration order. `controls` are the options it reads per group; a tune of any
+ * other leaves its group whole.
  */
 export function planSubjectPaintGroups<S extends Subject, O, Slot extends string>(
   context: SubjectPainterContext<S, O, Slot>, slot: Slot, controls: readonly (keyof O)[], include: (part: VisibleSubjectPart) => boolean = () => true,
 ): SubjectPaintGroup<O>[] {
-  const groups = new Map<string, { material: SubjectMaterial; text: string; intent: ResolvedSubjectIntent; options: O; parts: [VisibleSubjectPart, ...VisibleSubjectPart[]] }>();
+  const read = new Set<string>(controls.map(String));
+  const groups = new Map<string, { material: SubjectMaterial; selectors: SubjectSelector[]; parts: [VisibleSubjectPart, ...VisibleSubjectPart[]] }>();
   for (const material of context.subject.materials.values()) {
     for (const part of context.paintedParts(slot)) {
       if (part.material !== material.id || !include(part)) continue;
-      const intent = context.intent(part.ref), options = context.optionsFor(part.ref);
-      const text = treatmentText(intent, options, controls), id = `${material.id} ${text}`;
+      const sources = context.treatedBy(part.ref).filter(({ intentFields, controls: set }) => intentFields.length || set.some((control) => read.has(control)));
+      const selectors = [...new Map(sources.map(({ selector }) => [subjectSelectorText(selector), selector])).values()];
+      const id = `${material.id} ${selectors.map(subjectSelectorText).join(' ')}`;
       const group = groups.get(id);
       if (group) group.parts.push(part);
-      else groups.set(id, { material, text, intent, options, parts: [part] });
+      else groups.set(id, { material, selectors, parts: [part] });
     }
   }
-  return [...groups.values()].flatMap(({ material, text, intent, options, parts }): SubjectPaintGroup<O>[] => {
+  return [...groups.values()].flatMap(({ material, selectors, parts }): SubjectPaintGroup<O>[] => {
     const [first, ...rest] = parts.map(({ visibility }) => visibility.geometry);
     const union = subjectAreasUnion([first, ...rest]);
     if (union.kind === 'hidden') {
@@ -69,9 +79,9 @@ export function planSubjectPaintGroups<S extends Subject, O, Slot extends string
       });
       return [];
     }
-    const plain = treatmentText({ localColor: material.localColor, preserveLocalColor: material.preserveLocalColor, emphasis: 'normal' }, context.options, controls);
-    const segments = text === plain ? [material.ref] : [material.ref, ...parts.map(({ ref }) => ref)];
-    return [{ material, segments, intent, options, parts, area: union.geometry }];
+    // Every part here is reached by the same selections, so it shares one intent and one set of the options read.
+    const intent = context.intent(parts[0].ref), options = context.optionsFor(parts[0].ref);
+    return [{ material, segments: [material.ref, ...selectors.map((selector) => selectorSegment(context.subject, selector))], intent, options, parts, area: union.geometry }];
   });
 }
 
@@ -152,12 +162,20 @@ type RegionFeature = Extract<VisibleSubjectFeature, { kind: 'region' }>;
 export const subjectPaintedRegions = <S extends Subject, O, Slot extends string>(context: SubjectPainterContext<S, O, Slot>, slot: Slot): RegionFeature[] =>
   context.paintedFeatures(slot).filter((feature): feature is RegionFeature => feature.kind === 'region' && !isSubjectPainterEye(context.subject, feature));
 
-/** What `regions[at]` keeps clear: later regions on its part at least as light, as a glint in a pupil or a tongue in a mouth. */
+/**
+ * What `feature`'s paint keeps clear: every later region on its part at least as light (a glint in a pupil), painted
+ * here or by a replacement keeping its ground, and every area a replacement reserves within it. Read from the subject,
+ * not the painted list, so replacing the glint keeps its paper.
+ */
 export function subjectLaterLighterRegions<S extends Subject, O, Slot extends string>(
-  context: SubjectPainterContext<S, O, Slot>, regions: readonly RegionFeature[], at: number,
+  context: SubjectPainterContext<S, O, Slot>, feature: RegionFeature,
 ): Footprint[] {
-  const feature = regions[at], luminance = subjectHexLuminance(context.intent(feature.ref).localColor);
-  return regions.slice(at + 1)
-    .filter((later) => later.owner === feature.owner && subjectHexLuminance(context.intent(later.ref).localColor) >= luminance - 0.02)
-    .map((later) => ({ kind: 'region', region: subjectAreaRegion(later.visibility.geometry) }));
+  const luminance = subjectHexLuminance(context.intent(feature.ref).localColor);
+  const declared = [...context.subject.features.values()];
+  const later = declared.slice(declared.findIndex(({ id }) => id === feature.id) + 1).filter((other): other is RegionFeature =>
+    other.kind === 'region' && other.visibility.kind === 'visible' && other.owner === feature.owner && !isSubjectPainterEye(context.subject, other)
+    && context.keepsGround(other.ref) && subjectHexLuminance(context.intent(other.ref).localColor) >= luminance - 0.02);
+  const box = subjectAreaBox(feature.visibility.geometry);
+  const grounds = context.reservedGrounds.filter((area) => boxesMeet(subjectAreaBox(area), box));
+  return [...later.map(({ visibility }) => visibility.geometry), ...grounds].map((area): Footprint => ({ kind: 'region', region: subjectAreaRegion(area) }));
 }

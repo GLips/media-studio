@@ -72,6 +72,7 @@ export function paintSubject<I extends SubjectIds, O extends object, Slot extend
     reservedGrounds: owned.reservedGrounds,
     intent: owned.intent,
     optionsFor: owned.optionsFor,
+    treatedBy: owned.treatedBy,
     report: ({ severity, address, message, fix }) => diagnostics.push(problem(severity, 'painter-report', address, message, fix)),
   };
   const contributions: readonly SubjectContribution[] = painter.paint(context);

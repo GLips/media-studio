@@ -119,6 +119,35 @@ for (const [name, paint] of Object.entries(painters)) {
     assert.deepEqual([...documentKeys(paint(frog()).layers)].filter((each) => !hidden.has(each) && each !== 'frog.lines.silhouette.part:arm'), ['frog.light.far.material:skin']);
   });
 
+  test(`${name}: a part keeps its seeds whatever another part sharing its tune is retuned to`, () => {
+    const bellySeeds = (head: number) => applicationsOf(paint(frog(), [subjectTune(selectPart('belly'), { shadowDepth: 1.6 }), subjectTune(selectPart('head'), { shadowDepth: head })]).layers)
+      .filter(({ key }) => key?.includes('part:belly')).map(({ key, seed }) => `${key} ${seed}`);
+    assert.ok(bellySeeds(1.6).length > 0);
+    assert.deepEqual(bellySeeds(1.8), bellySeeds(1.6));
+  });
+
+  test(`${name}: a glint replaced by hand keeps its paper inside the pupil painted around it`, () => {
+    const glint = rect(76, 30, 82, 36);
+    const eyed = defineSubject({
+      id: 'frog',
+      materials: [{ id: 'skin', localColor: '#5e9b3c' }, { id: 'iris', localColor: '#2a2016' }, { id: 'shine', localColor: '#fbfaf4' }],
+      parts: [{ id: 'head', material: 'skin', visibility: subjectVisible(rect(40, 15, 120, 60)) }],
+      features: [
+        { kind: 'region', id: 'pupil', owner: 'head', material: 'iris', visibility: subjectVisible(rect(70, 25, 90, 45)) },
+        { kind: 'region', id: 'glint', owner: 'head', material: 'shine', visibility: subjectVisible(glint) },
+      ],
+      frames: [],
+      silhouette: subjectVisible(rect(40, 15, 120, 60)),
+      surface: ballSurface(),
+      illumination: frog().illumination,
+    });
+    const byHand = subjectReplace(selectFeature('glint'), { slot: 'features', paint: ({ paintKey }) => [handLayer(paintKey('glint'))] });
+    const result = requireSubjectPainting(name === 'watercolor' ? paintSubject(eyed, watercolor, {}, [byHand]) : paintSubject(eyed, gouache, {}, [byHand]));
+    const pupil = applicationsOf(result.layers).find(({ key }) => key === 'frog.features.feature:pupil');
+    const reserves = pupil && 'reserves' in pupil ? pupil.reserves ?? [] : [];
+    assert.deepEqual(reserves.map((footprint) => footprint.kind === 'region' && footprint.region.kind === 'polygon' && footprint.region.rings), [glint.rings]);
+  });
+
   test(`${name}: shadowDepth 0 lays no shade at all`, () => {
     const flat = paint(frog(), [subjectTune(selectMaterial('skin'), { shadowDepth: 0 })]);
     assert.ok(!flat.layers.some(({ key }) => key === 'frog.light'));

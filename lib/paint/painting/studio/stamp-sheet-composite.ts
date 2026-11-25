@@ -81,20 +81,25 @@ ${revealed ? stampRevealAtWgsl(3) : ''}
   textureStore(cover, at, vec4f(max(textureLoad(cover, at).r, min(1.0, u.raise * covered))));
 }`;
 
-const STAMP_CARD_COVER_FIGURE = gpuUniformLayout('CoverFigure', [['box', 'vec2f'], ['extent', 'vec2u'], ['total', 'u32'], ['shown', 'f32'], ['fade', 'f32']]);
-// A figure card's cover from its paint's: whole inside its rings, antialiased over a pixel at the line, and past them
-// its paint's coverage times a ramp falling, squared, to nothing \`fade\` px out.
-const COVER_FIGURE_WGSL = /* wgsl */ `
+const STAMP_CARD_COVER_FIGURE = gpuUniformLayout('CoverFigure', [
+  ['box', 'vec2f'], ['extent', 'vec2u'], ['cutOrigin', 'vec2u'], ['total', 'u32'], ['shown', 'f32'], ['fade', 'f32'], ['ramp', 'u32'],
+]);
+// A figure card's cover: whole inside its rings, antialiased at the line, times how much a film shows and,
+// \`revealed\`, its reveals' cut (texel 0 at \`cutOrigin\`), joined by max. With \`ramp\` (the first join only) the
+// paint's coverage past the rings is first taken times a ramp falling, squared, to nothing \`fade\` px out.
+const coverFigureWgsl = (revealed: boolean) => /* wgsl */ `
 ${STAMP_CARD_COVER_FIGURE.wgsl}
 @group(0) @binding(0) var<uniform> u: CoverFigure;
 @group(0) @binding(1) var<storage, read> points: array<vec2f>;
 @group(0) @binding(2) var cover: texture_storage_2d<r32float, read_write>;
+${revealed ? stampRevealAtWgsl(3) : ''}
 ${STAMP_POLYGON_DISTANCE_WGSL}
 @compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn figure(@builtin(global_invocation_id) id: vec3u) {
   if (any(id.xy >= u.extent)) { return; }
   let d = ringsDistance(u.box + vec2f(id.xy) + 0.5, 0u, u.total);
-  let ramp = clamp(1.0 + d / u.fade, 0.0, 1.0);
-  textureStore(cover, id.xy, vec4f(max(u.shown * clamp(d + 0.5, 0.0, 1.0), textureLoad(cover, id.xy).r * ramp * ramp)));
+  let ramp = select(1.0, clamp(1.0 + d / u.fade, 0.0, 1.0), u.ramp == 1u);
+  let inside = u.shown * clamp(d + 0.5, 0.0, 1.0)${revealed ? ' * revealAt(vec2i(u.cutOrigin + id.xy))' : ''};
+  textureStore(cover, id.xy, vec4f(max(inside, textureLoad(cover, id.xy).r * ramp * ramp)));
 }`;
 
 /** An own sheet's card cover as its lay reads it: how much of its paper lies at each texel (r32float) over `box`, painting points. */
@@ -118,7 +123,7 @@ export type StampCardCoverCutting = {
 
 /**
  * The cover of a card with `edge`: `films`' coverage times its share, cut by its reveals (`cutting`) and raised as the
- * edge says, and a figure's outline wholly, shown as its most shown film. Cached under the films' keys, shares,
+ * edge says, and a figure's outline wholly, shown as each film is where its reveals reach. Cached under the films' keys, shares,
  * reveals and the edge, so an unchanged card isn't joined again. Null when it covers nothing.
  */
 export function stampCardCover(
@@ -156,18 +161,26 @@ export function stampCardCover(
     ], w, h);
   });
   if (edge !== 'union') {
-    const points = stampCardFigurePoints(edge);
-    dispatchStampCompute(device, encoder, compute(COVER_FIGURE_WGSL), [
-      arena.slot((views) => {
-        const put = gpuUniformWriter(STAMP_CARD_COVER_FIGURE, views);
-        put('box', [box.x, box.y]);
-        put('extent', [box.w, box.h]);
-        put('total', points.length / 2);
-        put('shown', shownMost);
-        put('fade', edge.fadePx);
-      }),
-      { buffer: stampPaintBuffer(device, points, GPUBufferUsage.STORAGE) }, view,
-    ], box.w, box.h);
+    // The figure shows as each film does, where its reveals have reached: an unrevealed card lays no paper.
+    const joins = cut ? films.flatMap(({ shown }, f) => (shown > 0 ? [{ shown, f }] : [])) : [{ shown: shownMost, f: -1 }];
+    const outline = stampCardFigurePoints(edge), total = outline.length / 2, points = { buffer: stampPaintBuffer(device, outline, GPUBufferUsage.STORAGE) };
+    const texels = stampStageTexelsOf(stage, box);
+    (joins.length ? joins : [{ shown: 0, f: -1 }]).forEach(({ shown, f }, i) => {
+      const reveal = f < 0 ? null : pass.cut(encoder, arena, { links: reveals[f] ?? [], box: texels, size, periods });
+      dispatchStampCompute(device, encoder, compute(coverFigureWgsl(reveal !== null)), [
+        arena.slot((views) => {
+          const put = gpuUniformWriter(STAMP_CARD_COVER_FIGURE, views);
+          put('box', [box.x, box.y]);
+          put('extent', [box.w, box.h]);
+          put('cutOrigin', [texels.x, texels.y]);
+          put('total', total);
+          put('shown', shown);
+          put('fade', edge.fadePx);
+          put('ramp', i === 0 ? 1 : 0);
+        }),
+        points, view, reveal,
+      ], box.w, box.h);
+    });
   }
   return { view, box };
 }
@@ -188,7 +201,7 @@ const revealSlots = (sheet: StampSheetLaid, film: number) => stampRevealSlots(sh
 
 /**
  * How many uniform slots laying `composite` may take: the ground, a rest map a sheet, a mix a faded span, a card and
- * its cover's joins (each film cut first, then its figure) and its light, a lay a film and its cut.
+ * its cover's joins (each film cut first, then its figure as each film shows, cut again) and its light, a lay a film and its cut.
  */
 const compositeSlots = (composite: StampSheetsComposite) => {
   const { sheets, steps } = composite, cardFilms = stampSheetsCardFilms(composite);
@@ -196,7 +209,7 @@ const compositeSlots = (composite: StampSheetsComposite) => {
   return 1 + sheets.length + (composite.shown?.fades.length ?? 0) + stampCardReliefSlots(cards, sheets.length) + steps.reduce((sum, step) => {
     const sheet = sheets[step.sheet];
     if (step.kind === 'rim') return sum;
-    return sum + (step.kind === 'card' ? 2 + cardFilms[step.sheet].reduce((joins, f) => joins + 1 + revealSlots(sheet, f), 0) : 1 + revealSlots(sheet, step.film));
+    return sum + (step.kind === 'card' ? 2 + 2 * cardFilms[step.sheet].reduce((joins, f) => joins + 1 + revealSlots(sheet, f), 0) : 1 + revealSlots(sheet, step.film));
   }, 0);
 };
 

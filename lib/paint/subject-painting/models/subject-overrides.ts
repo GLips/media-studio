@@ -17,7 +17,7 @@ import {
   type PaintableSelector, type SubjectSelection, type SubjectSelector, type SubjectTarget,
 } from '#lib/paint/subject/models/subject-selector.ts';
 import { findSubjectFrame, subjectMaterialOf, subjectRefKey, type PaintableRef, type Subject } from '#lib/paint/subject/models/subject.ts';
-import type { ResolvedSubjectIntent, SubjectIntent, SubjectIntentField, SubjectKeySegment, SubjectPainter, SubjectPaintKey } from './subject-painter.ts';
+import type { ResolvedSubjectIntent, SubjectIntent, SubjectIntentField, SubjectKeySegment, SubjectPainter, SubjectPaintKey, SubjectTreatmentSource } from './subject-painter.ts';
 import type { SubjectAppliedIntent, SubjectOverrideMatch, SubjectPaintingDiagnostic, SubjectPaintingDiagnosticCode } from './subject-painting-report.ts';
 
 /** What a replacement paints with: the targets it took over, its frame when it asked for one, keys and intents. */
@@ -102,6 +102,8 @@ export type ResolvedSubjectReplacement = {
 export type ResolvedSubjectOverrides<O> = {
   readonly intent: (target: PaintableRef) => ResolvedSubjectIntent;
   readonly optionsFor: (target: PaintableRef) => O;
+  /** The intents and tunes reaching `target`, its owner part's first, in override order. */
+  readonly treatedBy: (target: PaintableRef) => readonly SubjectTreatmentSource[];
   /** Whether a replacement took `target` over in `slot`. */
   readonly replaced: (target: PaintableRef, slot: string) => boolean;
   /** False when a replacement owning `target` paints over the automatic paint or reserves a ground of its own. */
@@ -127,7 +129,9 @@ function withSetFields<T extends object, K extends keyof T>(base: T, over: Parti
 
 const keysOf = (targets: readonly SubjectTarget[]) => targets.map(({ ref }) => subjectRefKey(ref));
 
-type IntentEntry<O, Control extends keyof O> = { readonly override: number; readonly intent: SubjectIntent; readonly painterOptions: Partial<Pick<O, Control>> };
+type IntentEntry<O, Control extends keyof O> = {
+  readonly override: number; readonly selector: SubjectSelector; readonly intent: SubjectIntent; readonly painterOptions: Partial<Pick<O, Control>>;
+};
 
 /**
  * Every override checked against `subject` and the painter, with ownership, the intent cascade and per-target options
@@ -170,7 +174,7 @@ export function resolveSubjectOverrides<I extends SubjectIds, O extends object, 
       }
       for (const target of selection.direct) {
         const key = subjectRefKey(target.ref);
-        entries.set(key, [...(entries.get(key) ?? []), { override: i, intent: override.intent, painterOptions }]);
+        entries.set(key, [...(entries.get(key) ?? []), { override: i, selector: override.select, intent: override.intent, painterOptions }]);
         if (controls.length) tuned.set(key, target.ref);
       }
       intents.push({ override: i, intents: fields, controls, targets: keysOf(selection.direct) });
@@ -244,6 +248,13 @@ export function resolveSubjectOverrides<I extends SubjectIds, O extends object, 
     optionsMemo.set(key, resolved);
     return resolved;
   };
+  const treatedBy = (ref: PaintableRef): readonly SubjectTreatmentSource[] => {
+    const target = targetOf(ref);
+    const own = (entries.get(subjectRefKey(ref)) ?? []).map(({ selector, intent, painterOptions }): SubjectTreatmentSource => ({
+      selector, intentFields: INTENT_FIELDS.filter((field) => intent[field] !== undefined), controls: Object.keys(painterOptions),
+    }));
+    return [...('owner' in target ? treatedBy({ kind: 'part', id: target.owner }) : []), ...own];
+  };
   // Each tune may be valid over the call's options and still clash with another reaching the same target, so the
   // options a target is painted with are checked whole. A target without tunes of its own has its owner's, checked there.
   const tunesOf = (ref: PaintableRef): number[] => {
@@ -273,7 +284,7 @@ export function resolveSubjectOverrides<I extends SubjectIds, O extends object, 
   return {
     ok: true,
     value: {
-      intent: intentOf, optionsFor: optionsOf, replaced, keepsGround: (target) => !groundsGiven.has(subjectRefKey(target)), reservedGrounds,
+      intent: intentOf, optionsFor: optionsOf, treatedBy, replaced, keepsGround: (target) => !groundsGiven.has(subjectRefKey(target)), reservedGrounds,
       replacements, matched, intents, warnings: diagnostics,
     },
   };

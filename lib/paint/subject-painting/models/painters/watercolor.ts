@@ -332,9 +332,9 @@ function featureContributions(kit: WatercolorKit): SubjectContribution<Watercolo
   const { context, binding, unit } = kit;
   const regions = subjectPaintedRegions(context, 'features');
   const glazes: { ref: PaintableRef; application: Application }[] = [], solids: { ref: PaintableRef; application: DirectApplication }[] = [];
-  regions.forEach((feature, at) => {
+  regions.forEach((feature) => {
     const intent = context.intent(feature.ref), hex = localHex(intent, context.optionsFor(feature.ref).mute), name = context.paintKey('features', feature.ref);
-    const reserves = subjectLaterLighterRegions(context, regions, at);
+    const reserves = subjectLaterLighterRegions(context, feature);
     const area = regionArea(subjectAreaRegion(feature.visibility.geometry), edgeOf(intent, unit));
     const diameterPx = clamp(Math.round(unit * 0.03), 8, 40);
     // Ink is laid as ink: a glaze that dark over the form would let the form's colour through as a tinted grey.

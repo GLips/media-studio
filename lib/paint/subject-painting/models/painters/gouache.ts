@@ -155,10 +155,10 @@ function featureContributions(kit: GouacheKit): SubjectContribution<GouacheSubje
   const regions = subjectPaintedRegions(context, 'features');
   if (!regions.length) return [];
   const key = context.paintKey('features');
-  const fills = regions.map((feature, at): DirectApplication => {
+  const fills = regions.map((feature): DirectApplication => {
     const intent = context.intent(feature.ref), name = context.paintKey('features', feature.ref);
     return {
-      key: name, kind: 'fill', area: regionArea(subjectAreaRegion(feature.visibility.geometry), edgeOf(intent, unit)), reserves: subjectLaterLighterRegions(context, regions, at), brush: binding.brushes.block,
+      key: name, kind: 'fill', area: regionArea(subjectAreaRegion(feature.visibility.geometry), edgeOf(intent, unit)), reserves: subjectLaterLighterRegions(context, feature), brush: binding.brushes.block,
       diameterPx: 30, seed: name, charge: solid(blockHex(kit, intent)),
     };
   });

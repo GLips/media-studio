@@ -2,8 +2,10 @@
 // figure holding a reserved white, twice: on a figure card cut to the figure, and on a cut card (`flat`), the sticker
 // it replaces. The figure card keeps its white opaque and fades over several px with no band brighter than both its
 // paint and the footage; the cut card, its paper raised past its thinning bleed, shows that band, so the check sees one.
+// Unrevealed, the figure card lays nothing: its paper shows only where its reveal has reached.
 
 import type { PaintingDocument, Region, SheetCard } from '#lib/paint/document/models/painting-document.ts';
+import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import { WATERCOLOUR_PIGMENTS } from '#lib/paint/materials/models/paint-watercolour-pigments.ts';
@@ -25,11 +27,14 @@ const square = (x0: number, y0: number, x1: number, y1: number) => stampGateHero
 
 const figureOutline = (left: number): Region => square(left, 20, left + 70, 100);
 
-/** A figure whose left edge is `left`: a pale umber wash bleeding past its outline round a reserved white square, on `card`. */
-function figureLayer(key: keyof typeof LEFT, card: SheetCard) {
+/** A reveal reaching the whole figure card only long after the selection's moment, 0 s. */
+const LATE_REVEAL = { kind: 'strokes', strokes: [{ points: [{ x: 0, y: 60 }, { x: 110, y: 60 }], widthPx: 120, from: 10, to: 11 }] } as const;
+
+/** A figure whose left edge is `left`: a pale umber wash bleeding past its outline round a reserved white square, on `card`, unrevealed when `late`. */
+function figureLayer(key: keyof typeof LEFT, card: SheetCard, late = false) {
   const left = LEFT[key], white = square(left + 22, 45, left + 50, 75);
   return {
-    key, sheet: { kind: 'own' as const, paper: stampGateHeronPaper('#f3eee2', 1.43), card }, washes: [{ key: `${key}-wash`, applications: [{
+    key, ...(late && { reveal: LATE_REVEAL }), sheet: { kind: 'own' as const, paper: stampGateHeronPaper('#f3eee2', 1.43), card }, washes: [{ key: `${key}-wash`, applications: [{
       key: `${key}-flood`, kind: 'fill' as const, area: { region: figureOutline(left), edge: { kind: 'bleed' as const, reachPx: BLEED_PX } }, reserves: [{ kind: 'region' as const, region: white }],
       brush: { style: 'gate', brush: 'round' }, diameterPx: 18, seed: key,
       charge: { kind: 'paint' as const, mix: { parts: [{ pigment: WATERCOLOUR_PIGMENTS.burntUmber, amount: 1 }], strength: 0.35 }, water: 0.7 },
@@ -37,19 +42,22 @@ function figureLayer(key: keyof typeof LEFT, card: SheetCard) {
   };
 }
 
-/** The footage, then the figure on a figure card and the sticker on a cut card. */
-export const STAMP_GATE_FIGURE_CARD: PaintingSourceModule = {
-  default: (): PaintingDocument => ({
+const figureCardProperties = { revealed: { type: 'boolean', default: true } } as const satisfies PropertySchema;
+
+/** The footage, then the figure on a figure card (not yet revealed unless `revealed`) and the sticker on a cut card. */
+export const STAMP_GATE_FIGURE_CARD: PaintingSourceModule<typeof figureCardProperties> = {
+  properties: figureCardProperties,
+  default: ({ revealed }: PropertyValues<typeof figureCardProperties>): PaintingDocument => ({
     widthPx: FRAME.width, heightPx: FRAME.height, paper: { color: FOOTAGE, absorbency: 0.37 }, medium: 'watercolour',
-    layers: [figureLayer('figure', { figure: figureOutline(LEFT.figure), fadePx: FADE_PX }), figureLayer('sticker', 'flat')],
+    layers: [figureLayer('figure', { figure: figureOutline(LEFT.figure), fadePx: FADE_PX }, !revealed), figureLayer('sticker', 'flat')],
   }),
 };
 
-/** The figures on one still plane. */
-export function stampGateFigureCardShot(): StampGateShot {
+/** The figures on one still plane, the figure card not yet revealed unless `revealed`. */
+export function stampGateFigureCardShot(revealed = true): StampGateShot {
   return {
     camera: { stage: stampStage(FRAME, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },
-    planes: [{ id: 'figures', depth: 1, source: layersOf(painting(STAMP_GATE_FIGURE_CARD), ['figure', 'sticker']) }],
+    planes: [{ id: 'figures', depth: 1, source: layersOf(painting(STAMP_GATE_FIGURE_CARD, { revealed }), ['figure', 'sticker'], { at: 0 }) }],
   };
 }
 
@@ -83,11 +91,26 @@ function edgeReading(rgb: ArrayLike<number>, left: number) {
 
 const f = (value: number) => value.toFixed(1);
 
+/** Levels any row across the unrevealed figure may stray from the footage's rows above every figure. */
+const HIDDEN_SLACK = 2;
+
+/** How far, levels, the row across the unrevealed figure's card (paint, fade and bleed) strays most from the clear footage over it. */
+function hiddenStray(rgb: ArrayLike<number>) {
+  const footage = stampGateBoxLuma(rgb, FRAME.width, { x0: 0, y0: 0, x1: FRAME.width, y1: 3 });
+  let stray = 0;
+  for (let y = 20 - BAND_PX; y < 100 + BAND_PX; y++) {
+    stray = Math.max(stray, Math.abs(stampGateBoxLuma(rgb, FRAME.width, { x0: LEFT.figure - BAND_PX, y0: y, x1: LEFT.figure + 70 + 10, y1: y + 1 }) - footage));
+  }
+  return stray;
+}
+
 /**
  * shot/figure-card: over dark footage the figure card keeps its reserved white opaque, ends in an edge several px soft
- * with no band past it brighter than its paint there and the footage both, and the cut card beside it shows such a band.
+ * with no band past it brighter than its paint there and the footage both, and the cut card beside it shows such a band;
+ * `unrevealed`, the same frame before its reveal reaches it, shows only footage where the figure card lies.
  */
-export function checkStampGateFigureCard(rgb: ArrayLike<number>) {
+export function checkStampGateFigureCard(rgb: ArrayLike<number>, unrevealed: ArrayLike<number>) {
+  const stray = hiddenStray(unrevealed);
   const white: StampGateCardShadowsBox = { x0: LEFT.figure + 28, y0: 51, x1: LEFT.figure + 44, y1: 69 };
   const whiteLuma = stampGateBoxLuma(rgb, FRAME.width, white), paperLuma = stampGateBoxLuma([0xf3, 0xee, 0xe2], 1, { x0: 0, y0: 0, x1: 1, y1: 1 });
   const figure = edgeReading(rgb, LEFT.figure), sticker = edgeReading(rgb, LEFT.sticker);
@@ -103,6 +126,10 @@ export function checkStampGateFigureCard(rgb: ArrayLike<number>) {
     {
       id: 'shot/figure-card: a cut card shows its rim', passed: sticker.rise > RIM_SLACK,
       detail: `the same figure on a cut card rises ${f(sticker.rise)} levels above both sides (above ${RIM_SLACK} wanted: the band the figure card leaves out)`,
+    },
+    {
+      id: 'shot/figure-card: unrevealed lays nothing', passed: stray <= HIDDEN_SLACK,
+      detail: `before its reveal reaches it, no row across the figure card strays more than ${f(stray)} levels from the footage (${HIDDEN_SLACK} allowed)`,
     },
   ];
 }
