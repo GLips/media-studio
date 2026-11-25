@@ -4,12 +4,11 @@
 //
 //   import item from '#library/<id>/item.json' with { type: 'json' };
 //   import transcript from '#library/<id>/transcript.json' with { type: 'json' };
-//   import system from '#library/<id>/system.transcript.json' with { type: 'json' };   // the other side of a call
-//   const footage = libraryFootage(item, transcript, system);
+//   const footage = libraryFootage(item, transcript);
 //
 // Those imports are how a project refers to footage: `studio library show` lists an item's projects by them.
 import { Result, Schema } from 'effect';
-import { FootageTranscript } from '#lib/footage/transcript/models/footage-transcript.ts';
+import { FootageTranscript, transcriptLines, type TranscriptLine } from '#lib/footage/transcript/models/footage-transcript.ts';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 import { inputLogWaypoints, type InputLog, type InputWaypoint } from '#lib/footage/input-log/models/input-log.ts';
 import type { TimedPoint } from '#lib/picture/camera/models/follow-point.ts';
@@ -18,9 +17,18 @@ import type { RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts
 import { LibraryFileUnreadable } from './library-errors.ts';
 import { LIBRARY_ITEM_FORMAT, LibraryItem, type LibraryTrack, libraryItemTimeOf, libraryMediaTimeOf, libraryScreenPointOf } from './library-item.ts';
 
-/** An item's transcript.json (or `<track>.transcript.json`): what that spoken track says, on its media time. */
-export const LibraryTranscriptFile = Schema.Struct({ track: Schema.String, ...FootageTranscript.fields });
+/**
+ * An item's transcript.json: what each spoken track (every track with sound) says, by track name, each on its own
+ * media time. A call's far side is its `system` track.
+ */
+export const LibraryTranscriptFile = Schema.Struct({ tracks: Schema.Record(Schema.String, FootageTranscript) });
 export type LibraryTranscriptFile = typeof LibraryTranscriptFile.Type;
+
+/** A word said in an item, on item time, and the spoken track it was heard on. */
+export type LibraryWord = SpokenWord & { track: string };
+
+/** A transcript line as read, on item time: one track's words, run together until a pause or the other side speaks. */
+export type LibraryTranscriptLine = TranscriptLine & { track: string };
 
 /** transcript.json's text, parsed and decoded. */
 export const LibraryTranscriptFileText = Schema.fromJsonString(LibraryTranscriptFile);
@@ -34,10 +42,8 @@ export type LibraryScreenWaypoint = InputWaypoint & { inside: boolean };
 /** A library item as a project uses it (libraryFootage). */
 export type LibraryFootage = {
   item: LibraryItem;
-  /** Every word said on its speech track, on item time; none for an item with no speech or no transcript yet. */
-  words: readonly SpokenWord[];
-  /** Every word said on spoken track `track` (one whose transcript it was given), on item time. */
-  wordsOn(track: string): readonly SpokenWord[];
+  /** Every word said on any spoken track, in item-time order, each with its track; none before its transcript. */
+  words: readonly LibraryWord[];
   /**
    * The words on spoken `track` (the item's speech unless named; `system` for a call's far side) whose middles lie
    * between `from` and `to` (item seconds), as a line's `speech`: what's said and its levelled sound. Each edge moves
@@ -75,34 +81,34 @@ const WORD_EDGE_SLACK = 0.02;
 const round = (seconds: number) => Math.round(seconds * 1000) / 1000;
 
 /** A track a line can be spoken from, its words and pauses on item time. `untranscribed`: its transcript wasn't given. */
-type LibraryVoice = { track: LibraryTrack; words: SpokenWord[]; pauses: { start: number; end: number }[]; untranscribed?: true };
+type LibraryVoice = { track: LibraryTrack; words: LibraryWord[]; pauses: { start: number; end: number }[]; untranscribed?: true };
 
 const decodeLibraryItem = Schema.decodeUnknownResult(LibraryItem);
 const decodeLibraryTranscript = Schema.decodeUnknownResult(LibraryTranscriptFile);
 
 /**
- * An item from its imported item.json and a transcript per spoken track (transcript.json, `system.transcript.json`),
- * each decoded. Refuses metadata in a format this studio doesn't read, and a transcript of a track the item has no
- * sound on, with a LibraryFileUnreadable.
+ * An item from its imported item.json and transcript.json, each decoded. Refuses metadata in a format this studio
+ * doesn't read, and a transcript of a track the item has no sound on, with a LibraryFileUnreadable.
  */
-export function libraryFootage(itemJson: LibraryItemJsonImport, ...transcriptJsons: LibraryTranscriptFile[]): LibraryFootage {
+export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?: LibraryTranscriptFile): LibraryFootage {
   const named = `library item ${itemJson.id}`;
   if (itemJson.format !== LIBRARY_ITEM_FORMAT) throw new LibraryFileUnreadable({ path: named, reason: `is ${itemJson.format}, not ${LIBRARY_ITEM_FORMAT}: this studio can't read it` });
   const decoded = decodeLibraryItem(itemJson);
   if (Result.isFailure(decoded)) throw new LibraryFileUnreadable({ path: named, reason: `isn't an item the library wrote: ${decoded.failure.message}` });
   const item = decoded.success;
-  const voices = new Map(transcriptJsons.map((json) => {
-    const read = decodeLibraryTranscript(json);
-    if (Result.isFailure(read)) throw new LibraryFileUnreadable({ path: `${item.id}'s transcript`, reason: `isn't a transcript the library wrote: ${read.failure.message}` });
-    const transcript = read.success, track = item.tracks[transcript.track];
-    if (!track?.audio) throw new LibraryFileUnreadable({ path: `${item.id}'s transcript`, reason: `is of ${transcript.track}, a track ${item.id} has no sound on` });
+  const read = transcriptJson && decodeLibraryTranscript(transcriptJson);
+  if (read && Result.isFailure(read)) throw new LibraryFileUnreadable({ path: `${item.id}'s transcript`, reason: `isn't a transcript the library wrote: ${read.failure.message}` });
+  const voices = new Map(Object.entries(read?.success.tracks ?? {}).map(([name, heard]) => {
+    const track = item.tracks[name];
+    if (!track?.audio) throw new LibraryFileUnreadable({ path: `${item.id}'s transcript`, reason: `has ${name}, a track ${item.id} has no sound on` });
     const voice: LibraryVoice = {
       track,
-      words: transcript.words.map((w) => ({ text: w.text, start: libraryItemTimeOf(track, w.start), end: libraryItemTimeOf(track, w.end) })),
-      pauses: transcript.pauses.map((p) => ({ start: libraryItemTimeOf(track, p.start), end: libraryItemTimeOf(track, p.end) })),
+      words: heard.words.map((w) => ({ text: w.text, start: libraryItemTimeOf(track, w.start), end: libraryItemTimeOf(track, w.end), track: name })),
+      pauses: heard.pauses.map((p) => ({ start: libraryItemTimeOf(track, p.start), end: libraryItemTimeOf(track, p.end) })),
     };
-    return [transcript.track, voice] as const;
+    return [name, voice] as const;
   }));
+  const allWords = [...voices.values()].flatMap((voice) => voice.words).toSorted((x, y) => x.start - y.start);
   const voiceOf = (name: string): LibraryVoice | undefined => {
     if (voices.has(name)) return voices.get(name);
     const track = item.tracks[name];
@@ -137,8 +143,7 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, ...transcriptJso
   };
   return {
     item,
-    words: item.speech === undefined ? [] : (voices.get(item.speech)?.words ?? []),
-    wordsOn: (name) => voices.get(name)?.words ?? [],
+    words: allWords,
     speech(asked, askedTo, name = item.speech) {
       const voice = name === undefined ? undefined : voiceOf(name);
       if (!name || !voice) throw new Error(`${item.id} has no ${name ?? 'speech'} track to speak a line from`);
@@ -169,4 +174,18 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, ...transcriptJso
       return current.from + (s.t - current.start);
     },
   };
+}
+
+/**
+ * `words` (libraryFootage's, in item-time order) as lines to read: each line one track's, broken where the other
+ * side starts speaking as well as at a pause. `firstWord` indexes `words`.
+ */
+export function libraryTranscriptLines(words: readonly LibraryWord[]): LibraryTranscriptLine[] {
+  const runs: { track: string; first: number; words: LibraryWord[] }[] = [];
+  words.forEach((word, i) => {
+    const run = runs.at(-1);
+    if (run?.track === word.track) run.words.push(word);
+    else runs.push({ track: word.track, first: i, words: [word] });
+  });
+  return runs.flatMap((run) => transcriptLines(run).map((line) => Object.assign(line, { firstWord: run.first + line.firstWord, track: run.track })));
 }

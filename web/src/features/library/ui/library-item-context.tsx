@@ -1,7 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { LibraryFlag, LibraryFlagFilter, LibraryFlagsFile } from '#lib/footage/library/models/library-flags.ts';
-import type { TranscriptLine } from '#lib/footage/transcript/models/footage-transcript.ts';
-import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
+import type { LibraryTranscriptLine, LibraryWord } from '#lib/footage/library/models/library-footage.ts';
 import type { LibraryFlagOpInput, LibraryItemView } from '../controllers/library-reads.ts';
 import type { LibraryItemPlayback } from './library-item-playback.ts';
 import type { LibraryFlagUndo } from './use-library-flag-undo.ts';
@@ -19,10 +18,10 @@ export type LibraryItemScreenValue = LibraryFlagUndo & {
   audible: readonly { track: string; label: string }[];
   /** Hears the item through `track` from now on, carrying on from where the playback is. */
   hear: (track: string) => void;
-  /** Every word said, on item time; none before the item's transcript is made. */
-  words: readonly SpokenWord[];
+  /** Every word said on any spoken track, in item-time order; none before the item's transcript is made. */
+  words: readonly LibraryWord[];
   /** The words as lines to read, on item time. */
-  lines: readonly TranscriptLine[];
+  lines: readonly LibraryTranscriptLine[];
   flags: LibraryFlagsFile;
   /** The flags N steps through: the filter's, in order. */
   queue: readonly LibraryFlag[];

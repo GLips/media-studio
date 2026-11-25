@@ -2,10 +2,9 @@ import { Box, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { libraryFootage } from '#lib/footage/library/models/library-footage.ts';
+import { libraryFootage, libraryTranscriptLines } from '#lib/footage/library/models/library-footage.ts';
 import { libraryFlagsInOrder, type LibraryFlag, type LibraryFlagFilter } from '#lib/footage/library/models/library-flags.ts';
 import { librarySourcesOf } from '#lib/footage/library/models/library-item.ts';
-import { transcriptLines } from '#lib/footage/transcript/models/footage-transcript.ts';
 import { RouteNotFoundPage } from '#web/shared/ui/route-not-found-page.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
@@ -59,8 +58,8 @@ function LibraryItemScreenBody({ view }: { readonly view: LibraryItemView }) {
   const [marked, setMarked] = useState<LibraryMarkedRange | null>(null);
   const [composing, setComposing] = useState<LibraryComposing | null>(null);
   const { words, lines } = useMemo(() => {
-    const footage = libraryFootage(item, ...(view.transcript ? [view.transcript] : []));
-    return { words: footage.words, lines: transcriptLines({ words: footage.words }) };
+    const said = libraryFootage(item, view.transcript).words;
+    return { words: said, lines: libraryTranscriptLines(said) };
   }, [item, view.transcript]);
   const queue = libraryFlagsInOrder(flags.flags, filter);
   const focused = flags.flags.find((f) => f.id === search.flag);

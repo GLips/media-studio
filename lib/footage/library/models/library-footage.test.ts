@@ -4,7 +4,7 @@ import { resolveStoryboard } from '#lib/timing/storyboard/models/resolve-storybo
 import { defineStoryboard } from '#lib/timing/storyboard/models/storyboard.ts';
 import type { RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
 import { sceneTimes, videoLayoutOf } from '#lib/timing/timeline/models/video-layout.ts';
-import { libraryFootage } from './library-footage.ts';
+import { libraryFootage, libraryTranscriptLines } from './library-footage.ts';
 import { LIBRARY_ITEM_FORMAT } from './library-item.ts';
 
 // A recording whose mic starts 0.5 s into item time, its levelled copy measured at -13 LUFS.
@@ -14,7 +14,8 @@ const item = {
 };
 const said = [['Each', 1.0, 1.3], ['agent', 1.3, 1.7], ['has', 1.8, 2.0], ['a', 2.0, 2.1], ['definition', 2.1, 2.8], ['um', 3.5, 3.8]];
 const pauses = [{ start: 0.2, end: 1.0 }, { start: 2.8, end: 3.5 }, { start: 3.8, end: 9.5 }];
-const transcript = { track: 'mic', duration: 9.5, pauses, words: said.map(([text, start, end]) => ({ text: String(text), start: Number(start), end: Number(end) })) };
+const mic = { duration: 9.5, pauses, words: said.map(([text, start, end]) => ({ text: String(text), start: Number(start), end: Number(end) })) };
+const transcript = { tracks: { mic } };
 const footage = libraryFootage(item, transcript);
 
 test('a line spoken in a recording is timed, worded and sounded by its stretch, cut in its pauses, with no voice named', () => {
@@ -58,17 +59,16 @@ test('a spoken line with no text says what the transcript heard, and one not yet
   assert.match(diagnostics.map((d) => d.message).join('\n'), /isn't levelled for the mix yet: run studio library finish take/);
 });
 
-test("a line spoken on the system track, the other side of a call, plays that track's levelled copy and words", () => {
+test("a call's two sides are one transcript: its words interleave by track, and a line speaks from either", () => {
   const call = {
     ...item,
     tracks: { ...item.tracks, system: { file: 'system.m4a', mediaSeconds: 9.8, startSeconds: 0.2, audio: { sampleRate: 48000, channels: 2, codec: 'aac' }, levelled: { file: 'proxies/system-levelled.wav', lufs: -15 } } },
   };
-  const agent = { track: 'system', duration: 9.8, pauses: [{ start: 4.0, end: 5.0 }, { start: 6.0, end: 9.8 }], words: [{ text: 'Want', start: 5.0, end: 5.4 }, { text: 'it?', start: 5.4, end: 6.0 }] };
-  const both = libraryFootage(call, transcript, agent);
+  const agent = { duration: 9.8, pauses: [{ start: 4.0, end: 5.0 }, { start: 6.0, end: 9.8 }], words: [{ text: 'Want', start: 5.0, end: 5.4 }, { text: 'it?', start: 5.4, end: 6.0 }] };
+  const both = libraryFootage(call, { tracks: { mic, system: agent } });
+  // The mic's words, then the agent's 0.2 s later on item time: one line each, though no pause parts "um" from "Want".
+  assert.deepEqual(libraryTranscriptLines(both.words).map((l) => [l.track, l.text]), [['mic', 'Each agent has a definition'], ['mic', 'um'], ['system', 'Want it?']]);
   const reply = both.speech(5.0, 6.5, 'system');
   assert.deepEqual(reply.heard.map((w) => w.text), ['Want', 'it?']);
   assert.deepEqual(reply.sound && { file: reply.sound.file, lufs: reply.sound.lufs }, { file: 'proxies/system-levelled.wav', lufs: -15 });
-  // The mic's words stay the item's words; the system's are its own.
-  assert.deepEqual(both.words, footage.words);
-  assert.deepEqual(both.wordsOn('system').map((w) => Math.round(w.start * 100) / 100), [5.2, 5.6]);
 });

@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex';
 import { ArrowDownToLine } from 'lucide-react';
 import { Fragment, useMemo, useRef, useState } from 'react';
 import type { LibraryFlag } from '#lib/footage/library/models/library-flags.ts';
-import type { TranscriptLine } from '#lib/footage/transcript/models/footage-transcript.ts';
+import type { LibraryTranscriptLine } from '#lib/footage/library/models/library-footage.ts';
 import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { useLinkedMediaTick } from '#web/shared/ui/linked-media-clock.ts';
@@ -35,6 +35,8 @@ const styles = stylex.create({
   // A line's time to the second; the hundredths only under the pointer, where they're wanted to place a cut.
   whole: { display: { default: 'inline', [stylex.when.ancestor(':hover')]: 'none' } },
   exact: { display: { default: 'none', [stylex.when.ancestor(':hover')]: 'inline' } },
+  // A line the person recording didn't say (a call's far side, on `system`) names the track it was heard on.
+  speaker: { color: colors.dim, marginInlineEnd: spacing.tight },
   // Words dragged over take the accent's tone, not the browser's blue, which reads as the cobalt of the word being said.
   words: {
     margin: 0, color: colors.cream, lineHeight: typography.proseLeading,
@@ -58,7 +60,7 @@ const styles = stylex.create({
 const LINE_RULES = { agent: styles.agentLine, reviewer: styles.reviewerLine } as const;
 
 /** The line spoken at `seconds`: the last to start by then. -1 before the first. */
-function lineIndexAt(lines: readonly TranscriptLine[], seconds: number): number {
+function lineIndexAt(lines: readonly LibraryTranscriptLine[], seconds: number): number {
   let low = 0, high = lines.length - 1, found = -1;
   while (low <= high) {
     const mid = (low + high) >> 1;
@@ -170,6 +172,7 @@ export function LibraryTranscript() {
                 </Readout>
               </UnstyledButton>
               <Text component="p" size="md" {...stylex.props(styles.words)}>
+                {line.track !== view.item.speech && <Text component="span" inherit {...stylex.props(styles.speaker)}>{line.track}</Text>}
                 {words.slice(line.firstWord, line.firstWord + line.wordCount).map((word, k) => {
                   const i = line.firstWord + k, middle = (word.start + word.end) / 2;
                   const inMarked = marked !== null && marked.start <= middle && middle <= marked.end;

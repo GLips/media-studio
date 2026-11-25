@@ -28,8 +28,10 @@ export const readLibraryShelfEffect = Effect.fn('LibraryApp.shelf')(function* ()
   const items = yield* Effect.forEach(yield* store.itemIds(), (id) => Effect.all({
     item: store.readItem(id),
     flags: Effect.map(store.readFlags(id), (file) => file.flags.length),
-    transcript: Effect.map(store.readTranscript(id), Option.toArray),
-  }).pipe(Effect.map(({ item, flags, transcript }): LibraryShelfItem => ({ item, flags, opening: libraryOpeningWords(libraryFootage(item, ...transcript).words) }))));
+    transcript: Effect.map(store.readTranscript(id), Option.getOrUndefined),
+  }).pipe(Effect.map(({ item, flags, transcript }): LibraryShelfItem => ({
+    item, flags, opening: libraryOpeningWords(libraryFootage(item, transcript).words.filter((w) => w.track === item.speech)),
+  }))));
   // Ids lead with the day they were recorded or added, so the newest recordings come first.
   return { items: items.toReversed(), media: yield* libraryMediaPlace() } satisfies LibraryShelf;
 });
@@ -44,7 +46,7 @@ export const searchLibraryEffect = Effect.fn('LibraryApp.search')(function* (que
 /** One item as its page shows it; none when no item has the id. */
 export type LibraryItemView = {
   item: LibraryItem;
-  /** Its speech track's words; none before its transcript is made. */
+  /** What each spoken track says; none before its transcript is made. */
   transcript?: LibraryTranscriptFile;
   /** The projects whose source imports it. */
   usedBy: string[];
@@ -80,7 +82,7 @@ export const readLibraryRangeEffect = Effect.fn('LibraryApp.range')(function* (n
   const id = yield* store.resolveItemId(named);
   const item = yield* store.readItem(id);
   const range = yield* Effect.fromResult(libraryRangeOf(item, from, to));
-  const transcript = Option.toArray(yield* store.readTranscript(id));
-  const read: LibraryRangeRead = { item: id, ...range, said: libraryWordsSaidIn(libraryFootage(item, ...transcript).words, range.from, range.to) };
+  const transcript = Option.getOrUndefined(yield* store.readTranscript(id));
+  const read: LibraryRangeRead = { item: id, ...range, said: libraryWordsSaidIn(libraryFootage(item, transcript).words, range.from, range.to) };
   return read;
 });

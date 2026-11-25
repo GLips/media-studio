@@ -132,33 +132,31 @@ const searchCommand = defineCommand({
       }
       if (!hits.length) yield* Effect.log(`nothing in the library says "${text}"`);
       for (const hit of hits) {
-        yield* Console.log(`${hit.item}  ${formatReviewClockRange(hit.start, hit.end)}  ${hit.on === 'flag' ? `flag #${hit.flag}: ` : ''}${hit.text}`);
+        yield* Console.log(`${hit.item}  ${formatReviewClockRange(hit.start, hit.end)}  ${hit.on === 'flag' ? `flag #${hit.flag}: ` : `${hit.track}: `}${hit.text}`);
       }
     }));
   },
 });
 
 const showCommand = defineCommand({
-  meta: { name: 'show', description: 'Print an item: its tracks and sync, whether its media is online, the projects using it, its flags and transcript.', about: 'Reads committed metadata; works with the media offline. A project uses an item when its source imports `#library/<id>/item.json` or a transcript. Every spoken track is shown: the speech track, and the system audio, where the other side of a call is heard.' },
-  args: { item: libraryItemArg, json: { type: 'boolean', description: 'Print item.json, the projects that use it (usedBy), the flags file, the transcript and each other spoken track\'s (otherTranscripts) as JSON' } },
+  meta: { name: 'show', description: 'Print an item: its tracks and sync, whether its media is online, the projects using it, its flags and transcript.', about: 'Reads committed metadata; works with the media offline. A project uses an item when its source imports `#library/<id>/item.json` or a transcript. Every track with sound is transcribed; with two or more (the far side of a call is on system), the transcript is interleaved in time order, each line labelled by its track.' },
+  args: { item: libraryItemArg, json: { type: 'boolean', description: 'Print item.json, the projects that use it (usedBy), the flags file and the transcript (every spoken track, by name) as JSON' } },
   async run({ args }) {
     const { Console, Effect, Option } = await import('effect');
     const { LibraryStore } = await import('#lib/footage/library/engine/library-store.ts');
     const { LibraryMediaFolder } = await import('#lib/footage/library-media/engine/library-media-folder.ts');
-    const { transcriptLines } = await import('#lib/footage/transcript/models/footage-transcript.ts');
-    const { libraryItemTimeOf, librarySpokenTracks, libraryTranscriptFileName } = await import('#lib/footage/library/models/library-item.ts');
+    const { libraryFootage, libraryTranscriptLines } = await import('#lib/footage/library/models/library-footage.ts');
+    const { librarySpokenTracks } = await import('#lib/footage/library/models/library-item.ts');
     const { formatReviewClock, formatReviewClockRange } = await import('#lib/output/review/models/review-timeline-geometry.ts');
     const { printStudioJson } = await import('#lib/platform/process/engine/studio-effect-runtime.ts');
     await runLibraryProgram(Effect.gen(function* () {
       const store = yield* LibraryStore, media = yield* LibraryMediaFolder;
       const id = yield* store.resolveItemId(args.item);
       const item = yield* store.readItem(id), flags = yield* store.readFlags(id);
-      const spoken = librarySpokenTracks(item);
-      const transcripts = (yield* Effect.forEach(spoken, (track) => store.readTranscript(id, libraryTranscriptFileName(item, track)))).flatMap(Option.toArray);
-      const transcript = transcripts.find((t) => t.track === item.speech), others = transcripts.filter((t) => t !== transcript);
+      const transcript = Option.getOrUndefined(yield* store.readTranscript(id));
       const usedBy = yield* store.projectsUsing(id);
       if (args.json) {
-        yield* printStudioJson({ item, usedBy, flags, ...(transcript && { transcript }), ...(others.length && { otherTranscripts: others }) });
+        yield* printStudioJson({ item, usedBy, flags, ...(transcript && { transcript }) });
         return;
       }
       const online = yield* media.isOnline(), { path } = yield* media.location();
@@ -174,12 +172,12 @@ const showCommand = defineCommand({
       yield* Console.log(usedBy.length ? `used by: ${usedBy.join(', ')}` : 'used by no project');
       if (flags.flags.length) yield* Console.log('flags:');
       for (const flag of flags.flags) yield* Console.log(`  #${flag.id}  ${formatReviewClockRange(flag.start, flag.end)}  ${flag.note ?? ''}  (${flag.by})`);
-      for (const heard of transcripts) {
-        yield* Console.log(`transcript (${heard.track}):`);
-        const track = item.tracks[heard.track];
-        for (const line of transcriptLines(heard)) yield* Console.log(`  ${formatReviewClock(libraryItemTimeOf(track, line.start))}  ${line.text}`);
-      }
-      const missing = spoken.filter((track) => !transcripts.some((t) => t.track === track));
+      const spoken = librarySpokenTracks(item), lines = libraryTranscriptLines(libraryFootage(item, transcript).words);
+      if (lines.length) yield* Console.log(`transcript (${spoken.join(', ')}):`);
+      // Labelled by track only when the item has two sides to tell apart.
+      const label = (track: string) => (spoken.length > 1 ? `${track}: ` : '');
+      for (const line of lines) yield* Console.log(`  ${formatReviewClock(line.start)}  ${label(line.track)}${line.text}`);
+      const missing = spoken.filter((track) => !transcript?.tracks[track]);
       if (missing.length) yield* Console.log(`no transcript of ${missing.join(', ')} yet: \`studio library finish\` makes it`);
     }));
   },

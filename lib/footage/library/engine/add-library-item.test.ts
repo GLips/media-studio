@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { Effect, Layer, Result } from 'effect';
+import { Effect, Layer, Result, Schema } from 'effect';
 import { parseRecorderInputLog } from '#lib/footage/input-log/models/input-log.ts';
 import { FootageTranscriber } from '#lib/footage/transcript/engine/footage-transcriber.ts';
 import { makeLibraryMediaFolderLayer } from '#lib/footage/library-media/engine/library-media-folder.ts';
@@ -14,7 +14,7 @@ import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
 import { addLibraryItem } from './add-library-item.ts';
 import { listLibraryRecorderTakes, removeLibraryRecorderTake } from './library-recorder-takes.ts';
 import { LibraryFileUnreadable } from '../models/library-errors.ts';
-import { libraryFootage } from '../models/library-footage.ts';
+import { libraryFootage, LibraryTranscriptFileText } from '../models/library-footage.ts';
 import { makeRecorderDeviceLatenciesLayer, RecorderDeviceLatencies } from './library-recorder-latencies.ts';
 import { makeLibraryStoreLayer } from './library-store.ts';
 
@@ -71,6 +71,9 @@ function writeTake(root: string, { status, stillFor, input, name = '2026-11-22 1
 const MOVE = { move: true, proxies: false } as const;
 const CLICK = '{"t":1.2,"type":"mouseDown","x":10,"y":20,"button":"left"}\n';
 
+
+// The tracks an item's transcript.json holds.
+const heardTracks = (itemDir: string) => Object.keys(Schema.decodeUnknownSync(LibraryTranscriptFileText)(readFileSync(join(itemDir, 'transcript.json'), 'utf8')).tracks);
 test('a complete take is moved into the library, transcribed and its speech levelled, and a torn last input line is dropped', () => withStudioTemp('library-add', async (root) => {
   const take = writeTake(root, { status: 'complete', stillFor: 0, input: `${CLICK}{"t":1.5,"ty` });
   const item = await runStudioEffect(addLibraryItem({ paths: [take], ...MOVE }), libraryAt(root));
@@ -78,22 +81,21 @@ test('a complete take is moved into the library, transcribed and its speech leve
   assert.deepEqual(item.source, { kind: 'studio-recorder', folder: take, status: 'complete' });
   assert.equal(existsSync(take), false);
   assert.deepEqual(readdirSync(join(root, 'work/library/media', item.id)).toSorted(), ['input.jsonl', 'mic.m4a', 'proxies', 'recording.json', 'screen.mp4']);
-  assert.match(readFileSync(join(root, 'work/library/items', item.id, 'transcript.json'), 'utf8'), /"track": *"mic"/);
+  assert.deepEqual(heardTracks(join(root, 'work/library/items', item.id)), ['mic']);
   assert.deepEqual(item.tracks.mic.levelled, { file: 'proxies/mic-levelled.wav', lufs: -16.2 });
 }));
 
-test("a take's system audio is never its speech, but is transcribed and levelled apart, as the other side of a call", () => withStudioTemp('library-add', async (root) => {
+test("a take's system audio is never its speech, but is transcribed and levelled beside it, as the other side of a call", () => withStudioTemp('library-add', async (root) => {
   const withMic = await runStudioEffect(addLibraryItem({ paths: [writeTake(root, { status: 'complete', stillFor: 0, input: CLICK, sound: ['system', 'mic'] })], ...MOVE }), libraryAt(root));
   assert.equal(withMic.speech, 'mic');
   assert.equal(withMic.tracks.system.file, 'system.m4a');
   assert.equal(withMic.tracks.system.levelled?.file, 'proxies/system-levelled.wav');
   const items = join(root, 'work/library/items', withMic.id);
-  assert.match(readFileSync(join(items, 'transcript.json'), 'utf8'), /"track": *"mic"/);
-  assert.match(readFileSync(join(items, 'system.transcript.json'), 'utf8'), /"track": *"system"/);
+  assert.deepEqual(heardTracks(items), ['mic', 'system']);
   const alone = writeTake(root, { status: 'complete', stillFor: 0, input: CLICK, sound: ['system'], name: '2026-11-22 19.00.00' });
   const item = await runStudioEffect(addLibraryItem({ paths: [alone], ...MOVE }), libraryAt(root));
   assert.equal(item.speech, undefined);
-  assert.equal(existsSync(join(root, 'work/library/items', item.id, 'transcript.json')), false);
+  assert.deepEqual(heardTracks(join(root, 'work/library/items', item.id)), ['system']);
 }));
 
 test("a window's take carries where the window sat into item.json, which places clicks in its pixels and tells those outside it", () => withStudioTemp('library-add', async (root) => {

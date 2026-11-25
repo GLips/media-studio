@@ -17,9 +17,10 @@ import { thisStudioProcess } from '#lib/platform/process/engine/studio-process.t
 import { LIBRARY_ADD_MARKER_FILE, LibraryAddMarkerText, type LibraryAddMarker } from '../models/library-add-marker.ts';
 import { libraryAddStarted, libraryAddStep, libraryAddUndo } from '../models/library-add-machine.ts';
 import { LibraryFootageAlreadyAdded, LibraryRequestRefused, LibraryTakeStillRecording } from '../models/library-errors.ts';
-import { libraryItemDuration, librarySlug, librarySpeechTrack, librarySpokenTracks, libraryTranscriptFileName, LIBRARY_ITEM_FORMAT, unusedLibraryItemId, type LibraryItem, type LibraryTrack } from '../models/library-item.ts';
+import { libraryItemDuration, librarySlug, librarySpeechTrack, librarySpokenTracks, LIBRARY_ITEM_FORMAT, unusedLibraryItemId, type LibraryItem, type LibraryTrack } from '../models/library-item.ts';
 import { namedFilesAddSource, recorderAddSource, type LibraryAddSource, type LibraryTrackValues } from '../models/library-sources.ts';
 import { levelLibrarySpokenTracks } from './library-levelled.ts';
+import type { LibraryTranscriptFile } from '../models/library-footage.ts';
 import { probeLibrarySeconds, probeLibraryStreams } from './library-probe.ts';
 import { makeLibraryProxies } from './library-proxies.ts';
 import { RecorderDeviceLatencies } from './library-recorder-latencies.ts';
@@ -132,12 +133,13 @@ const bringIntoLibrary = Effect.fn('LibraryAdd.bring')(function* (source: Librar
 export const finishLibraryItem = Effect.fn('LibraryAdd.finish')(function* (id: string, { proxies }: { proxies: boolean }) {
   const store = yield* LibraryStore, media = yield* LibraryMediaFolder, transcriber = yield* FootageTranscriber;
   const item = yield* store.readItem(id);
+  // Written after each track, so a finish stopped part way keeps what it heard.
+  let heard: LibraryTranscriptFile = Option.getOrElse(yield* store.readTranscript(id), () => ({ tracks: {} }));
   for (const track of librarySpokenTracks(item)) {
-    const file = libraryTranscriptFileName(item, track);
-    if (Option.isSome(yield* store.readTranscript(id, file))) continue;
+    if (heard.tracks[track]) continue;
     yield* Effect.log(`transcribing ${track}`);
-    const transcript = yield* transcriber.transcribe(yield* media.itemFile(id, item.tracks[track].file));
-    yield* store.writeTranscript(id, { track, ...transcript }, file);
+    heard = { tracks: { ...heard.tracks, [track]: yield* transcriber.transcribe(yield* media.itemFile(id, item.tracks[track].file)) } };
+    yield* store.writeTranscript(id, heard);
   }
   // Levelling is a quick pass over the sound alone, so it's made even when proxies are left for later.
   yield* levelLibrarySpokenTracks(id);

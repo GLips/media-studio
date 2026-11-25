@@ -99,7 +99,7 @@ export const LibraryItem = Schema.Struct({
   durationSeconds: Schema.Finite,
   /** By name: `screen`, `camera`, `mic` for a recording, `video` or `audio` for a single file, else the caller's. */
   tracks: Schema.Record(Schema.String, LibraryTrack),
-  /** The track transcript.json was heard from; none when no track has sound. */
+  /** The person recording's track: a line's default source, and the shelf's opening words. None when no track has sound. */
   speech: Schema.optionalKey(Schema.String),
   /** The input log (input.jsonl in the media folder), on item time. */
   input: Schema.optionalKey(Schema.Struct({ file: Schema.String, coordinates: LibraryInputCoordinates })),
@@ -194,16 +194,13 @@ export function librarySpeechTrack(tracks: Readonly<Record<string, LibraryTrackS
 }
 
 /**
- * The tracks a storyboard line can be spoken from, each transcribed and levelled: the speech track, and the system
- * audio, where the other side of a call (a voice agent, a person on a meeting) is heard.
+ * The tracks a line can be spoken from, each transcribed and levelled: every track with sound, its speech first. A
+ * call's far side (a voice agent, a meeting) is heard on `system`; a track with no speech has an empty transcript.
  */
 export function librarySpokenTracks(item: LibraryItem): string[] {
-  const system = item.tracks.system?.audio && item.speech !== 'system' ? ['system'] : [];
-  return [...(item.speech ? [item.speech] : []), ...system];
+  const audible = Object.keys(item.tracks).filter((name) => item.tracks[name].audio);
+  return audible.toSorted((a, b) => Number(b === item.speech) - Number(a === item.speech));
 }
-
-/** The file in an item's folder holding `track`'s transcript: transcript.json for its speech, `<track>.transcript.json` for another. */
-export const libraryTranscriptFileName = (item: LibraryItem, track: string) => (track === item.speech ? 'transcript.json' : `${track}.transcript.json`);
 
 /** `lg-ultrafine-trial`: lower case, words joined by hyphens, at most 48 characters. */
 export function librarySlug(text: string): string {

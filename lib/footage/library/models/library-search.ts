@@ -2,16 +2,17 @@
 // transcript and flags, never its media, so search works with the media folder offline.
 import { Result } from 'effect';
 import { transcriptLines, type FootageTranscript } from '#lib/footage/transcript/models/footage-transcript.ts';
+import type { LibraryTranscriptFile } from './library-footage.ts';
 import { LibraryRequestRefused } from './library-errors.ts';
 import type { LibraryFlag } from './library-flags.ts';
 import { libraryItemTimeOf, type LibraryItem } from './library-item.ts';
 
 /** What search reads of one item. */
-export type LibrarySearchItem = { item: LibraryItem; transcript?: FootageTranscript; flags: readonly LibraryFlag[] };
+export type LibrarySearchItem = { item: LibraryItem; transcript?: LibraryTranscriptFile; flags: readonly LibraryFlag[] };
 
-/** A match, its range in item time; `text` is the transcript's line around it, or the flag's note. */
+/** A match, its range in item time; `text` is the transcript's line around it (on spoken `track`), or the flag's note. */
 export type LibrarySearchHit =
-  | { item: string; on: 'transcript'; start: number; end: number; text: string }
+  | { item: string; on: 'transcript'; track: string; start: number; end: number; text: string }
   | { item: string; on: 'flag'; flag: number; start: number; end: number; text: string };
 
 // Whisper writes punctuation and capitals a speaker never chose; search compares the words alone.
@@ -25,7 +26,7 @@ export function searchLibrary(items: readonly LibrarySearchItem[], query: string
   const wanted = query.split(/\s+/).map(librarySearchToken).filter(Boolean);
   if (!wanted.length) return Result.fail(new LibraryRequestRefused({ reason: 'search for at least one word' }));
   return Result.succeed(items.flatMap(({ item, transcript, flags }) => {
-    const spoken = transcript && item.speech ? transcriptHits(item, item.tracks[item.speech], transcript, wanted) : [];
+    const spoken = Object.entries(transcript?.tracks ?? {}).flatMap(([track, heard]) => transcriptHits(item, track, heard, wanted));
     const flagged = flags.filter((f) => f.note && holdsTokens(f.note.split(/\s+/).map(librarySearchToken).filter(Boolean), wanted))
       .map((f): LibrarySearchHit => ({ item: item.id, on: 'flag', flag: f.id, start: f.start, end: f.end, text: f.note ?? '' }));
     return [...spoken, ...flagged].toSorted((a, b) => a.start - b.start);
@@ -35,13 +36,14 @@ export function searchLibrary(items: readonly LibrarySearchItem[], query: string
 const tokensAt = (tokens: readonly string[], i: number, wanted: readonly string[]) => wanted.every((token, k) => tokens[i + k] === token);
 const holdsTokens = (tokens: readonly string[], wanted: readonly string[]) => tokens.some((_, i) => tokensAt(tokens, i, wanted));
 
-function transcriptHits(item: LibraryItem, track: LibraryItem['tracks'][string], transcript: FootageTranscript, wanted: readonly string[]): LibrarySearchHit[] {
+function transcriptHits(item: LibraryItem, track: string, transcript: FootageTranscript, wanted: readonly string[]): LibrarySearchHit[] {
   const tokens = transcript.words.map((w) => librarySearchToken(w.text)), lines = transcriptLines(transcript), hits: LibrarySearchHit[] = [];
   for (let i = 0; i + wanted.length <= tokens.length; i++) {
     if (!tokensAt(tokens, i, wanted)) continue;
     const first = transcript.words[i], last = transcript.words[i + wanted.length - 1];
     const line = lines.find((l) => l.start <= first.start && first.start <= l.end);
-    hits.push({ item: item.id, on: 'transcript', start: libraryItemTimeOf(track, first.start), end: libraryItemTimeOf(track, last.end), text: line?.text ?? '' });
+    const on = item.tracks[track];
+    hits.push({ item: item.id, on: 'transcript', track, start: libraryItemTimeOf(on, first.start), end: libraryItemTimeOf(on, last.end), text: line?.text ?? '' });
   }
   return hits;
 }
