@@ -1,0 +1,20 @@
+#!/bin/sh
+# Seeds a new work/ worktree with clones of the main workspace checkout's gitignored, made files (captures, music,
+# voice manifests, generated assets, brush packs). Tracked code imports them, so without them a worktree's commits
+# fail the typecheck, lint and tests that .githooks-workspace/pre-commit runs.
+# Git passes a null previous HEAD only when it makes a checkout (git worktree add, git clone); a branch switch keeps
+# what's there. `studio workspace seed` does the same by hand.
+#
+# It calls the module, not the studio CLI: a fresh studio worktree may not have node_modules yet, and the module needs
+# only Node's builtins.
+
+case "$1" in
+  0000000000000000000000000000000000000000) ;;
+  *) exit 0 ;;
+esac
+studio="$(cd "$(dirname "$0")/.." && pwd)"
+node --input-type=module -e "
+const { seedWorkspaceWorktree } = await import(process.argv[1] + '/lib/platform/project/engine/workspace-seed.ts');
+const plan = seedWorkspaceWorktree(process.cwd());
+if (plan) console.error(plan.clone.length ? 'workspace: seeded ' + plan.clone.length + ' made paths from the main checkout' : 'workspace: nothing to seed');
+" "$studio" || echo 'workspace: seeding failed; run studio workspace seed' >&2
