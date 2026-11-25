@@ -9,7 +9,7 @@
 // LIB_AREAS; a feature is any folder in one.
 //
 // work/ is its own repository, mounted in one path space. Only
-// `work/projects/<p>/…`, `work/brands/<kit>/brand.ts` and `work/styles/<style>/…`
+// `work/projects/<p>/…`, `work/brands/<kit>/brand.ts` and `characters/<name>/…`, and `work/styles/<style>/…`
 // (outside its imported `brushes/`) are positions there: `work/` is never
 // stripped, so a `work/lib/x.ts` is undeclared, not lib.
 
@@ -58,7 +58,11 @@ export type StudioPosition =
    * lib's engine code; everything else is `web-client`, since TanStack Start may put it in a browser chunk.
    */
   | ({ kind: 'web-server' | 'web-client' } & WebPlace)
-  | { kind: 'brand-kit'; kit: string }
+  /**
+   * A brand kit, `work/brands/<kit>/`: its `brand.ts`, or `characters/<name>/…`, a mascot's code any project may draw
+   * (`#brands/*`). A character renders in the browser and, like a style, never imports a project or engine code.
+   */
+  | { kind: 'brand-kit'; kit: string; character?: string }
   /** A private stamp-paint style's source, `work/styles/<style>/` (docs/private-styles.md); a project names the ones it uses. */
   | { kind: 'style'; style: string }
   /**
@@ -232,6 +236,7 @@ export function classifyStudioPath(path: string, shared: DeclaredShared): Studio
   if (top === STUDIO_WORKSPACE_MOUNT) {
     const [, , name, ...inside] = parts;
     if (second === 'brands' && inside.length === 1 && inside[0] === 'brand.ts') return { kind: 'brand-kit', kit: name };
+    if (second === 'brands' && inside.length > 2 && inside[0] === 'characters') return { kind: 'brand-kit', kit: name, character: inside[1] };
     if (second === 'styles' && inside.length && inside[0] !== 'brushes') return { kind: 'style', style: name };
     if (second === 'projects' && inside.length) return { kind: 'project', project: name, ...projectRole(inside, shared[name] ?? []) };
     // parts is work/library/items/<item>/<file>.

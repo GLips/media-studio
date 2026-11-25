@@ -39,6 +39,7 @@
     "#lib/*": "./lib/*",
     "#studio": "./lib/api.ts",
     "#styles/*": "./work/styles/*",
+    "#brands/*": "./work/brands/*",
     "#web/*": "./web/src/*",
     "#library/*": "./work/library/items/*"
   },

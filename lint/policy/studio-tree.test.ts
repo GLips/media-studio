@@ -41,6 +41,9 @@ test('each path lands in its §4 position', () => {
     'web/scripts/seed.ts': 'undeclared',
     'work/brands/kit/brand.ts': 'brand-kit',
     'work/brands/kit/extra.ts': 'undeclared',
+    'work/brands/kit/characters/mascot/mascot-body.ts': 'brand-kit',
+    // Adversarial: a character is a folder of its own, never a loose file in characters/.
+    'work/brands/kit/characters/mascot.ts': 'undeclared',
     'work/styles/wash/style.ts': 'style',
     'work/styles/wash/recipes/tree.ts': 'style',
     // Adversarial: brushes/ is what the importer writes, never source.
