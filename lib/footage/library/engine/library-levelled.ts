@@ -77,7 +77,7 @@ const levelLibraryTrack = Effect.fn('LibraryLevelled.levelTrack')(function* (id:
   // back up in the pauses, about 11 dB louder. A path inside a filter is quoted.
   const denoise = processing === 'loudnorm' ? '' : `,highpass=f=80:poles=2,arnndn=m='${yield* rnnoiseModel(id, name)}':mix=0.8`;
   const source = yield* media.itemFile(id, track.file), file = `proxies/${name}-levelled.wav`;
-  const out = path.join(yield* media.online(), id, file), temp = `${out}.part.wav`;
+  const out = path.join(yield* media.online(), id, file), temp = `${out}.${process.pid}.part.wav`;
   const target = `I=${LIBRARY_LEVELLED_LUFS}:TP=${LEVELLED_TRUE_PEAK}:LRA=${LEVELLED_LRA}`;
   // loudnorm's two passes: measure, then apply the gain linearly where the peaks allow it.
   const { stderr, exitCode } = yield* ffmpeg.report(['-hide_banner', '-nostats', '-i', source, '-vn', '-af', `loudnorm=${target}:print_format=json`, '-f', 'null', '-']);
@@ -109,7 +109,7 @@ const SILENT_DB = -120;
 /** `wav`'s RMS level in dBFS per LIBRARY_QUIET_WINDOW, through a file beside it: ffmpeg's stderr comes back cut short. */
 const windowLevels = Effect.fn('LibraryLevelled.windowLevels')(function* (wav: string) {
   const ffmpeg = yield* StudioFfmpeg, fs = yield* FileSystem.FileSystem;
-  const rate = 16000, levels = `${wav}.levels.txt`;
+  const rate = 16000, levels = `${wav}.${process.pid}.levels.txt`;
   const graph = `aresample=${rate},asetnsamples=n=${Math.round(rate * LIBRARY_QUIET_WINDOW)}:p=0,astats=metadata=1:reset=1:measure_overall=RMS_level:measure_perchannel=none,`
     + `ametadata=print:key=lavfi.astats.Overall.RMS_level:file='${levels}'`;
   yield* ffmpeg.run(['-v', 'error', '-y', '-i', wav, '-af', graph, '-f', 'null', '-']);

@@ -9,17 +9,19 @@ const BLIP_MAX_SECONDS = 0.03;
 // Under this is quiet however the track's floor sits: a call's digital silence puts its floor at -120 dBFS, where the
 // relative rule would call a faint tail of reverb sound.
 const QUIET_ANYWAY_DB = -55;
+// This far under speech is a pause to the ear, however far above a denoised floor it sits.
+const QUIET_UNDER_SPEECH_DB = 24;
 
 /**
  * The quiet spans, [start, end] seconds, of a track measured as `levels` (dBFS per LIBRARY_QUIET_WINDOW). Quiet is
- * under QUIET_ANYWAY_DB, or within a quarter of the way from the track's floor (10th percentile) to its speech (90th)
- * and at least 6 dB over it, so noisy and denoised floors read their decays alike.
+ * under any of: QUIET_ANYWAY_DB; QUIET_UNDER_SPEECH_DB under its speech (90th percentile); a quarter of the way from
+ * its floor (10th) to its speech, and at least 6 dB over the floor. So noisy and denoised floors read decays alike.
  */
 export function libraryQuietSpans(levels: readonly number[]): [number, number][] {
   if (!levels.length) return [];
   const sorted = levels.toSorted((a, b) => a - b);
   const floor = sorted[Math.floor(sorted.length * 0.1)], speech = sorted[Math.floor(sorted.length * 0.9)];
-  const threshold = Math.max(QUIET_ANYWAY_DB, floor + Math.max(6, (speech - floor) / 4));
+  const threshold = Math.max(QUIET_ANYWAY_DB, speech - QUIET_UNDER_SPEECH_DB, floor + Math.max(6, (speech - floor) / 4));
   // Runs of quiet windows, joined across a blip too short to be speech (a click, a lip smack), kept if long enough.
   const runs: [number, number][] = [];
   levels.forEach((db, k) => {

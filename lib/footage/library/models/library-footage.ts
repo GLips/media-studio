@@ -80,6 +80,18 @@ const EDGE_QUIET_MIN = 0.1;
 const EDGE_FADES = { clean: { in: 0.03, out: 0.06 }, rough: { in: 0.06, out: 0.12 } } as const;
 const round = (seconds: number) => Math.round(seconds * 1000) / 1000;
 
+const wordMiddle = (w?: LibraryWord) => (w ? (w.start + w.end) / 2 : undefined);
+
+/**
+ * An edge `pad` seconds (negative: before) from where `word` meets quiet span `q`, kept inside it. A word the
+ * transcript runs past the quiet meets it at its far side, so the edge keeps away from the next sound's onset.
+ */
+const edgeInQuiet = (q: Span, word: number, pad: number) => {
+  const reach = Math.min(Math.abs(pad), (q.end - q.start) / 2);
+  if (pad > 0) return word < q.end ? Math.min(q.end, Math.max(q.start, word) + pad) : q.start + reach;
+  return word > q.start ? Math.max(q.start, Math.min(q.end, word) + pad) : q.end - reach;
+};
+
 // An edge with no quiet: midway to the neighbouring word, or with no neighbour, padded past the line's own words.
 const unquietEdge = (word: number, beside: number, pad: number) => (Number.isFinite(beside) ? (word + beside) / 2 : word + pad);
 
@@ -141,13 +153,16 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
     if (first < 0 || last < first) throw new Error(`${item.id} has no words said between ${from} and ${to} s to speak a line from`);
     const start = words[first].start, end = words[last].end;
     const before = words[first - 1]?.end ?? -Infinity, after = words[last + 1]?.start ?? Infinity;
-    // A short quiet beside a word is often inside it (the stop before "it"'s t); prefer a pause long enough to be one.
-    const leads = quiet.filter((q) => q.start < start && q.end > before), decays = quiet.filter((q) => q.end > end && q.start < after);
+    // A transcript can stretch a word to touch its neighbour, so quiet is sought between the words' middles. A short
+    // quiet beside a word is often inside it (the stop before "it"'s t): prefer a pause long enough to be one.
+    const firstMid = wordMiddle(words[first])!, lastMid = wordMiddle(words[last])!;
+    const leads = quiet.filter((q) => q.start < firstMid && q.end > (wordMiddle(words[first - 1]) ?? -Infinity));
+    const decays = quiet.filter((q) => q.end > lastMid && q.start < (wordMiddle(words[last + 1]) ?? Infinity));
     const long = (q: Span) => q.end - q.start >= EDGE_QUIET_MIN;
     const lead = leads.findLast(long) ?? leads.at(-1), decay = decays.find(long) ?? decays[0];
     return {
-      from: round(lead ? Math.max(lead.start, Math.min(lead.end, start) - EDGE_PAD_IN) : unquietEdge(start, before, -EDGE_PAD_IN)),
-      to: round(decay ? Math.min(decay.end, Math.max(decay.start, end) + EDGE_PAD_OUT) : unquietEdge(end, after, EDGE_PAD_OUT)),
+      from: round(lead ? edgeInQuiet(lead, start, -EDGE_PAD_IN) : unquietEdge(start, before, -EDGE_PAD_IN)),
+      to: round(decay ? edgeInQuiet(decay, end, EDGE_PAD_OUT) : unquietEdge(end, after, EDGE_PAD_OUT)),
     };
   };
   const waypointsOn = (name: string, log: InputLog): LibraryScreenWaypoint[] => {
