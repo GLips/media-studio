@@ -406,10 +406,12 @@ async function checkFigureImage(): Promise<StampGateWashCheck[]> {
   });
 }
 
+/** `shot`'s frame at 0 s, RGB bytes. */
+const frameAtRest = async (shot: StampGateShot) => stampGateRgb((await stampGateShotFrames(shot, [0])).frames[0]);
+
 /** shot/offset-copies: offsetCopies over the figure read in no plane, beside the figure placed alone. */
 async function checkOffsetCopies(): Promise<StampGateWashCheck[]> {
-  const frame = async (shot: StampGateShot) => stampGateRgb((await stampGateShotFrames(shot, [0])).frames[0]);
-  return checkStampGateOffsetCopies({ copies: await frame(stampGateOffsetCopiesShot()), placed: await frame(stampGateOffsetCopiesPlacedShot()) });
+  return checkStampGateOffsetCopies({ copies: await frameAtRest(stampGateOffsetCopiesShot()), placed: await frameAtRest(stampGateOffsetCopiesPlacedShot()) });
 }
 
 /** Shot case `id`'s checks. */
