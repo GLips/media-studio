@@ -12,21 +12,30 @@ https://github.com/user-attachments/assets/d95c1e29-c845-460f-a8fc-84c1fae775ff
 <p align="center"><sub>A 25-second product reel made with media-studio: kinetic type and 3D, cut to a 120 BPM track.
 <a href="https://www.youtube.com/watch?v=EmcyuoMzjZM">Watch it in full quality on YouTube</a>.</sub></p>
 
-Your coding agent drives the `studio` CLI, with skills that ship as a Claude Code plugin. You watch what it makes in the
-review app and point at what should change. With media-studio, your agent can:
+Your coding agent drives the `studio` CLI, with skills that ship as a Claude Code plugin. With media-studio, you and
+your agent can:
 
-- **Paint** in watercolour, gouache, crayon, pencil and ink on the GPU, then animate the painting, wrap it onto a 3D
-  object or fold it up as cut paper.
-- **Cut motion to music**: kinetic type, 3D scenes and transitions timed to the beats and bars of a track it can trim
-  to length.
-- **Film your web pages** in a browser, with the clicks, scrolls and typing written per shot, and zoom to whatever the
-  voiceover names.
-- **Voice, score and mix** a video, starting on a free draft voice so the plan is right before anything costs money.
-- **Block a shot out in 3D** for your sign-off before it pays for generated footage.
-- **Study a reference video** you like: its cuts against the beat, its motion and its palette, frame by frame.
-- **Find your best takes** in recordings from Studio Recorder, transcribed and searchable.
-- **Take your notes in a review app**, pinned to a frame, a word or a region, and answer them while you watch.
-- **Check its own frames** before you see them, and refuse a still whose text is cut off.
+- **Paint**
+  - Use watercolour, gouache, crayon, or any style you add
+  - Bring paintings into animation and 3D
+- **Animate**
+  - Build motion graphics, kinetic type and 3D scenes
+  - Cut to the beat of any track
+- **Review in the studio app**
+  - See every project, its plan and its renders in one place
+  - Pin notes to a frame, a word or part of the picture
+  - Watch your agent pick up each note as you leave it
+- **Record**
+  - Capture screen, camera and mic with one key
+  - Find your best takes fast
+- **Draft before spending**
+  - Preview voice and 3D shots for free
+  - Pay only once you approve
+- **Lean on built-in craft**
+  - Follow skills for every step
+  - Catch cut-off text before you see it
+- **Add what's missing**
+  - Extend anything, since it's all code
 
 Each video or set of stills is a project in `work/` inside your clone. Every frame is code, built on
 [Remotion](https://www.remotion.dev), so a note like "hold that shot longer" is an edit and a re-render.
