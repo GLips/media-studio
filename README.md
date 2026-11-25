@@ -7,10 +7,10 @@
 <h3>A media studio for you and your agents: code-based tools for making video and images, and a review app where you
 leave specific notes, frame by frame.</h3>
 
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=EmcyuoMzjZM"><img src="docs/images/demo-reel.jpg" alt="Play: a product reel made with media-studio, price columns in 3D on a field of blocks" width="100%"></a>
-  <br><sub>A 25-second product reel made with media-studio: kinetic type and 3D, cut to a 120 BPM track. Click to play it on YouTube.</sub>
-</p>
+https://github.com/user-attachments/assets/d95c1e29-c845-460f-a8fc-84c1fae775ff
+
+<p align="center"><sub>A 25-second product reel made with media-studio: kinetic type and 3D, cut to a 120 BPM track.
+<a href="https://www.youtube.com/watch?v=EmcyuoMzjZM">Watch it in full quality on YouTube</a>.</sub></p>
 
 Your coding agent drives the `studio` CLI, with skills that ship as a Claude Code plugin. You watch what it makes in the
 review app and point at what should change. With media-studio, your agent can:
