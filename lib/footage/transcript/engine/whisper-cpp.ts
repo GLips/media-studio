@@ -14,6 +14,9 @@ const WHISPER_CPP_VERSION = '1.8.6';
 // On a 21-minute raw mic recording, medium.en's words, edged by the pauses, start and end within 0.1 s of the pauses
 // around them at 85% of pauses (median 0); it hears the file in about a twelfth of its length on an M-series GPU.
 const WHISPER_MODEL = 'medium.en';
+// Whisper writes clean prose unless its prompt is verbatim: led by this one it writes the fillers, stutters and
+// false starts a line's cleanup cuts (on a recorded take, the "uh"s it otherwise folded into the words beside them).
+const VERBATIM_PROMPT = 'Umm, so, uh, I I mean, like, we- we went, hmm, to the the store.';
 
 /** Installing whisper.cpp or its model failed, or whisper-cli failed over a run's files. */
 export class WhisperFailed extends Schema.TaggedError<WhisperFailed>()('WhisperFailed', {
@@ -62,8 +65,9 @@ export const whisperCppLayer = Layer.effect(WhisperCpp, Effect.gen(function* () 
     const run = ChildProcess.make(path.join(home, 'build', 'bin', 'whisper-cli'), [
       // whisper.cpp skips DTW, and so every token's t_dtw, when flash attention is on, as it is by default.
       '-m', path.join(home, `ggml-${WHISPER_MODEL}.bin`), '--dtw', WHISPER_MODEL, '-nfa',
-      // A segment per token, each JSON beside its WAV; -mc 0 keeps one piece's words from steering the next's.
-      '-ml', '1', '-oj', '-ojf', '-mc', '0', '-np', ...wavs,
+      // A segment per token, each JSON beside its WAV. The prompt is text context, so -mc must leave it room; a piece
+      // fits one 30 s window, and whisper-cli clears the context per file, so no piece's words steer another's.
+      '-ml', '1', '-oj', '-ojf', '-mc', '64', '--prompt', VERBATIM_PROMPT, '-np', ...wavs,
     ], STUDIO_CHILD_PROCESS);
     const handle = yield* spawner.spawn(run).pipe(Effect.mapError(whisperFailed));
     const [stderr, exitCode] = yield* Effect.all([
@@ -79,5 +83,5 @@ export const whisperCppLayer = Layer.effect(WhisperCpp, Effect.gen(function* () 
     return yield* Effect.forEach(wavs, readTokens);
   }, Effect.scoped);
 
-  return WhisperCpp.of({ transcriber: `whisper.cpp-${WHISPER_CPP_VERSION}/${WHISPER_MODEL}/pieces-1`, install, hear });
+  return WhisperCpp.of({ transcriber: `whisper.cpp-${WHISPER_CPP_VERSION}/${WHISPER_MODEL}/pieces-1/verbatim-1`, install, hear });
 }));

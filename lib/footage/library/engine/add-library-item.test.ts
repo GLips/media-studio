@@ -40,7 +40,7 @@ const fakeFfmpeg = StudioFfmpeg.of({
   }),
 });
 
-const fakeTranscriber = FootageTranscriber.of({ transcribe: () => Effect.succeed({ duration: 10, words: [{ text: 'Hello', start: 1, end: 1.4 }], pauses: [] }) });
+const fakeTranscriber = FootageTranscriber.of({ transcriber: 'fake', transcribe: () => Effect.succeed({ duration: 10, words: [{ text: 'Hello', start: 1, end: 1.4 }], pauses: [], unheard: [] }) });
 
 /**
  * The user cache moved into the test's folder, holding a stand-in DeepFilterNet that copies its input to its output

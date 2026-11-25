@@ -10,7 +10,7 @@ import { Data, Option, Result } from 'effect';
 import { setup, types } from 'xstate';
 import type { SnapshotFrom } from 'xstate';
 import type { FootageTranscript } from './footage-transcript.ts';
-import { audioFrameLevels, audioPauses, planTranscriptPieces, quietAudioLevel, wordsTimedAtPauses, type TranscriptPiece } from './transcript-audio.ts';
+import { audioFrameLevels, audioPauses, planTranscriptPieces, quietAudioLevel, unheardSpeech, wordsTimedAtPauses, type TranscriptPiece } from './transcript-audio.ts';
 import { whisperWordsInFile, type WhisperToken } from './whisper-heard-words.ts';
 
 /** A file's sound as whisper hears it (16-bit mono), with where it's quiet and the pieces it's split into. */
@@ -106,8 +106,8 @@ export const transcriptionJobMachine = s.createMachine({
       always: ({ input: { cacheKey, audio, tokens } }) => {
         const { samples, rate, levels, quiet, pieces } = audio;
         const pauses = audioPauses(levels, quiet), duration = samples.length / rate;
-        const heard = pieces.flatMap((piece, i) => whisperWordsInFile(tokens[i] ?? [], piece));
-        return { target: '#caching', input: { cacheKey, transcript: { duration, words: wordsTimedAtPauses(heard, pauses, duration), pauses } } };
+        const heard = pieces.flatMap((piece, i) => whisperWordsInFile(tokens[i] ?? [], piece)), unheard = unheardSpeech(levels, quiet, heard);
+        return { target: '#caching', input: { cacheKey, transcript: { duration, words: wordsTimedAtPauses(heard, pauses, duration, unheard), pauses, unheard } } };
       },
     },
     caching: {

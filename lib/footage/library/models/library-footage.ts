@@ -19,9 +19,10 @@ import { LIBRARY_ITEM_FORMAT, LibraryItem, type LibraryTrack, libraryItemTimeOf,
 
 /**
  * An item's transcript.json: what each spoken track (every track with sound) says, by track name, each on its own
- * media time. A call's far side is its `system` track.
+ * media time. A call's far side is its `system` track. `heardBy` names the transcriber that heard it
+ * (FootageTranscriber's), so `studio library finish` hears a transcript made another way again.
  */
-export const LibraryTranscriptFile = Schema.Struct({ tracks: Schema.Record(Schema.String, FootageTranscript) });
+export const LibraryTranscriptFile = Schema.Struct({ heardBy: Schema.String, tracks: Schema.Record(Schema.String, FootageTranscript) });
 export type LibraryTranscriptFile = typeof LibraryTranscriptFile.Type;
 
 /** A word said in an item, on item time, and the spoken track it was heard on. */

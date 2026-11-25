@@ -14,13 +14,13 @@ export const WhisperFullJson = Schema.Struct({
 
 /**
  * A piece's tokens as words placed in the whole file, each at the middle of its tokens' DTW times. Tokens are word
- * pieces: one starting with a space begins a word, the rest continue it. Bracketed tokens like [_BEG_] are markers,
- * not speech.
+ * pieces: one starting with a space begins a word, the rest continue it. Tokens like [_BEG_] and <|endoftext|> are
+ * markers, not speech.
  */
 export function whisperWordsInFile(tokens: readonly WhisperToken[], piece: TranscriptPiece): HeardWord[] {
   const words: { text: string; times: number[] }[] = [];
   for (const token of tokens) {
-    if (token.text.startsWith('[_') || !token.text.trim()) continue;
+    if (token.text.startsWith('[_') || token.text.startsWith('<|') || !token.text.trim()) continue;
     // Punctuation joins the word before it, and whisper times it where it writes it, often in the quiet after.
     const spoken = /[\p{L}\p{N}]/u.test(token.text), last = words.at(-1);
     const joins = last !== undefined && (!spoken || !/^\s/.test(token.text));
@@ -30,10 +30,11 @@ export function whisperWordsInFile(tokens: readonly WhisperToken[], piece: Trans
     if (spoken && token.t_dtw >= 0) word.times.push(token.t_dtw / 100);
   }
   let at = 0;
-  // Whisper writes what it hears that isn't speech as a tag: [BLANK_AUDIO], (music), [laughs].
+  // Whisper writes what it hears that isn't speech as a tag: [BLANK_AUDIO], (music), [laughs]. Punctuation before any
+  // word (a prompt's last "." echoed) is no word either.
   return words.flatMap(({ text, times }) => {
     const first = times.at(0), last = times.at(-1);
     if (first !== undefined && last !== undefined) at = (first + last) / 2;
-    return /^[[(].*[\])]$/.test(text) ? [] : [{ text, at: fileTimeInPiece(piece, at) }];
+    return /^[[(].*[\])]$/.test(text) || !/[\p{L}\p{N}]/u.test(text) ? [] : [{ text, at: fileTimeInPiece(piece, at) }];
   });
 }
