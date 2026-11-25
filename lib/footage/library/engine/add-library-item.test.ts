@@ -99,7 +99,7 @@ test('a complete take is moved into the library, transcribed and its speech leve
   assert.equal(existsSync(take), false);
   assert.deepEqual(readdirSync(join(root, 'work/library/media', item.id)).toSorted(), ['input.jsonl', 'mic.m4a', 'proxies', 'recording.json', 'screen.mp4']);
   assert.deepEqual(heardTracks(join(root, 'work/library/items', item.id)), ['mic']);
-  assert.deepEqual(item.tracks.mic.levelled, { file: 'proxies/mic-levelled.wav', lufs: -16.2, processing: libraryLevelledProcessing('mic'), quiet: [[0.02, 0.07]] });
+  assert.deepEqual(item.tracks.mic.levelled, { file: 'proxies/mic-levelled.wav', lufs: -16.2, processing: libraryLevelledProcessing('mic'), quiet: [[0.02, 0.07]], soft: [], clicks: [] });
   // A copy levelled before the denoise records no processing, so finish remakes it.
   const itemJson = join(root, 'work/library/items', item.id, 'item.json');
   writeFileSync(itemJson, JSON.stringify({ ...item, tracks: { ...item.tracks, mic: { ...item.tracks.mic, levelled: { file: 'proxies/mic-levelled.wav', lufs: -16.2 } } } }));
