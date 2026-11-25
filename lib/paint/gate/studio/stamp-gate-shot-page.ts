@@ -8,7 +8,7 @@
 // stamp-gate-in-time-page.ts's and the lit cards' stamp-gate-card-shadows-page.ts's, handed on.
 
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
-import { checkStampGateFigureCard, stampGateFigureCardShot } from '../models/stamp-gate-figure-card.ts';
+import { checkStampGateFigureCard, checkStampGateFigureImage, stampGateFigureCardShot, stampGateFigureImageShot, type StampGateFigurePlacing } from '../models/stamp-gate-figure-card.ts';
 import { checkStampGateCardShutter, STAMP_GATE_CARD_SHUTTER, stampGateCardShutterShot } from '../models/stamp-gate-card-shutter.ts';
 import { STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_POSED_AT, stampGateCardsPosedShot, stampGateCardsShot } from '../models/stamp-gate-cards.ts';
 import { STAMP_GATE_FRAME_TOLERANCE, stampGateFrameDifference, stampGateFrameDifferenceText, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
@@ -395,6 +395,16 @@ async function checkFigureCard(): Promise<StampGateWashCheck[]> {
   return checkStampGateFigureCard(await figureCardFrame(true), await figureCardFrame(false));
 }
 
+/** The figure-image shot's frame at rest, the figure placed as `placing` says, revealed or not. */
+const figureImageFrame = async (placing: StampGateFigurePlacing, revealed = true) => stampGateRgb((await stampGateShotFrames(stampGateFigureImageShot(placing, revealed), [0])).frames[0]);
+
+/** shot/figure-image: the figure placed as a shot's figure over footage, revealed and not, beside it placed directly and with its shadow. */
+async function checkFigureImage(): Promise<StampGateWashCheck[]> {
+  return checkStampGateFigureImage({
+    figure: await figureImageFrame('figure'), unrevealed: await figureImageFrame('figure', false), direct: await figureImageFrame('direct'), grounded: await figureImageFrame('grounded'),
+  });
+}
+
 /** Shot case `id`'s checks. */
 export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGateWashCheck[]> {
   if (id === 'shot/rain') return checkStampGateRain();
@@ -411,6 +421,7 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/card-shadows') return checkStampGateCardShadowsCase();
   if (id === 'shot/card-shutter') return checkCardShutter();
   if (id === 'shot/figure-card') return checkFigureCard();
+  if (id === 'shot/figure-image') return checkFigureImage();
   return checkStampGateShotMasksCase(id);
 }
 

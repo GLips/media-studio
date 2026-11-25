@@ -243,6 +243,15 @@
       "acceptedOver": "4247cd66",
       "adapter": "apple metal-3"
     },
+    "shot/figure-image": {
+      "file": "shot/figure-image.png",
+      "output": "4729ff75c7eb27bcb8298fabb1e39432c2b252439a9cc95e72f634db21ef45ba",
+      "inputs": "93b923742c8db65e9449e405e255e6b4a18b4ded8aaca2de070c9634dbe43e7e",
+      "reason": "vid-215: new baseline, a figure placed as a shot's figure over footage",
+      "accepted": "2026-11-25",
+      "acceptedOver": "74ea9db9",
+      "adapter": "apple metal-3"
+    },
     "shot/folds": {
       "file": "shot/folds.png",
       "output": "6a52898d2b41e1541dd4ba4103d6937441a439747af49483aa3ed62eed3a3e9b",
