@@ -34,6 +34,8 @@ Read the ones your branch reaches before building:
   `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/tracks.md`.
 - **Remotion directly** (audio, images, fonts, measuring the DOM), where `#studio` has nothing:
   `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/remotion.md`.
+- **A rigged character** directed by a score:
+  `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/characters.md`.
 - **Directing vocabulary** (shot sizes, cuts, pacing, the words of a note), for reading a note or giving one:
   `${CLAUDE_PLUGIN_ROOT}/skills/video-motion/references/directing.md`.
 

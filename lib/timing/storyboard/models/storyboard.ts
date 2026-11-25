@@ -136,8 +136,11 @@ export type StoryboardTimelineScenes<Scenes> = { readonly [K in keyof Scenes]: S
 
 // ---------- the storyboard ----------
 
-/** The musical section's beats: a fixed tempo (beat 0 `firstBeat` seconds in), or a track of music/index.ts by name. */
-export type StoryboardGrid = { tempo: number; firstBeat?: number } | { music: string; steady?: boolean };
+/**
+ * The musical section's beats: a fixed tempo (beat 0 `firstBeat` seconds in), or a track of music/index.ts by name.
+ * `beatsPerBar` is its meter, 4 unless given: a scene's score counts `[bar, beat]` in it.
+ */
+export type StoryboardGrid = ({ tempo: number; firstBeat?: number } | { music: string; steady?: boolean }) & { beatsPerBar?: number };
 
 export type StoryboardReplays<Scenes> = ReplayTable<StoryboardTimelineScenes<Scenes>>;
 

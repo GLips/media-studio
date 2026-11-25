@@ -24,15 +24,22 @@ export type FittedTrack = { bpm: number; beats: readonly number[]; duration: num
  * landmarks are checked), or tempo-only, for rhythm before there's any sound (landmarks stay pending).
  */
 export type TimelineGrid =
-  | { kind: 'recorded'; track: FittedTrack; steady: boolean; beats: BeatGrid }
-  | { kind: 'tempo'; bpm: number; beats: BeatGrid };
+  | { kind: 'recorded'; track: FittedTrack; steady: boolean; beats: BeatGrid; beatsPerBar: number }
+  | { kind: 'tempo'; bpm: number; beats: BeatGrid; beatsPerBar: number };
 
-/** A fitted recording's grid; `steady` fits one tempo and phase through its tracked beats (`beatGrid`'s). */
-export const recordedGrid = (track: FittedTrack, { steady = false } = {}): TimelineGrid =>
-  ({ kind: 'recorded', track, steady, beats: fitBeatGrid(track, { steady }) });
+/** Beats a bar when a grid names no meter: 4/4. */
+export const DEFAULT_BEATS_PER_BAR = 4;
 
-/** A grid at a fixed tempo, beat 0 `firstBeat` seconds into the section. */
-export const tempoGrid = (bpm: number, { firstBeat = 0 } = {}): TimelineGrid => ({ kind: 'tempo', bpm, beats: steadyBeatGrid(bpm, firstBeat) });
+/**
+ * A fitted recording's grid; `steady` fits one tempo and phase through its tracked beats (`beatGrid`'s). `beatsPerBar`
+ * is its meter, which a score's `[bar, beat]` counts in.
+ */
+export const recordedGrid = (track: FittedTrack, { steady = false, beatsPerBar = DEFAULT_BEATS_PER_BAR } = {}): TimelineGrid =>
+  ({ kind: 'recorded', track, steady, beats: fitBeatGrid(track, { steady }), beatsPerBar });
+
+/** A grid at a fixed tempo, beat 0 `firstBeat` seconds into the section, `beatsPerBar` beats a bar. */
+export const tempoGrid = (bpm: number, { firstBeat = 0, beatsPerBar = DEFAULT_BEATS_PER_BAR } = {}): TimelineGrid =>
+  ({ kind: 'tempo', bpm, beats: steadyBeatGrid(bpm, firstBeat), beatsPerBar });
 
 // ---------- the voice ----------
 
@@ -183,6 +190,8 @@ type SceneFacts<Key extends string> = {
   beats: number;
   /** Seconds per beat on the section's grid; 0 with no grid. */
   spb: number;
+  /** The grid's meter, which a score's `[bar, beat]` counts in: 4 when the timeline's grid names none or it has no grid. */
+  beatsPerBar: number;
   /** The timeline's frame rate: every frame here is one of these. */
   fps: number;
 };
@@ -280,6 +289,8 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
       + 'it would push the later beat scenes off their beats. Make it a beatSpan, or move it outside the section');
   }
   if (musical.length && !spec.grid) throw new Error(`scene ${keys[musical[0]]} is a beatSpan, but the timeline has no grid: give it a recordedGrid or tempoGrid`);
+  const meter = spec.grid?.beatsPerBar;
+  if (meter !== undefined && !(Number.isInteger(meter) && meter > 0)) throw new Error(`the grid's beatsPerBar is ${meter}: give it a whole number of beats, 1 or more`);
 
   // The voice: each line spoken in one scene only, and the voice scenes laid out as read.
   const voice: TimelineVoice = spec.voice ?? {};
@@ -396,7 +407,7 @@ export function defineTimeline<const Scenes extends AnyScenes, const Replays ext
   const placed = spans.map((span, k): ResolvedScene<keyof Scenes & string> => ({
     id: keys[k], n: k + 1, driver: span.driver, origin: origins[k], from: cuts[k], to: nexts[k], end: ends[k],
     visible: { from: Math.floor(cuts[k] - halfFade(k)), to: Math.ceil(nexts[k] + halfFade(k + 1)) }, crossfade: span.crossfade ?? 0,
-    beats: span.driver === 'beat' ? span.beats : 0, spb: grid?.spb ?? 0, fps,
+    beats: span.driver === 'beat' ? span.beats : 0, spb: grid?.spb ?? 0, beatsPerBar: spec.grid?.beatsPerBar ?? DEFAULT_BEATS_PER_BAR, fps,
     cues: Object.fromEntries(Object.keys(span.cues ?? {}).map((name) => [name, ownCue(k, name)])),
     moves: Object.fromEntries(Object.entries(span.moves ?? {}).map(([name, move]) => [name, { from: refFrame(k, move.from), to: refFrame(k, move.to) }])),
     beatFrames: span.driver === 'beat' ? Array.from({ length: span.beats }, (_, n) => beatFrame(startBeat[k] + n)) : [],
