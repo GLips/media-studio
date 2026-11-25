@@ -2,6 +2,7 @@
 
 ## Rules
 
+- The engine (`lib/`) holds the fundamental capabilities, plus a few built-ins of each extensible kind (styles, painters, effects) as examples; `work/` uses them as they are or writes its own the same way.
 - Commands: `npm run check:arch`, `npm run lint`, `npm run typecheck`, `npm test`. Run each on its own; a chained `&&`
   hides every failure after the first. The pre-commit gate (`.githooks/pre-commit`, on after `npm install`) runs
   check:arch and `lint` over the studio, then `typecheck:gate` and `test:gate` (what a clean clone holds, no `work/`)
