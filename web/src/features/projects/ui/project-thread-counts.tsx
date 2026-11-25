@@ -21,7 +21,7 @@ const THREAD_COUNT_TONES = ['open', 'addressed', 'asks'] as const;
 type ThreadCountTone = (typeof THREAD_COUNT_TONES)[number];
 
 /** What a count says, the same words the review panel uses: `1 open note`, `2 to verify`, `3 questions`. */
-const THREAD_COUNT_WORDS: Record<ThreadCountTone, (n: number) => string> = {
+export const PROJECT_THREAD_COUNT_WORDS: Record<ThreadCountTone, (n: number) => string> = {
   open: (n) => `${n} open note${n === 1 ? '' : 's'}`,
   addressed: (n) => `${n} to verify`,
   asks: (n) => `${n} question${n === 1 ? '' : 's'}`,
@@ -56,7 +56,7 @@ type ProjectThreadCountsProps = {
 export function ProjectThreadCounts({ threads, linkedTo }: ProjectThreadCountsProps) {
   return THREAD_COUNT_TONES.filter((state) => threads[state] > 0).map((state) => {
     const first = linkedTo?.firstThreads[state];
-    const words = <Text component="span" size="sm" {...stylex.props(styles.count, styles[state], first && styles.linked)}>{THREAD_COUNT_WORDS[state](threads[state])}</Text>;
+    const words = <Text component="span" size="sm" {...stylex.props(styles.count, styles[state], first && styles.linked)}>{PROJECT_THREAD_COUNT_WORDS[state](threads[state])}</Text>;
     if (!linkedTo || !first) return <Fragment key={state}>{words}</Fragment>;
     return (
       <FirstThreadLink key={state} summary={linkedTo} first={first}>
