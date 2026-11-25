@@ -16,16 +16,16 @@ export const SUBJECT_GROUND_SLOT = 'ground';
 export const SUBJECT_FIGURE_CARD_FADE = 0.015;
 
 /**
- * `painting`'s layers with its figure on a figure card of `paper`, keyed `key`: what lies in the ground slot first, on
- * the sheet it's put on, then a group on its own sheet holding the rest. Its card covers `subject`'s silhouette and
- * thins out `fadePx` past it (SUBJECT_FIGURE_CARD_FADE of its height). A hidden subject's layers are returned as they are.
+ * `painting`'s layers with its figure on a figure card of `paper`, keyed `key`: the ground slot's layers first, then
+ * a group on its own sheet holding the rest, its card covering `subject`'s silhouette and thinning `fadePx` past it.
+ * A hidden subject's group has no card, so shotFigure still finds `key`.
  */
 export function subjectFigureCard(
   subject: Subject, { layers, report }: SubjectPainting, { key, paper, fadePx }: { readonly key: Key; readonly paper: Paper; readonly fadePx?: number },
 ): LayerNode[] {
-  if (subject.silhouette.kind === 'hidden') return [...layers];
   const grounded = new Set([...report.contributions, ...report.replacements].flatMap(({ slot, documentKeys }) => (slot === SUBJECT_GROUND_SLOT ? documentKeys : [])));
   const ground = layers.filter((layer) => grounded.has(layer.key)), figure = layers.filter((layer) => !grounded.has(layer.key));
+  if (subject.silhouette.kind === 'hidden') return [...ground, { key, children: figure }];
   const card = { figure: subjectAreaRegion(subject.silhouette.geometry), fadePx: fadePx ?? SUBJECT_FIGURE_CARD_FADE * subjectUnitPx(subject) };
   return [...ground, { key, sheet: { kind: 'own', paper, card }, children: figure }];
 }

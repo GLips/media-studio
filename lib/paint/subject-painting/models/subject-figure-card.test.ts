@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { LayerNode } from '#lib/paint/document/models/painting-document.ts';
-import { subjectVisible } from '#lib/paint/subject/models/subject-geometry.ts';
+import { SUBJECT_HIDDEN, subjectVisible } from '#lib/paint/subject/models/subject-geometry.ts';
 import { defineSubject } from '#lib/paint/subject/models/subject.ts';
 import { paintSubject, requireSubjectPainting } from './paint-subject.ts';
 import { defineSubjectPainter } from './subject-painter.ts';
@@ -27,4 +27,9 @@ test("a subject's figure card holds all it paints but its ground, round its silh
   assert.deepEqual(card, {
     key: 'post-card', sheet: { kind: 'own', paper, card: { figure: { kind: 'polygon', rings: [ring] }, fadePx: SUBJECT_FIGURE_CARD_FADE * 100 } }, children: [layerOf('post.form')],
   });
+});
+
+test("a hidden subject's figure is still a group keyed as its card would be, on no card, so a shot names it at every moment", () => {
+  const paper = { color: '#f4f2ed', absorbency: 0.5 } as const, painted = requireSubjectPainting(paintSubject(post, groundAndForm));
+  assert.deepEqual(subjectFigureCard({ ...post, silhouette: SUBJECT_HIDDEN }, painted, { key: 'post-card', paper }), [layerOf('post.ground'), { key: 'post-card', children: [layerOf('post.form')] }]);
 });
