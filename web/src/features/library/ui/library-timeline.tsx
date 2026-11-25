@@ -3,12 +3,14 @@ import { useElementSize } from '@mantine/hooks';
 import * as stylex from '@stylexjs/stylex';
 import { Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import { useRef, type PointerEvent } from 'react';
+import { formatLibraryLength } from '#lib/footage/library/models/library-item.ts';
 import { formatReviewClock, formatReviewClockRange, reviewRulerTicks, reviewTimelineFit } from '#lib/output/review/models/review-timeline-geometry.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { useLinkedMediaTick } from '#web/shared/ui/linked-media-clock.ts';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { colors, fonts, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
+import { LibraryClockHover } from './library-clock-hover.tsx';
 import { useLibraryItemScreen } from './library-item-context.tsx';
 import { LIBRARY_CLOCK_FPS, useLibraryPlaybackState } from './library-item-playback.ts';
 
@@ -61,17 +63,22 @@ function LibraryTransport() {
   const time = useLibraryPlaybackState(playback, (s) => s.time);
   const rate = useLibraryPlaybackState(playback, (s) => s.rate);
   const muted = useLibraryPlaybackState(playback, (s) => s.muted);
-  const clock = useRef<HTMLSpanElement>(null);
-  // The text node React rendered, not textContent: replacing the node would leave React updating a detached one.
+  const clock = useRef<HTMLSpanElement>(null), exactClock = useRef<HTMLSpanElement>(null);
+  // The text nodes React rendered, not textContent: replacing a node would leave React updating a detached one.
   useLinkedMediaTick(playback, (frame) => {
-    const node = clock.current?.firstChild;
-    if (node) node.nodeValue = formatReviewClock(frame / LIBRARY_CLOCK_FPS);
+    const exact = formatReviewClock(frame / LIBRARY_CLOCK_FPS);
+    const node = clock.current?.firstChild, exactNode = exactClock.current?.firstChild;
+    if (node) node.nodeValue = exact.slice(0, -3);
+    if (exactNode) exactNode.nodeValue = exact;
   });
+  const length = view.item.durationSeconds;
   return (
     <Group gap="gap" wrap="nowrap" {...stylex.props(styles.bar)}>
       <IconButton name="Play" onClick={playback.toggle} active={playing}>{playing ? <Pause size={14} /> : <Play size={14} />}</IconButton>
-      <Readout bright ref={clock} chars={8}>{formatReviewClock(time)}</Readout>
-      <Readout>{formatReviewClock(view.item.durationSeconds)}</Readout>
+      <LibraryClockHover
+        whole={<><Readout bright ref={clock} chars={5}>{formatReviewClock(time).slice(0, -3)}</Readout><Readout>/ {formatLibraryLength(length)}</Readout></>}
+        exact={<><Readout bright ref={exactClock}>{formatReviewClock(time)}</Readout><Readout>/ {formatReviewClock(length)}</Readout></>}
+      />
       <HotkeyTooltip name="Speed">
         <UnstyledButton aria-label={`Speed ${rate}×`} onClick={playback.cycleRate} {...stylex.props(styles.rate)}>
           <Readout bright={rate !== 1}>{`${rate}×`}</Readout>

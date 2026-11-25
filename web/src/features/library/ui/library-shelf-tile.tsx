@@ -1,5 +1,6 @@
 import { Box, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
+import { Flag } from 'lucide-react';
 import { formatLibraryLength } from '#lib/footage/library/models/library-item.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
@@ -23,11 +24,13 @@ const styles = stylex.create({
     position: 'absolute', right: spacing.tight, bottom: spacing.tight, paddingInline: spacing.tight, borderRadius: radius.control,
     backgroundColor: `color-mix(in srgb, ${colors.screen} 80%, transparent)`,
   },
-  // A flag's mark, no count: the item has some. Its tooltip says how many.
-  dot: { flexShrink: 0, width: '6px', height: '6px', borderRadius: '50%', backgroundColor: colors.caution },
+  // The flag glyph with its count, in the caution a flag is drawn in, so it says what it counts.
+  flags: { flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: spacing.hairline, color: colors.caution },
+  // What the take opens by saying, to two lines: enough to tell it from its neighbours.
+  opening: { display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden' },
 });
 
-/** An item in the shelf's grid: its poster large with its length on the corner, then its title and flag dot, then its opening words. */
+/** An item in the shelf's grid: its poster large with its length on the corner, then its title and flag count, then up to two lines of its opening words. */
 export function LibraryShelfTile({ shelved, online }: { readonly shelved: LibraryShelfItem; readonly online: boolean }) {
   const { item } = shelved;
   const { title, dateLead, opening, interrupted, flagCount } = libraryShelfLabelsOf(shelved);
@@ -41,9 +44,13 @@ export function LibraryShelfTile({ shelved, online }: { readonly shelved: Librar
         <Box {...stylex.props(styles.titleLine)}>
           <Text component="span" size="md" title={item.title} {...stylex.props(styles.text, styles.title)}>{title}</Text>
           {interrupted && <Text component="span" size="sm" {...stylex.props(styles.mark)}>interrupted</Text>}
-          {flagCount && <HotkeyTooltip name={flagCount}><Box role="img" aria-label={flagCount} {...stylex.props(styles.dot)} /></HotkeyTooltip>}
+          {flagCount && (
+            <HotkeyTooltip name={flagCount}>
+              <Text component="span" size="sm" aria-label={flagCount} {...stylex.props(styles.flags)}><Flag size={12} aria-hidden />{shelved.flags}</Text>
+            </HotkeyTooltip>
+          )}
         </Box>
-        <Text component="span" size="sm" {...stylex.props(styles.text)}>
+        <Text component="span" size="sm" {...stylex.props(styles.opening)}>
           {dateLead && <Text component="span" inherit {...stylex.props(styles.dim)}>{dateLead}{opening && ' · '}</Text>}
           <Text component="span" inherit {...stylex.props(styles.said)}>{opening}</Text>
         </Text>
