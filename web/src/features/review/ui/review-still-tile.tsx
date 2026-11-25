@@ -20,8 +20,8 @@ const styles = stylex.create({
   // Scrolled into view clear of the edges' fades, and in a cell with the name line under it too.
   row: { height: '100%', flexShrink: 0, scrollMarginInline: '16px' },
   cell: { width: '100%', height: '100%', scrollMarginTop: '16px', scrollMarginBottom: '40px' },
-  // A column's tile is as wide as its column, held to a height, on the column's left edge and bottom-aligned: a still
-  // in a column cut for another shape lines up with its neighbours, and its caption sits right under it.
+  // A column's tile is as wide as its column and the picture held to the row's height, on the column's left edge with
+  // its caption: a portrait still in a column kept wide for its caption leaves the spare width on its right.
   column: { width: '100%', alignItems: 'flex-end', justifyContent: 'flex-start', scrollMarginTop: '16px', scrollMarginBottom: '40px' },
   picture: { position: 'relative', overflow: 'hidden', borderRadius: radius.control, backgroundColor: colors.skeleton },
   // The edge hugs the picture, not the cell it sits in. Its own layer over the image, which an outline would sit under;
