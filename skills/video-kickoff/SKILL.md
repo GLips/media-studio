@@ -13,8 +13,8 @@ lays out a project's files.
 
 ## The ladder
 
-Plan in rungs of rising fidelity, as a motion studio does, each settling one question cheaply and needing the user's
-yes before the next spends more on it.
+Plan in rungs of rising fidelity, each settling one question cheaply and needing the user's yes before the next spends
+more on it.
 
 | Rung | Settles |
 |---|---|
@@ -33,14 +33,14 @@ gate, and the first cut is the animatic.
 **An autonomous brief skips the gates** ("go all out", "surprise me"): make each gate's call yourself, write the
 table as your plan, build through to a render, and show the result.
 
-Each gate is a review, run by the `studio-review` skill.
+Each gate is a review, run by the `studio-review` skill; between gates, subagents build the rung's pieces side by side.
 
 ## The plan
 
 Whichever way in, the plan is the project's `storyboard.ts`. Start the project with `studio new <slug> --capability
-<…>` (`studio new --help`); its scenes start blocked, so `studio render <p> --animatic` shows the plan as it plays
-from the first minute. Write `title`, a `target` only for a length the user or a platform sets, the `brief` (headings in order: who it's for, the takeaway,
-the angle, the sources, the rules), then a row per scene:
+<…>`; its scenes start blocked, so `studio render <p> --animatic` shows the plan as it plays from the first
+minute. Write `title`, a `target` only for a length the user or a platform sets, the `brief` (headings in order: who
+it's for, the takeaway, the angle, the sources, the rules), then a row per scene:
 
 - Scene and line ids are the names everything else uses. A cue sits on its word (`{ phrase, nth }` for a later one),
   so a reworded line changes one place; a cue whose word has gone is flagged on its scene. `paragraph: true` starts a

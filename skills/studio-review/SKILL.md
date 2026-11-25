@@ -44,6 +44,10 @@ watcher below is running.
 5. **Leave resolving to the reviewer.** They resolve or reopen once they've seen the fix; a reopened note comes back
    through `watch` like a new one.
 
+Keep the session that holds the review on it: watching, replying, judging what comes back. Hand the making (a scene,
+a capture, a painting, a render, a fix to the studio) to subagents, one per piece, side by side when none waits on
+another's result. Brief each with its notes and every `keep`, and look at what it returns before you hand it back.
+
 Done when `studio review notes <p>` lists nothing open or reopened that you haven't addressed, answered or asked
 about, every addressed note names what shows it, and the reviewer has said it's approved or resolved every note.
 Approval is explicit: their word, a resolve, or a sign-off.
@@ -51,8 +55,8 @@ Approval is explicit: their word, a resolve, or a sign-off.
 ## The plan
 
 Hand the scene table or beat sheet over before anything renders: `studio review open <p> --plan` queues it on a page
-reading `storyboard.ts` live, so an edit re-times it: the brief, a timing bar (each line timed by its read, or its
-word count until voiced; cues on their words; long silences and holds flagged), then a row per scene.
+reading `storyboard.ts` live, so an edit re-times it: the brief, a timing bar (lines timed by their read, cues on their words, long silences and
+holds flagged), then a row per scene.
 
 - The reviewer notes a brief section, a scene's cell, a line or words in it, or a left-out item. A note quotes what
   it's on, so it follows the words through your edits and is unplaced once they've gone. `watch` wakes on them;
