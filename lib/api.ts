@@ -159,8 +159,9 @@ export {
 } from '#lib/paint/subject-painting/models/subject-painter.ts';
 export { subjectIntent, subjectReplace, subjectTune, type SubjectOverride, type SubjectReplacementContext } from '#lib/paint/subject-painting/models/subject-overrides.ts';
 export { paintSubject, requireSubjectPainting, type SubjectOverridesFor, type SubjectPainting } from '#lib/paint/subject-painting/models/paint-subject.ts';
-export { subjectKeyProvenance, traceSubjectPaintingProblems, type SubjectPaintingDiagnostic, type SubjectPaintingReport } from '#lib/paint/subject-painting/models/subject-painting-report.ts';
-export { subjectAreaRegion, subjectAreasRegion, subjectPathSubpaths } from '#lib/paint/subject-painting/models/subject-document-geometry.ts';
+export { type SubjectPaintingDiagnostic, type SubjectPaintingReport } from '#lib/paint/subject-painting/models/subject-painting-report.ts';
+export { subjectAreaRegion, subjectPathSubpaths } from '#lib/paint/subject-painting/models/subject-document-geometry.ts';
+export { subjectAreasUnion } from '#lib/paint/subject/models/subject-area-union.ts';
 export {
   WATERCOLOR_SUBJECT_DEFAULTS, watercolorSubjectPainter,
   type SubjectPigment, type WatercolorSubjectBinding, type WatercolorSubjectBrushes, type WatercolorSubjectOptions, type WatercolorSubjectSlot,
@@ -173,7 +174,7 @@ export { SUBJECT_LIGHT_TREATMENTS, type SubjectLightTreatment } from '#lib/paint
 export {
   LINE_SUBJECT_DEFAULTS, lineSubjectPainter, type LineSubjectBrushes, type LineSubjectOptions, type LineTool,
 } from '#lib/paint/subject-painting/models/painters/line.ts';
-export { SUBJECT_CHEEK_TAG, SUBJECT_EYE_TAG, SUBJECT_PUPIL_TAG } from '#lib/paint/subject-painting/models/painters/subject-paint-plan.ts';
+export { hasSubjectTag, SUBJECT_WELL_KNOWN_TAGS, type SubjectWellKnownTag } from '#lib/paint/subject/models/subject-tags.ts';
 // Painted motion (plan 1): nodes over a compiled painting's groups, with pins and how their marks live (a live node
 // registers its poser), clips played through clocks written as parts, evaluated per frame into StampPainting's `frame`.
 export { buildPaintMotion, type PaintMotionBuild } from '#lib/paint/animation/models/paint-motion.ts';

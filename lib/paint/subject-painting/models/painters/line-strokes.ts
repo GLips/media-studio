@@ -1,6 +1,8 @@
 // line-strokes.ts: the line painter's geometry. Outlines resampled evenly and smoothed (a traced ring steps by the
 // pixel), each point with its area's outward normal; runs of an outline kept by a predicate; and runs cut into the
-// overlapping, tapered strokes a hand inks a long line in, each point's width carried as a stroke point's `scale`.
+// overlapping, tapered strokes a hand inks a long line in, each point's width carried as a stroke point's `scale`,
+// each stroke running on past its ends as far as the hand overshoots. Runs are seeded by their place round their
+// target, never their position, so a moving line keeps its breaks.
 
 import type { Subpath } from '#lib/paint/document/models/painting-document.ts';
 import { stampRingsDistance, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
@@ -137,8 +139,37 @@ export function lineRunsWhere<P extends LineOutlinePoint>(
   return runs.filter((indices) => indices.length > 1 && runLength(indices) >= minLength).map((indices) => runOf(indices, false));
 }
 
-/** How a hand inks a run: stroke length and overlap in px, and the floor of the taper (1 for no taper). */
-export type LineHand = { readonly strokePx: number; readonly overlapPx: number; readonly taperFloor: number; readonly pressure: number };
+/**
+ * How a hand inks a run: stroke length and overlap in px, the floor of the taper (1 for no taper), and how far each
+ * stroke runs on straight past its ends, px, as an inker's pen carries past a corner (0 for none).
+ */
+export type LineHand = { readonly strokePx: number; readonly overlapPx: number; readonly taperFloor: number; readonly pressure: number; readonly overshootPx: number };
+
+/** Where `point` lies round `centre`, radians clockwise from straight up, 0..2π. */
+const bearingOf = (centre: StampPoint, { x, y }: StampPoint) => {
+  const angle = Math.atan2(x - centre.x, centre.y - y);
+  return angle < 0 ? angle + 2 * Math.PI : angle;
+};
+
+/**
+ * Each run with its seed: `base`, its role, and its place among its role's runs: open runs by bearing round `centre`,
+ * whole loops by length, each loop starting straight up from `centre` rather than where its trace began. A small move
+ * keeps every seed and cut; a run coming or going reseeds only later ones of its role.
+ */
+export function lineRunsSeeded<R extends LineRun>(runs: readonly R[], centre: StampPoint, roleOf: (run: R) => string, base: string): { run: R; seed: string }[] {
+  const lengthOf = ({ points }: LineRun) => points.reduce((sum, point, i) => sum + distance(points[(i + 1) % points.length], point), 0);
+  const placed = runs.map((run) => {
+    if (!run.closed) return { run, role: roleOf(run), rank: bearingOf(centre, run.points[Math.floor(run.points.length / 2)]) };
+    const bearings = run.points.map((point) => bearingOf(centre, point)), first = bearings.indexOf(Math.min(...bearings));
+    return { run: { ...run, points: [...run.points.slice(first), ...run.points.slice(0, first)] }, role: `${roleOf(run)}-loop`, rank: -lengthOf(run) };
+  });
+  const order = new Map<string, number>();
+  return placed.toSorted((a, b) => a.rank - b.rank).map(({ run, role }) => {
+    const k = order.get(role) ?? 0;
+    order.set(role, k + 1);
+    return { run, seed: `${base}|${role}-${k}` };
+  });
+}
 
 /**
  * `run` cut into tapered strokes about `hand.strokePx` long, overlapping by `overlapPx`, as a pen lifts and lands again
@@ -161,24 +192,43 @@ export function lineStrokeSubpaths(run: LineRun, hand: LineHand, seed: string): 
     return base + (k * length) / count + jitter;
   });
   const overlap = Math.min(hand.overlapPx, length / 2);
+  // Its own stream, so overshooting or not never moves a cut.
+  const flick = seededRandom(`${seed}|overshoot`), overshoot = () => (hand.overshootPx > 0 ? hand.overshootPx * (0.6 + 0.6 * flick()) : 0);
   return cuts.slice(1).map((end, k) => {
     const from = run.closed || k > 0 ? cuts[k] - overlap / 2 : cuts[k];
     const to = run.closed || k < count - 1 ? end + overlap / 2 : end;
     const taper = { start: k > 0 || run.closed || !run.continues.start, end: k < count - 1 || run.closed || !run.continues.end };
-    return strokeBetween(points, arcs, from, Math.min(to, arcs.at(-1)!), hand, taper);
+    return strokeBetween(points, arcs, from, Math.min(to, arcs.at(-1)!), hand, taper, { start: overshoot(), end: overshoot() });
   }).filter((subpath) => subpath.length > 1);
 }
 
-function strokeBetween(points: LineRun['points'], arcs: readonly number[], from: number, to: number, hand: LineHand, taper: { readonly start: boolean; readonly end: boolean }): Subpath {
+type WeightedPoint = StampPoint & { readonly weight: number };
+
+/** `end` carried on `by` px straight away from `back`, the stroke a few px in, as the pen's last direction runs on. */
+function runOn(end: WeightedPoint, back: StampPoint, by: number, arc: number) {
+  const dx = end.x - back.x, dy = end.y - back.y, length = Math.hypot(dx, dy);
+  return by > 0 && length > 0 ? [{ x: end.x + (dx / length) * by, y: end.y + (dy / length) * by, weight: end.weight, arc }] : [];
+}
+
+function strokeBetween(
+  points: LineRun['points'], arcs: readonly number[], from: number, to: number, hand: LineHand, taper: { readonly start: boolean; readonly end: boolean },
+  overshoot: { readonly start: number; readonly end: number },
+): Subpath {
   const at = (arc: number) => {
     const i = Math.max(1, Math.min(arcs.length - 1, arcs.findIndex((a) => a >= arc)));
     const a = points[i - 1], b = points[i], span = arcs[i] - arcs[i - 1], t = span > 0 ? (arc - arcs[i - 1]) / span : 0;
     return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, weight: a.weight + (b.weight - a.weight) * t };
   };
   const inside = points.flatMap((p, i) => (arcs[i] > from && arcs[i] < to ? [{ ...p, arc: arcs[i] }] : []));
-  const along = [{ ...at(from), arc: from }, ...inside, { ...at(to), arc: to }];
+  const first = at(from), last = at(to);
+  const reach = Math.min(4, (to - from) / 2);
+  const along = [
+    ...runOn(first, at(from + reach), overshoot.start, from - overshoot.start), { ...first, arc: from }, ...inside, { ...last, arc: to },
+    ...runOn(last, at(to - reach), overshoot.end, to + overshoot.end),
+  ];
+  const start = along[0].arc, span = along.at(-1)!.arc - start || 1;
   return along.map(({ x, y, weight, arc }) => {
-    const u = (arc - from) / (to - from || 1);
+    const u = (arc - start) / span;
     const ease = Math.min(taper.start ? subjectSmoothStep(u / 0.2) : 1, taper.end ? subjectSmoothStep((1 - u) / 0.25) : 1);
     const share = hand.taperFloor + (1 - hand.taperFloor) * ease;
     return { x, y, scale: Math.min(1, weight * share), pressure: hand.pressure * (0.7 + 0.3 * share) };

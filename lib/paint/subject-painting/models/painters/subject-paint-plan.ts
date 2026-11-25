@@ -5,28 +5,21 @@
 import type { Footprint, Region } from '#lib/paint/document/models/painting-document.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import { subjectAreaBox, type SubjectArea } from '#lib/paint/subject/models/subject-geometry.ts';
+import { subjectAreasUnion } from '#lib/paint/subject/models/subject-area-union.ts';
+import { hasSubjectTag, SUBJECT_WELL_KNOWN_TAGS } from '#lib/paint/subject/models/subject-tags.ts';
 import type { PaintableRef, Subject, SubjectFeature, SubjectHex, SubjectMaterial } from '#lib/paint/subject/models/subject.ts';
 import { subjectAreaRegion } from '../subject-document-geometry.ts';
 import type { ResolvedSubjectIntent, SubjectKeySegment, SubjectPainterContext, VisibleSubjectFeature, VisibleSubjectPart } from '../subject-painter.ts';
 import { subjectHexLuminance } from './subject-paint-colour.ts';
-
-/** The tag a part or feature carries to be painted as an eye: an iris, a pupil and a glint of light. */
-export const SUBJECT_EYE_TAG = 'eye';
-/** The tag a landmark carries to be painted as a blush. */
-export const SUBJECT_CHEEK_TAG = 'cheek';
-/** The tag of a region drawn as an eye's pupil: an eye whose part carries one is painted as the design draws it. */
-export const SUBJECT_PUPIL_TAG = 'pupil';
-
-export const hasSubjectTag = (target: { readonly tags: readonly string[] }, tag: string) => target.tags.some((each) => each === tag);
 
 /**
  * Whether the painter draws `feature` as an eye, with a pupil and glint of its own making: a region tagged `eye` on a
  * part with no `pupil` region, as a primitive figure's eyeball is. A designed eye (the clapper's) is painted as regions.
  */
 export function isSubjectPainterEye(subject: Subject, feature: SubjectFeature): boolean {
-  if (!hasSubjectTag(feature, SUBJECT_EYE_TAG)) return false;
+  if (!hasSubjectTag(feature, SUBJECT_WELL_KNOWN_TAGS.eye)) return false;
   return feature.kind === 'landmark'
-    || (feature.kind === 'region' && ![...subject.features.values()].some((other) => other.kind === 'region' && other.owner === feature.owner && hasSubjectTag(other, SUBJECT_PUPIL_TAG)));
+    || (feature.kind === 'region' && ![...subject.features.values()].some((other) => other.kind === 'region' && other.owner === feature.owner && hasSubjectTag(other, SUBJECT_WELL_KNOWN_TAGS.pupil)));
 }
 
 /**
@@ -38,8 +31,9 @@ export type SubjectPaintGroup<O> = {
   readonly segments: readonly SubjectKeySegment[];
   readonly intent: ResolvedSubjectIntent;
   readonly options: O;
-  readonly parts: readonly VisibleSubjectPart[];
-  readonly areas: readonly SubjectArea[];
+  readonly parts: readonly [VisibleSubjectPart, ...VisibleSubjectPart[]];
+  /** The parts' union, never empty: a group whose parts enclose nothing on the union's grid isn't planned. */
+  readonly area: SubjectArea;
 };
 
 /** FNV-1a, 32 bits, in base 36: a short, stable name for a treatment. */
@@ -59,21 +53,30 @@ const treatmentText = <O>(intent: ResolvedSubjectIntent, options: O, controls: r
 export function planSubjectPaintGroups<S extends Subject, O, Slot extends string>(
   context: SubjectPainterContext<S, O, Slot>, slot: Slot, controls: readonly (keyof O)[], include: (part: VisibleSubjectPart) => boolean = () => true,
 ): SubjectPaintGroup<O>[] {
-  const groups = new Map<string, { material: SubjectMaterial; text: string; intent: ResolvedSubjectIntent; options: O; parts: VisibleSubjectPart[] }>();
+  const groups = new Map<string, { material: SubjectMaterial; text: string; intent: ResolvedSubjectIntent; options: O; parts: [VisibleSubjectPart, ...VisibleSubjectPart[]] }>();
   for (const material of context.subject.materials.values()) {
     for (const part of context.paintedParts(slot)) {
       if (part.material !== material.id || !include(part)) continue;
       const intent = context.intent(part.ref), options = context.optionsFor(part.ref);
       const text = treatmentText(intent, options, controls), id = `${material.id} ${text}`;
-      const group = groups.get(id) ?? { material, text, intent, options, parts: [] };
-      group.parts.push(part);
-      groups.set(id, group);
+      const group = groups.get(id);
+      if (group) group.parts.push(part);
+      else groups.set(id, { material, text, intent, options, parts: [part] });
     }
   }
-  return [...groups.values()].map(({ material, text, intent, options, parts }) => {
+  return [...groups.values()].flatMap(({ material, text, intent, options, parts }): SubjectPaintGroup<O>[] => {
+    const [first, ...rest] = parts.map(({ visibility }) => visibility.geometry);
+    const union = subjectAreasUnion([first, ...rest]);
+    if (union.kind === 'hidden') {
+      context.report({
+        severity: 'warning', address: `material:${material.id}`, message: `${parts.map(({ id }) => `part:${id}`).join(', ')} enclose nothing a brush can wash`,
+        fix: 'give the parts an area wider than a pixel, or hide them',
+      });
+      return [];
+    }
     const plain = treatmentText({ localColor: material.localColor, preserveLocalColor: material.preserveLocalColor, emphasis: 'normal' }, context.options, controls);
     const segments = text === plain ? [material.ref] : [material.ref, `variant-${treatmentHash(text)}`];
-    return { material, segments, intent, options, parts, areas: parts.map(({ visibility }) => visibility.geometry) };
+    return [{ material, segments, intent, options, parts, area: union.geometry }];
   });
 }
 
@@ -103,7 +106,7 @@ export function subjectEyeSpots<S extends Subject, O, Slot extends string>(conte
     const centre = { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 };
     return { ref, centre, radiusPx: Math.min(box.x1 - box.x0, box.y1 - box.y0) / 2, region: subjectAreaRegion(area), iris: context.intent(ref).localColor };
   };
-  const parts = context.paintedParts(slot).filter((part) => hasSubjectTag(part, SUBJECT_EYE_TAG)).map((part) => ofArea(part.ref, part.visibility.geometry));
+  const parts = context.paintedParts(slot).filter((part) => hasSubjectTag(part, SUBJECT_WELL_KNOWN_TAGS.eye)).map((part) => ofArea(part.ref, part.visibility.geometry));
   const radiusPx = LANDMARK_EYE_SHARE * subjectUnitPx(context.subject);
   const features = context.paintedFeatures(slot).filter((feature) => isSubjectPainterEye(context.subject, feature)).flatMap((feature): SubjectEyeSpot[] => {
     if (feature.kind === 'region') return [ofArea(feature.ref, feature.visibility.geometry)];
@@ -116,7 +119,7 @@ export function subjectEyeSpots<S extends Subject, O, Slot extends string>(conte
 
 /** The landmarks tagged `cheek` painted in `slot`. */
 export const subjectCheekSpots = <S extends Subject, O, Slot extends string>(context: SubjectPainterContext<S, O, Slot>, slot: Slot) =>
-  context.paintedFeatures(slot).flatMap((feature) => (feature.kind === 'landmark' && hasSubjectTag(feature, SUBJECT_CHEEK_TAG) ? [{ ref: feature.ref, at: feature.visibility.geometry.at }] : []));
+  context.paintedFeatures(slot).flatMap((feature) => (feature.kind === 'landmark' && hasSubjectTag(feature, SUBJECT_WELL_KNOWN_TAGS.cheek) ? [{ ref: feature.ref, at: feature.visibility.geometry.at }] : []));
 
 /** A pupil's ellipse in an eye, a little below and right of its centre, and the glint high on its left. */
 export function subjectEyeMarks({ centre, radiusPx }: SubjectEyeSpot, pupilShare: number, glintShare: number): { pupil: Region; glint: Region } {
@@ -140,7 +143,7 @@ export function subjectGroupFeatureReserves<S extends Subject, O, Slot extends s
     if (feature.kind !== 'region' || feature.visibility.kind === 'hidden' || !owners.has(feature.owner)) return [];
     if (!context.paints(feature.ref, isSubjectPainterEye(context.subject, feature) ? slots.eyes : slots.regions)) return [];
     const lighter = which === 'lights' && feature.material !== undefined && subjectHexLuminance(context.intent(feature.ref).localColor) > groupLuminance + 0.05;
-    return hasSubjectTag(feature, SUBJECT_EYE_TAG) || lighter ? [{ kind: 'region', region: subjectAreaRegion(feature.visibility.geometry) }] : [];
+    return hasSubjectTag(feature, SUBJECT_WELL_KNOWN_TAGS.eye) || lighter ? [{ kind: 'region', region: subjectAreaRegion(feature.visibility.geometry) }] : [];
   });
 }
 

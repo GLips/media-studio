@@ -4,7 +4,7 @@
 
 import { stampPolygonBox } from '#lib/paint/painting/models/stamp-region.ts';
 import type { SubjectSampleLayout } from './subject-evidence.ts';
-import type { SubjectArea, SubjectRing } from './subject-geometry.ts';
+import { subjectAreaVisibility, subjectVisible, type SubjectArea, type SubjectRing, type Visibility } from './subject-geometry.ts';
 import { traceSubjectMaskRings } from './subject-three-raster.ts';
 
 /** The grid the union is drawn on, px: under a brush's finest edge, so tracing moves no edge a viewer would see. */
@@ -29,11 +29,13 @@ function fillSubjectAreaRow(layout: SubjectSampleLayout, rings: readonly Subject
   for (let i = 0; i < layout.columns; i++) inside[j * layout.columns + i] |= row[i];
 }
 
-/** `areas` as one area, holes each keeps included; undefined when they enclose nothing. One area comes back as it is. */
-export function subjectAreasUnion(areas: readonly SubjectArea[]): SubjectArea | undefined {
-  if (areas.length === 1) return areas[0];
+/**
+ * `areas` as one area, holes each keeps included. Hidden when the grid finds nothing inside: slivers under a cell wide
+ * can vanish. One area comes back as it is.
+ */
+export function subjectAreasUnion(areas: readonly [SubjectArea, ...SubjectArea[]]): Visibility<SubjectArea> {
+  if (areas.length === 1) return subjectVisible(areas[0]);
   const points = areas.flatMap(({ rings }) => rings.flat());
-  if (!points.length) return undefined;
   const box = stampPolygonBox(points, 2 * SUBJECT_UNION_CELL_PX), cell = SUBJECT_UNION_CELL_PX;
   const layout: SubjectSampleLayout = {
     x0: Math.floor(box.x0), y0: Math.floor(box.y0), cell,
@@ -41,6 +43,5 @@ export function subjectAreasUnion(areas: readonly SubjectArea[]): SubjectArea | 
   };
   const inside = new Uint8Array(layout.columns * layout.rows), row = new Uint8Array(layout.columns);
   for (const { rings } of areas) for (let j = 0; j < layout.rows; j++) fillSubjectAreaRow(layout, rings, j, inside, row);
-  const rings = traceSubjectMaskRings(layout, (k) => inside[k] === 1);
-  return rings.length ? { rings: [rings[0], ...rings.slice(1)] } : undefined;
+  return subjectAreaVisibility(traceSubjectMaskRings(layout, (k) => inside[k] === 1));
 }

@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { Hex, LayerNode } from '#lib/paint/document/models/painting-document.ts';
+import type { Hex, LayerNode, Region } from '#lib/paint/document/models/painting-document.ts';
+import { checkPaintingSource, type PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
+import { subjectAreasUnion } from '#lib/paint/subject/models/subject-area-union.ts';
 import { SUBJECT_HIDDEN, subjectVisible, type SubjectArea, type SubjectRing } from '#lib/paint/subject/models/subject-geometry.ts';
 import { selectFeatureGroup, selectPart } from '#lib/paint/subject/models/subject-selector.ts';
 import { defineSubject } from '#lib/paint/subject/models/subject.ts';
 import { paintSubject, requireSubjectPainting, type SubjectOverridesFor, type SubjectPainting } from './paint-subject.ts';
-import { subjectAreasRegion } from './subject-document-geometry.ts';
+import { subjectAreaRegion } from './subject-document-geometry.ts';
 import { subjectIntent, subjectReplace, subjectTune } from './subject-overrides.ts';
 import { defineSubjectPainter, type SubjectPaintKey } from './subject-painter.ts';
 
@@ -31,9 +33,17 @@ const frog = (armShows = true) => defineSubject({
   silhouette: subjectVisible(area(square(0, 0, 130))),
 });
 
-const layerOf = (key: SubjectPaintKey, hex: Hex, region: ReturnType<typeof subjectAreasRegion>): LayerNode => ({
+/** Targets' areas as one region, as a painter washing them together lays it. */
+function unionRegion(targets: readonly { readonly visibility: { readonly geometry: SubjectArea } }[]): Region {
+  const [first, ...rest] = targets.map(({ visibility }) => visibility.geometry);
+  const union = subjectAreasUnion([first, ...rest]);
+  assert.equal(union.kind, 'visible');
+  return subjectAreaRegion(union.geometry);
+}
+
+const layerOf = (key: SubjectPaintKey, hex: Hex, region: Region, diameterPx = 40): LayerNode => ({
   key, washes: [{ key: `${key}.wash`, applications: [{
-    key: `${key}.fill`, kind: 'fill', area: { region }, brush: { style: 'watercolor', brush: 'wash' }, diameterPx: 40, seed: key,
+    key: `${key}.fill`, kind: 'fill', area: { region }, brush: { style: 'watercolor', brush: 'wash' }, diameterPx, seed: key,
     charge: { kind: 'paint', mix: { parts: [{ pigment: hex, amount: 1 }], strength: 0.6 }, water: 0.5 },
   }] }],
 });
@@ -53,11 +63,11 @@ const washPainter = defineSubjectPainter<{ strength: number }>()({
       const parts = context.paintedParts('form').filter((part) => part.material === material.id);
       if (!parts.length) return [];
       const key = context.paintKey('form-wash', material.ref);
-      return [{ key, slot: 'form' as const, targets: parts.map(({ ref }) => ref), layers: [layerOf(key, context.intent(parts[0].ref).localColor, subjectAreasRegion(parts.map(({ visibility }) => visibility.geometry)))] }];
+      return [{ key, slot: 'form' as const, targets: parts.map(({ ref }) => ref), layers: [layerOf(key, context.intent(parts[0].ref).localColor, unionRegion(parts))] }];
     });
     const regions = context.paintedFeatures('face').flatMap((feature) => (feature.kind === 'region' ? [feature] : []));
     const faceKey = context.paintKey('face-wash');
-    const face = regions.length ? [{ key: faceKey, slot: 'face' as const, targets: regions.map(({ ref }) => ref), layers: [layerOf(faceKey, context.intent(regions[0].ref).localColor, subjectAreasRegion(regions.map(({ visibility }) => visibility.geometry)))] }] : [];
+    const face = regions.length ? [{ key: faceKey, slot: 'face' as const, targets: regions.map(({ ref }) => ref), layers: [layerOf(faceKey, context.intent(regions[0].ref).localColor, unionRegion(regions))] }] : [];
     return [...forms, ...face];
   },
 });
@@ -115,4 +125,18 @@ test('a tune outside the painter\'s controls is refused, and an intent it can\'t
   const result = painted(frog(), [subjectTune(selectPart('head'), { water: 0.9 }), subjectIntent(selectPart('head'), { edge: 'lost' })]);
   assert.ok(!result.ok);
   assert.deepEqual(result.diagnostics.map(({ code, severity }) => [code, severity]), [['unsupported-control', 'error'], ['unsupported-intent', 'warning']]);
+});
+
+test('a painting check problem on a key the subject painting made names the override and targets behind it', () => {
+  const { layers } = requireSubjectPainting(painted(frog(), [subjectReplace(selectPart('belly'), {
+    slot: 'all', paint: (context) => [layerOf(context.paintKey('belly-glaze'), '#ffffff', { kind: 'polygon', rings: [square(30, 80, 40)] }, -1)],
+  })]));
+  // The factory wraps the subject's layers in a group of its own and passes nothing else along.
+  const source = { default: () => ({
+    widthPx: 200, heightPx: 200, paper: { color: '#ffffff', absorbency: 0.5 }, medium: 'watercolour', layers: [{ key: 'figure', children: layers }],
+  }) } satisfies PaintingSourceModule;
+  const [problem] = checkPaintingSource(source);
+  assert.equal(problem.owner, 'frog.replace.part-belly.all.belly-glaze.fill');
+  assert.deepEqual(problem.origin?.targets, ['part:belly']);
+  assert.match(problem.origin?.maker ?? '', /override\[0\] replacing part:belly/);
 });

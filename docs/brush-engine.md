@@ -587,8 +587,9 @@ questions stay apart: what the figure is and what shows (the subject), and how a
 A `Subject` (`subject/models/subject.ts`, built by `defineSubject`) names its materials, parts, features and frames by
 kebab-case id, each id typed through to the selectors. A part holds its visibility in page pixels: a `SubjectArea`, rings
 read even-odd, or hidden. Parts' areas tile the silhouette, which the subject holds once (`silhouette`); the painting
-check refuses rings that cross or touch, so a painter washing parts together asks `subjectAreasRegion`, which redraws
-their union (`subject-area-union.ts`) rather than handing over touching rings. A feature is a landmark, a region (a decal
+check refuses rings that cross or touch, so a painter washing parts together asks `subjectAreasUnion`, which redraws
+their union, hidden when it encloses nothing. Tags `eye`, `pupil` and `cheek` mean the same to every painter
+(`SUBJECT_WELL_KNOWN_TAGS`). A feature is a landmark, a region (a decal
 lying inside its owner's area, which its owner's area already covers) or a path with a line kind: `authored` (a brow),
 `crease`, `material-boundary` or `occluding-edge`, which is only where one part lies in front of another, never the
 silhouette. Evidence is optional and named: `surface` (normals and depth on a sample grid) and `illumination` (a key and
@@ -608,7 +609,8 @@ selection's targets (a tuned target washes apart under a key of its own), and `s
 slot, or out of every slot with `all`, and calls the replacement's own `paint`, in a frame when it names one
 (`subject-frame.ts`). The painter plans from `paintedParts` and `paintedFeatures`, which leave out what is hidden or
 replaced; contributing a replaced target is an error. The report (`subject-painting-report.ts`) maps each document key
-back to its slot and targets, so `traceSubjectPaintingProblems` names the part behind a painting-check problem.
+back to its slot and targets; `paintSubject` records each layer's origin (`painting-layer-origin.ts`), so `studio paint
+check` names the contribution and parts behind a problem on its keys.
 
 The painters live in `subject-painting/models/painters/`: `watercolor.ts`, `gouache.ts` and `line.ts`, over shared
 helpers for grouping parts by material and intent (`subject-paint-plan.ts`), light zones read from the surface normals

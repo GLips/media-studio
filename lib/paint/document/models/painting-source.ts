@@ -6,6 +6,7 @@
 import type { PaintingDocument } from './painting-document.ts';
 import { checkPaintingDocument } from './painting-document-check.ts';
 import { paintingFirstDifference } from './painting-document-difference.ts';
+import { paintingProblemsWithOrigins } from './painting-layer-origin.ts';
 import { paintingErrors, paintingProblem, paintingProblemsError, type PaintingProblem } from './painting-problem.ts';
 import {
   paintingPropertyValues, paintingSchemaProblems, paintingValueProblems, paintingValuesKey, type PaintingPropertyRecord, type PropertySchema,
@@ -106,7 +107,8 @@ function evaluateAt<S extends PropertySchema>(
   const name = paintingSourceName(source), paintingDocument = runFactory(source, values);
   const differ = purity ? paintingFirstDifference(paintingDocument, runFactory(source, values)) : null;
   if (differ !== null) return { problems: [paintingProblem('error', 'document', differ, `${name} isn't pure: two calls differ at ${differ || 'the document itself'}`)], evaluation: null };
-  const { problems, tree } = checkPaintingDocument(paintingDocument, styles);
+  const checked = checkPaintingDocument(paintingDocument, styles), tree = checked.tree;
+  const problems = paintingProblemsWithOrigins(paintingDocument, checked.problems);
   if (!tree || paintingErrors(problems).length > 0) return { problems, evaluation: null };
   return { problems, evaluation: { source: name, values, document: paintingDocument, tree, warnings: problems } };
 }

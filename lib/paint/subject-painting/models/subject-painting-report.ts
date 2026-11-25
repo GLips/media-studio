@@ -1,11 +1,11 @@
 // subject-painting-report.ts: what painting a subject found and did. Problems are structured diagnostics with codes;
 // success carries a report of what each override matched, which targets were hidden, the controls applied, the
-// replacements drawn and every generated key with the contribution it came from, so a solve failure on a document key
-// traces back to the parts it paints. Targets print as ref keys (`part:belly`), so the report reads as JSON.
+// replacements drawn and every generated key with the contribution it came from. A check problem on one of those keys
+// names its contribution and targets itself (paintSubject records each layer's origin). Targets print as ref keys
+// (`part:belly`), so the report reads as JSON.
 
 import type { LayerNode } from '#lib/paint/document/models/painting-document.ts';
-import type { PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
-import { subjectError, type SubjectDiagnostic, type SubjectDiagnosticCode } from '#lib/paint/subject/models/subject-diagnostic.ts';
+import type { SubjectDiagnostic, SubjectDiagnosticCode } from '#lib/paint/subject/models/subject-diagnostic.ts';
 
 export type SubjectPaintingDiagnosticCode =
   | SubjectDiagnosticCode
@@ -19,8 +19,7 @@ export type SubjectPaintingDiagnosticCode =
   | 'replaced-target-painted'
   | 'hidden-target-painted'
   | 'duplicate-key'
-  | 'painter-report'
-  | 'solve-failure';
+  | 'painter-report';
 
 /** A subject painting's problem: any subject diagnostic, or one about the painter, its options, an override, or a key. */
 export type SubjectPaintingDiagnostic = SubjectDiagnostic<SubjectPaintingDiagnosticCode>;
@@ -84,26 +83,4 @@ export function subjectLayerDocumentKeys(layers: readonly LayerNode[]): string[]
   return layers.flatMap((node): string[] => (node.children
     ? [node.key, ...subjectLayerDocumentKeys(node.children)]
     : [node.key, ...node.washes.flatMap((wash) => [wash.key, ...wash.applications.flatMap(({ key }) => (key === undefined ? [] : [key]))])]));
-}
-
-/** The provenance of a document key, or of the wash an unkeyed application (`<wash>.applications[i]`) sits in. */
-export function subjectKeyProvenance(report: SubjectPaintingReport, owner: string): SubjectKeyProvenance | undefined {
-  const key = owner.replace(/\.applications\[\d+\]$/, '');
-  return report.provenance.find(({ documentKey }) => documentKey === key);
-}
-
-/**
- * A painting check's problems traced to what the subject painting made: one `solve-failure` per problem whose owner
- * the painting generated, addressed to its contribution or replacement and naming its targets.
- */
-export function traceSubjectPaintingProblems(report: SubjectPaintingReport, problems: readonly PaintingProblem[]): SubjectPaintingDiagnostic[] {
-  return problems.flatMap((problem) => {
-    const provenance = subjectKeyProvenance(report, problem.owner);
-    if (!provenance) return [];
-    const address = provenance.source.kind === 'painter' ? `contribution:${provenance.source.contribution}` : `override[${provenance.source.override}]`;
-    const fix = provenance.source.kind === 'painter'
-      ? `the painter '${report.painter}' planned it: retune its targets, or replace them`
-      : 'the replacement drew it: fix its paint function';
-    return [{ ...subjectError<SubjectPaintingDiagnosticCode>('solve-failure', address, `${problem.path}: ${problem.message} (targets ${provenance.targets.join(', ')})`, fix), severity: problem.severity }];
-  });
 }

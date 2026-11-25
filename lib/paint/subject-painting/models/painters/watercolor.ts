@@ -1,27 +1,29 @@
 // watercolor.ts: any subject painted in watercolour, light first, since the paper is the only white. Each material's
 // parts are washed as one: a pale tint, then the local colour, muted and thin as vid-144's hand-painted frog glazes
 // it, lighter features kept as paper. Then the light, read from the subject's normals against its key (`soft`, `cel`
-// or `cel-full`), far parts deeper, a mottle, the features, the eyes and a light ink line.
+// or `cel-full`), far parts deeper, a mottle, the features, the eyes and a light ink line. Where a wash meets the
+// silhouette it bleeds into the paper (`bleed`), so the figure ends in a soft wet edge, its alpha over footage.
 //
-// The brushes and pigments come from a binding (work/styles/watercolor/subject-painter.ts binds the private pack), so
-// this never names a style's brush.
+// The brushes and pigments come from a binding (work/styles/<name>/subject-painter.ts), never a style's own names.
 
-import type { Application, BrushRef, DirectApplication, Edge, Footprint, LayerNode, Mix, MixPart, Region } from '#lib/paint/document/models/painting-document.ts';
+import type { Application, BrushRef, Clip, DirectApplication, Edge, EdgedRegion, Footprint, LayerNode, Mix, MixPart, Region } from '#lib/paint/document/models/painting-document.ts';
 import { subjectAreaBox } from '#lib/paint/subject/models/subject-geometry.ts';
 import type { PaintableRef, SubjectHex, SubjectLineKind } from '#lib/paint/subject/models/subject.ts';
-import { subjectAreaRegion, subjectAreasRegion } from '../subject-document-geometry.ts';
+import { hasSubjectTag, SUBJECT_WELL_KNOWN_TAGS } from '#lib/paint/subject/models/subject-tags.ts';
+import { subjectAreaRegion } from '../subject-document-geometry.ts';
 import {
   defineSubjectPainter, type ResolvedSubjectIntent, type SubjectContribution, type SubjectEmphasis, type SubjectPainterContext, type SubjectPainterReport,
 } from '../subject-painter.ts';
 import { mutedSubjectHex, subjectHexLuminance } from './subject-paint-colour.ts';
 import { subjectPathRuns, subjectSilhouetteStroke } from './subject-paint-lines.ts';
 import {
-  hasSubjectTag, planSubjectPaintGroups, SUBJECT_EYE_TAG, subjectGroupFeatureReserves, subjectLaterLighterRegions, subjectPaintedRegions, subjectCheekSpots, subjectEyeMarks, subjectEyeSpots, subjectUnitPx, type SubjectPaintGroup,
+  planSubjectPaintGroups, subjectGroupFeatureReserves, subjectLaterLighterRegions, subjectPaintedRegions, subjectCheekSpots, subjectEyeMarks, subjectEyeSpots, subjectUnitPx, type SubjectPaintGroup,
 } from './subject-paint-plan.ts';
 import {
   clampSubjectPaint, directSubjectLayer, SUBJECT_LINE_EDGE_WEIGHTS, subjectLightOptionProblems, subjectOptionHexProblems, subjectOptionRangeProblems, wetSubjectLayer,
 } from './subject-paint-kit.ts';
 import { subjectLightField, subjectLightZoneRings, type LitSubject, type SubjectLightField, type SubjectLightTreatment } from './subject-light-zones.ts';
+import { subjectOutlineEdgedRegion, subjectOutlineReader, type SubjectOutlineReader } from './subject-paint-outline.ts';
 
 /** A pigment as a mix names one: a medium's own (WATERCOLOUR_PIGMENTS) or a hex fitted as one. */
 export type SubjectPigment = MixPart['pigment'];
@@ -72,6 +74,11 @@ export type WatercolorSubjectOptions = {
   readonly contours: boolean;
   /** A soft cast shadow on the ground under the subject. */
   readonly groundShadow: boolean;
+  /**
+   * 0..0.1: how far the washes bleed past the silhouette into the paper, a share of the subject's height, ragged as a
+   * wet edge dries. 0 stops them at the outline. A part whose edge intent is `firm` or `hard` never bleeds.
+   */
+  readonly bleed: number;
 };
 
 const WATERCOLOR_SLOTS = ['ground', 'form', 'light', 'texture', 'features', 'accents', 'lines'] as const;
@@ -84,7 +91,7 @@ type WatercolorContext = SubjectPainterContext<LitSubject, WatercolorSubjectOpti
 type WatercolorGroup = SubjectPaintGroup<WatercolorSubjectOptions>;
 
 /** The options a group's wash reads, so tuning any other per target leaves the shared wash whole. */
-const GROUP_CONTROLS = ['shadowDepth', 'mute', 'texture'] as const;
+const GROUP_CONTROLS = ['shadowDepth', 'mute', 'texture', 'bleed'] as const;
 
 const clamp = clampSubjectPaint;
 
@@ -94,6 +101,7 @@ const watercolorOptionProblems = (options: WatercolorSubjectOptions): SubjectPai
   ...subjectOptionRangeProblems('shadowDepth', options.shadowDepth, 0, 2),
   ...subjectOptionRangeProblems('mute', options.mute, 0, 1),
   ...subjectOptionRangeProblems('texture', options.texture, 0, 1),
+  ...subjectOptionRangeProblems('bleed', options.bleed, 0, 0.1),
   ...subjectOptionRangeProblems('lineWeight', options.lineWeight, 0.1, 3),
   ...subjectOptionHexProblems('lineColor', options.lineColor),
   ...subjectOptionHexProblems('blush', options.blush),
@@ -113,6 +121,7 @@ type WatercolorKit = {
   readonly unit: number;
   readonly flood: number;
   readonly field: SubjectLightField;
+  readonly outline: SubjectOutlineReader;
 };
 
 const tint = (hex: SubjectHex, strength: number): Mix => ({ parts: [{ pigment: hex, amount: 1 }], strength });
@@ -146,6 +155,28 @@ const edgeOf = (intent: ResolvedSubjectIntent, unit: number): Edge | undefined =
 
 const regionArea = (region: Region, edge?: Edge) => ({ region, ...(edge && { edge }) });
 
+/**
+ * How a group's washes leave the figure: a ragged bleed `bleed` of the subject's height past the silhouette, seeded by
+ * the group's own key so it holds while the figure moves; none when its edge intent holds it firm. A near-black runs a
+ * third as far: an even dark halo reads as smoke, not water.
+ */
+function outlineBleed({ context, unit }: WatercolorKit, group: WatercolorGroup): Edge | undefined {
+  const reachPx = group.options.bleed * unit * (subjectHexLuminance(group.intent.localColor) < INK_LUMINANCE ? 1 / 3 : 1);
+  if (!(reachPx > 0) || group.intent.edge === 'firm' || group.intent.edge === 'hard') return undefined;
+  return { kind: 'bleed', reachPx, roughness: { amountPx: 0.5 * reachPx, featurePx: Math.max(4, reachPx), seed: context.paintKey('bleed', ...group.segments) } };
+}
+
+/**
+ * Where a group's form wash lays: edged `inside` within the figure, bleeding past the silhouette as the group may. Only
+ * an area's own bleed lays paint past its line (a bleeding boundary just opens it to water), so the area bleeds all
+ * round and its clip, open along the silhouette alone, holds it at the figure's inside edges.
+ */
+function groupWashBounds(kit: WatercolorKit, group: WatercolorGroup, region: Region, inside?: Edge): { area: EdgedRegion; clips: Clip[] } {
+  const outline = outlineBleed(kit, group);
+  if (!outline) return { area: regionArea(region, inside), clips: [{ region }] };
+  return { area: { region, edge: outline }, clips: [subjectOutlineEdgedRegion(kit.outline, region, { ...(inside && { inside }), outline })] };
+}
+
 const wetLayer = wetSubjectLayer, directLayer = directSubjectLayer;
 
 const groupTargets = (groups: readonly WatercolorGroup[]): PaintableRef[] => groups.flatMap(({ parts }) => parts.map(({ ref }) => ref));
@@ -153,7 +184,7 @@ const groupTargets = (groups: readonly WatercolorGroup[]): PaintableRef[] => gro
 const reservedFeatures = (kit: WatercolorKit, group: WatercolorGroup, which: 'eyes' | 'lights') => subjectGroupFeatureReserves(kit.context, group, which, FEATURE_SLOTS);
 
 const formGroups = (context: WatercolorContext, slot: WatercolorSubjectSlot) =>
-  planSubjectPaintGroups(context, slot, GROUP_CONTROLS, (part) => !hasSubjectTag(part, SUBJECT_EYE_TAG));
+  planSubjectPaintGroups(context, slot, GROUP_CONTROLS, (part) => !hasSubjectTag(part, SUBJECT_WELL_KNOWN_TAGS.eye));
 
 function groundContribution({ context, binding, unit, flood }: WatercolorKit): SubjectContribution<WatercolorSubjectSlot>[] {
   const parts = context.paintedParts('ground');
@@ -174,13 +205,13 @@ function formContribution(kit: WatercolorKit): SubjectContribution<WatercolorSub
   const key = context.paintKey('form');
   const tints: Application[] = [], locals: Application[] = [];
   for (const group of groups) {
-    const hex = localHex(group.intent, group.options.mute), region = subjectAreasRegion(group.areas), reserves = reservedFeatures(kit, group, 'lights');
+    const hex = localHex(group.intent, group.options.mute), region = subjectAreaRegion(group.area), reserves = reservedFeatures(kit, group, 'lights');
     const name = (pass: string) => context.paintKey('form', pass, ...group.segments);
     if (glazedSubjectColour(group.intent)) {
-      tints.push({ key: name('tint'), kind: 'fill', area: { region }, reserves, brush: binding.brushes.wash, diameterPx: flood, seed: name('tint'), charge: { kind: 'paint', mix: tint(hex, 0.2), water: 0.6 } });
+      tints.push({ key: name('tint'), kind: 'fill', ...groupWashBounds(kit, group, region), reserves, brush: binding.brushes.wash, diameterPx: flood, seed: name('tint'), charge: { kind: 'paint', mix: tint(hex, 0.2), water: 0.6 } });
     }
     locals.push({
-      key: name('local'), kind: 'fill', area: regionArea(region, edgeOf(group.intent, unit)), clips: [{ region }], reserves,
+      key: name('local'), kind: 'fill', ...groupWashBounds(kit, group, region, edgeOf(group.intent, unit)), reserves,
       brush: binding.brushes.wash, diameterPx: flood, seed: name('local'), charge: { kind: 'paint', mix: tint(hex, localStrength(group.intent, hex)), water: 0.65 },
     });
   }
@@ -191,7 +222,7 @@ function formContribution(kit: WatercolorKit): SubjectContribution<WatercolorSub
 /** A group's light, as the treatment models it, each band in the colour's own shade and clipped to the group. */
 function groupLightApplications(kit: WatercolorKit, group: WatercolorGroup): Application[] {
   const { context, binding, unit, flood, field } = kit;
-  const hex = localHex(group.intent, group.options.mute), region = subjectAreasRegion(group.areas), clips = [{ region }];
+  const hex = localHex(group.intent, group.options.mute), region = subjectAreaRegion(group.area), clips = [{ region }];
   const eyes = reservedFeatures(kit, group, 'eyes');
   const depth = group.options.shadowDepth * EMPHASIS[group.intent.emphasis].shade, t = field.terminator;
   const band = (pass: string, rings: readonly (readonly { x: number; y: number }[])[], shade: number, extra: Partial<Pick<Application, 'brush'>> & { edge?: Edge } = {}): Application[] => {
@@ -202,7 +233,7 @@ function groupLightApplications(kit: WatercolorKit, group: WatercolorGroup): App
       brush: extra.brush ?? binding.brushes.wash, diameterPx: flood, seed: name, charge: { kind: 'paint', mix: shadeOf(kit, hex, shade * depth), water: 0.5 },
     }];
   };
-  const zone = (above: number | undefined, below: number | undefined) => subjectLightZoneRings(field, group.areas, { ...(above !== undefined && { above }), ...(below !== undefined && { below }) });
+  const zone = (above: number | undefined, below: number | undefined) => subjectLightZoneRings(field, group.parts.map(({ visibility }) => visibility.geometry), { ...(above !== undefined && { above }), ...(below !== undefined && { below }) });
   const far = group.parts.filter(({ side }) => side === 'far');
   // The normals already shade a far part where the light misses it: this is only a cool recession.
   const farBand = band('far', far.flatMap(({ visibility }) => visibility.geometry.rings), 0.25);
@@ -241,7 +272,7 @@ function textureContribution(kit: WatercolorKit): SubjectContribution<Watercolor
   if (!groups.length) return [];
   const key = context.paintKey('texture');
   const applications = groups.map((group): DirectApplication => {
-    const hex = localHex(group.intent, group.options.mute), region = subjectAreasRegion(group.areas), name = context.paintKey('texture', 'mottle', ...group.segments);
+    const hex = localHex(group.intent, group.options.mute), region = subjectAreaRegion(group.area), name = context.paintKey('texture', 'mottle', ...group.segments);
     return {
       key: name, kind: 'fill', area: { region }, clips: [{ region }], reserves: reservedFeatures(kit, group, 'lights'),
       laying: { kind: 'strokes', pattern: { kind: 'scribble' }, variation: 0.6, reach: { past: 0 } },
@@ -346,10 +377,10 @@ function lineContributions(kit: WatercolorKit): SubjectContribution<WatercolorSu
   return contributions;
 }
 
-/** Watercolour's options when a painting gives none: cel light, a light mute and mottle, contours in a light ink. */
+/** Watercolour's options when a painting gives none: cel light, a light mute and mottle, contours in a light ink, a modest bleed. */
 export const WATERCOLOR_SUBJECT_DEFAULTS: WatercolorSubjectOptions = {
   light: 'cel', terminator: 0, shadowDepth: 1, mute: 0.18, texture: 0.16, lineWeight: 1, lineColor: '#22232a', blush: '#f3a99a',
-  contours: true, groundShadow: true,
+  contours: true, groundShadow: true, bleed: 0.012,
 };
 
 /** The watercolour painter, bound to a style's brushes and pigments. */
@@ -360,12 +391,12 @@ export const watercolorSubjectPainter = (binding: WatercolorSubjectBinding) => d
   slots: WATERCOLOR_SLOTS,
   // A part painted by hand sits over the automatic form and light round it, under the lines.
   replaceAllAt: 'features',
-  controls: ['shadowDepth', 'mute', 'texture', 'lineWeight', 'lineColor', 'blush'],
+  controls: ['shadowDepth', 'mute', 'texture', 'bleed', 'lineWeight', 'lineColor', 'blush'],
   intents: ['localColor', 'preserveLocalColor', 'emphasis', 'edge'],
   checkOptions: watercolorOptionProblems,
   paint: (context) => {
     const unit = subjectUnitPx(context.subject);
-    const kit: WatercolorKit = { context, binding, unit, flood: clamp(Math.round(unit * 0.12), 30, 110), field: subjectLightField(context.subject, context.options.terminator) };
+    const kit: WatercolorKit = { context, binding, unit, flood: clamp(Math.round(unit * 0.12), 30, 110), field: subjectLightField(context.subject, context.options.terminator), outline: subjectOutlineReader(context.subject) };
     return [
       ...groundContribution(kit), ...formContribution(kit), ...lightContribution(kit), ...textureContribution(kit),
       ...featureContributions(kit), ...accentContributions(kit), ...lineContributions(kit),

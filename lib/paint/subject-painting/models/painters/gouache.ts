@@ -8,7 +8,8 @@
 import type { BrushRef, DirectApplication, Edge, Region } from '#lib/paint/document/models/painting-document.ts';
 import { subjectAreaBox, type SubjectRing } from '#lib/paint/subject/models/subject-geometry.ts';
 import type { PaintableRef, SubjectHex, SubjectLineKind } from '#lib/paint/subject/models/subject.ts';
-import { subjectAreaRegion, subjectAreasRegion } from '../subject-document-geometry.ts';
+import { hasSubjectTag, SUBJECT_WELL_KNOWN_TAGS } from '#lib/paint/subject/models/subject-tags.ts';
+import { subjectAreaRegion } from '../subject-document-geometry.ts';
 import {
   defineSubjectPainter, type ResolvedSubjectIntent, type SubjectContribution, type SubjectPainterContext, type SubjectPainterReport,
 } from '../subject-painter.ts';
@@ -18,7 +19,7 @@ import {
 } from './subject-paint-kit.ts';
 import { subjectPathRuns, subjectSilhouetteStroke } from './subject-paint-lines.ts';
 import {
-  hasSubjectTag, planSubjectPaintGroups, SUBJECT_EYE_TAG, subjectGroupFeatureReserves, subjectLaterLighterRegions, subjectPaintedRegions, subjectCheekSpots, subjectEyeMarks, subjectEyeSpots, subjectUnitPx, type SubjectPaintGroup,
+  planSubjectPaintGroups, subjectGroupFeatureReserves, subjectLaterLighterRegions, subjectPaintedRegions, subjectCheekSpots, subjectEyeMarks, subjectEyeSpots, subjectUnitPx, type SubjectPaintGroup,
 } from './subject-paint-plan.ts';
 import { subjectLightField, subjectLightZoneRings, type LitSubject, type SubjectLightField, type SubjectLightTreatment } from './subject-light-zones.ts';
 
@@ -87,7 +88,7 @@ const edgeOf = (intent: ResolvedSubjectIntent, unit: number): Edge | undefined =
 const regionArea = (region: Region, edge?: Edge) => ({ region, ...(edge && { edge }) });
 const groupTargets = (groups: readonly GouacheGroup[]): PaintableRef[] => groups.flatMap(({ parts }) => parts.map(({ ref }) => ref));
 const formGroups = (context: GouacheContext, slot: GouacheSubjectSlot) =>
-  planSubjectPaintGroups(context, slot, GROUP_CONTROLS, (part) => !hasSubjectTag(part, SUBJECT_EYE_TAG));
+  planSubjectPaintGroups(context, slot, GROUP_CONTROLS, (part) => !hasSubjectTag(part, SUBJECT_WELL_KNOWN_TAGS.eye));
 
 function groundContribution({ context, binding, unit }: GouacheKit): SubjectContribution<GouacheSubjectSlot>[] {
   const parts = context.paintedParts('ground');
@@ -107,7 +108,7 @@ function formContribution(kit: GouacheKit): SubjectContribution<GouacheSubjectSl
   const blocks = groups.map((group): DirectApplication => {
     const name = context.paintKey('form', 'block', ...group.segments);
     return {
-      key: name, kind: 'fill', area: regionArea(subjectAreasRegion(group.areas), edgeOf(group.intent, unit)), reserves: subjectGroupFeatureReserves(context, group, 'lights', FEATURE_SLOTS),
+      key: name, kind: 'fill', area: regionArea(subjectAreaRegion(group.area), edgeOf(group.intent, unit)), reserves: subjectGroupFeatureReserves(context, group, 'lights', FEATURE_SLOTS),
       brush: binding.brushes.block, diameterPx: flood, seed: name, charge: solid(blockHex(kit, group.intent)),
     };
   });
@@ -117,7 +118,7 @@ function formContribution(kit: GouacheKit): SubjectContribution<GouacheSubjectSl
 /** A group's light as flat bands of its colour's own shade, clipped to it; `soft` feathers them into each other. */
 function groupLightApplications(kit: GouacheKit, group: GouacheGroup): DirectApplication[] {
   const { context, binding, unit, flood, field } = kit;
-  const hex = blockHex(kit, group.intent), region = subjectAreasRegion(group.areas), clips = [{ region }];
+  const hex = blockHex(kit, group.intent), region = subjectAreaRegion(group.area), clips = [{ region }];
   const depth = group.options.shadowDepth * (group.intent.emphasis === 'accent' ? 1.15 : 1), t = field.terminator;
   const soft: Edge | undefined = context.options.light === 'soft' ? { kind: 'feather', widthPx: Math.max(4, 0.015 * unit) } : undefined;
   const band = (pass: string, rings: readonly SubjectRing[], share: number): DirectApplication[] => {
@@ -125,7 +126,7 @@ function groupLightApplications(kit: GouacheKit, group: GouacheGroup): DirectApp
     const name = context.paintKey('light', pass, ...group.segments);
     return [{ key: name, kind: 'fill', area: regionArea({ kind: 'polygon', rings }, soft), clips, brush: binding.brushes.block, diameterPx: flood, seed: name, charge: solid(darker(hex, share * depth)) }];
   };
-  const zone = (above: number | undefined, below: number | undefined) => subjectLightZoneRings(field, group.areas, { ...(above !== undefined && { above }), ...(below !== undefined && { below }) });
+  const zone = (above: number | undefined, below: number | undefined) => subjectLightZoneRings(field, group.parts.map(({ visibility }) => visibility.geometry), { ...(above !== undefined && { above }), ...(below !== undefined && { below }) });
   const far = band('far', group.parts.filter(({ side }) => side === 'far').flatMap(({ visibility }) => visibility.geometry.rings), 0.06);
   const passes: Record<SubjectLightTreatment, () => DirectApplication[]> = {
     soft: () => [...far, ...band('turn', zone(undefined, t + 0.3), 0.07), ...band('shade', zone(undefined, t), 0.14)],
@@ -135,11 +136,17 @@ function groupLightApplications(kit: GouacheKit, group: GouacheGroup): DirectApp
   return passes[context.options.light]();
 }
 
+/**
+ * Each group's bands in a layer of its own under one `light` group: every band is a shade of its own, and a layer's
+ * film holds only STAMP_PIGMENT_GROUP_SLOTS pigments, which a many-coloured subject's bands together outrun.
+ */
 function lightContribution(kit: GouacheKit): SubjectContribution<GouacheSubjectSlot>[] {
-  const groups = formGroups(kit.context, 'light'), applications = groups.flatMap((group) => groupLightApplications(kit, group));
-  if (!applications.length) return [];
-  const key = kit.context.paintKey('light');
-  return [{ key, slot: 'light', targets: groupTargets(groups), layers: [directSubjectLayer(key, applications)] }];
+  const groups = formGroups(kit.context, 'light'), key = kit.context.paintKey('light');
+  const children = groups.flatMap((group) => {
+    const applications = groupLightApplications(kit, group);
+    return applications.length ? [directSubjectLayer(kit.context.paintKey('light', ...group.segments), applications)] : [];
+  });
+  return children.length ? [{ key, slot: 'light', targets: groupTargets(groups), layers: [{ key, children }] }] : [];
 }
 
 /** Region features over the form in their colour: their own material's, else their part's. */

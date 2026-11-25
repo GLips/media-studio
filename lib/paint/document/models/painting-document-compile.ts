@@ -25,6 +25,7 @@ import { paintingMixPigments } from './painting-mix.ts';
 import { PAINTING_REST_POSE, paintingPosesKept } from './painting-pose.ts';
 import { paintingWashLifts } from './painting-pigment-slots.ts';
 import { paintingGeometryBox } from './painting-footprint.ts';
+import { paintingProblemsWithOrigins } from './painting-layer-origin.ts';
 import { paintingApplicationOwner, paintingProblem, paintingProblemsError, type PaintingProblem } from './painting-problem.ts';
 import { paintingReseeded } from './painting-reseed.ts';
 import { paintingSheetOrders, paintingSheetWashes, type PaintingSheetOrder } from './painting-sheet-program.ts';
@@ -244,7 +245,7 @@ function compileSelectedLayers(
   const { tree } = evaluation;
   // Refused whole, by owner, before any deposit is planned: the planner refuses one alone, naming no application.
   const unplannable = paintingFillBrushProblems(tree, selected, brushOf);
-  if (unplannable.length) throw paintingProblemsError(evaluation.source, unplannable);
+  if (unplannable.length) throw paintingProblemsError(evaluation.source, paintingProblemsWithOrigins(evaluation.document, unplannable));
   const sheets = paintingSheetOrders(tree, selected).flatMap((order, s): PaintingSheetCompiled[] => (s > 0 && order.layers.length === 0
     ? []
     : [{ sheet: order.sheet, layers: order.layers.map(({ layer }) => layer), ownerChain: order.ownerChain, program: compilePaintingSheet(evaluation, order, brushOf, epochs, costs) }]));

@@ -32,6 +32,13 @@ export const paintingApplicationOwner = (wash: Wash, application: AnyApplication
 export const paintingField = (prefix: string, field: string) => (prefix && field ? `${prefix}.${field}` : prefix || field);
 
 /**
+ * Who made a layer and how to change it, recorded by a generator (painting-layer-origin.ts): `maker` names its own unit
+ * (`subject 'frog', painter 'watercolor', contribution frog.form-wash.material-skin`), `targets` what it paints
+ * (`part:belly`), `fix` where to act.
+ */
+export type PaintingLayerOrigin = { readonly maker: string; readonly targets: readonly string[]; readonly fix: string };
+
+/**
  * One problem. `path` is `<owner>.<field>`, `hill.applications[1].area.region.rings[0]`. `footprint` is the box of the
  * geometry it's about, in document px; none for a property, the document's shape, a key or a shot's selection.
  */
@@ -42,6 +49,8 @@ export type PaintingProblem = {
   readonly path: string;
   readonly message: string;
   readonly footprint?: StampBox;
+  /** What generated the owner's layer, when a generator recorded it (paintingProblemsWithOrigins). */
+  readonly origin?: PaintingLayerOrigin;
 };
 
 /** A problem of `owner` at `field` (none: the owner itself), its footprint dropped when it isn't finite. */
@@ -71,10 +80,14 @@ export class PaintingProblemList {
   }
 }
 
-/** One problem as `studio paint check` prints it: `<path>: <message> [x0,y0 → x1,y1]`, a warning marked so. */
-export function paintingProblemText({ severity, path, message, footprint }: PaintingProblem): string {
+/**
+ * One problem as `studio paint check` prints it: `<path>: <message> [x0,y0 → x1,y1]`, a warning marked so, and with an
+ * origin `(from <maker>, painting <targets>: <fix>)`.
+ */
+export function paintingProblemText({ severity, path, message, footprint, origin }: PaintingProblem): string {
   const box = footprint ? ` [${Math.floor(footprint.x0)},${Math.floor(footprint.y0)} → ${Math.ceil(footprint.x1)},${Math.ceil(footprint.y1)}]` : '';
-  return `${severity === 'warning' ? 'warning: ' : ''}${path}: ${message}${box}`;
+  const from = origin ? ` (from ${origin.maker}${origin.targets.length ? `, painting ${origin.targets.join(' ')}` : ''}: ${origin.fix})` : '';
+  return `${severity === 'warning' ? 'warning: ' : ''}${path}: ${message}${box}${from}`;
 }
 
 /** The error a source fails evaluation with: every error it has, one a line, so a render fails with the whole list. */

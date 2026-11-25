@@ -9,6 +9,7 @@
 // Slots: `contours` (parts' outlines and spot blacks), then `features`, so a face replacement leaves the outlines.
 
 import type { BrushRef, DirectApplication, LayerNode, Subpath } from '#lib/paint/document/models/painting-document.ts';
+import { stampPolygonBox, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { SubjectWithEvidence } from '#lib/paint/subject/models/subject-check.ts';
 import { subjectKeyPageDirection } from '#lib/paint/subject/models/subject-evidence.ts';
 import { subjectAreaBox, type SubjectArea } from '#lib/paint/subject/models/subject-geometry.ts';
@@ -25,7 +26,7 @@ import {
 } from './line-edges.ts';
 import { subjectHexLuminance } from './subject-paint-colour.ts';
 import { subjectOptionHexProblems, subjectOptionRangeProblems, subjectSmoothStep } from './subject-paint-kit.ts';
-import { lineAreaOutlines, linePathOutline, lineRunsWhere, lineStrokeSubpaths, type LineHand, type LineOutlinePoint, type LineRun } from './line-strokes.ts';
+import { lineAreaOutlines, linePathOutline, lineRunsSeeded, lineRunsWhere, lineStrokeSubpaths, type LineHand, type LineOutlinePoint, type LineRun } from './line-strokes.ts';
 
 /** What the line painter draws with: a crisp, tapered ink line or a grainy pencil one. */
 export type LineTool = 'ink' | 'pencil';
@@ -41,13 +42,18 @@ export type LineSubjectOptions = {
   readonly lineColor: SubjectHex;
   /** Fill parts and regions whose colour is near black with solid ink. */
   readonly spotBlacks: boolean;
+  /**
+   * 0..6: how far each stroke runs on straight past its ends, in line widths, as a hand inking fast carries the pen
+   * past a corner and across the silhouette. Each end varies a little, seeded. 0 lifts the pen where the line ends.
+   */
+  readonly overshoot: number;
 };
 
 /** The brushes a style binds for each tool. Engine painters never import a style; `work/styles/<name>/` binds them. */
 export type LineSubjectBrushes = { readonly [T in LineTool]: BrushRef };
 
 /** The line painter's options when a painting gives none: ink at full detail, near-black spotted solid. */
-export const LINE_SUBJECT_DEFAULTS: LineSubjectOptions = { tool: 'ink', lineWeight: 1, detail: 1, lineColor: '#1c1a19', spotBlacks: true };
+export const LINE_SUBJECT_DEFAULTS: LineSubjectOptions = { tool: 'ink', lineWeight: 1, detail: 1, lineColor: '#1c1a19', spotBlacks: true, overshoot: 0 };
 
 /**
  * The kinds of line, by how much they carry: the silhouette most, a crease least. `contour` is a part's edge against
@@ -185,29 +191,38 @@ const TOOL_SPOT_FILLS: Record<LineTool, (widthPx: number) => Pick<DirectApplicat
   }),
 };
 
-function toolHand(scene: LineScene, tool: LineTool, intent: ResolvedSubjectIntent): LineHand {
-  const { strokeShare, strokePx: [shortest, longest], overlapWidths, taperFloor } = TOOL_HANDS[tool];
+function toolHand(scene: LineScene, options: LineSubjectOptions, intent: ResolvedSubjectIntent): LineHand {
+  const { strokeShare, strokePx: [shortest, longest], overlapWidths, taperFloor } = TOOL_HANDS[options.tool];
   return {
     strokePx: Math.min(longest, Math.max(shortest, scene.unit * strokeShare)), overlapPx: scene.basePx * overlapWidths,
-    taperFloor: intent.edge === 'hard' ? 0.85 : taperFloor, pressure: 1,
+    taperFloor: intent.edge === 'hard' ? 0.85 : taperFloor, pressure: 1, overshootPx: options.overshoot * scene.basePx * options.lineWeight,
   };
 }
 
-/** What one target draws: its runs of line, and the rings it spots solid when its colour reads black. */
-type LineMarks = { readonly operation: 'contour' | 'line'; readonly target: PaintableRef; readonly runs: readonly LineRun[]; readonly spot?: LineSpotBlack };
+/**
+ * What one target draws: its runs of line, each with its role (what kind of line it inks), the target's middle its
+ * runs are ordered round, and the rings it spots solid when its colour reads black.
+ */
+type LineMarks = {
+  readonly operation: 'contour' | 'line';
+  readonly target: PaintableRef;
+  readonly runs: readonly LineRun[];
+  readonly roleOf: (run: LineRun) => LineCategory;
+  readonly centre: StampPoint;
+  readonly spot?: LineSpotBlack;
+};
+
+const boxCentre = ({ x0, y0, x1, y1 }: { x0: number; y0: number; x1: number; y1: number }): StampPoint => ({ x: (x0 + x1) / 2, y: (y0 + y1) / 2 });
 
 function lineApplications(scene: LineScene, brushes: LineSubjectBrushes, options: LineSubjectOptions, intent: ResolvedSubjectIntent, marks: LineMarks, paintKey: LineContext['paintKey']): DirectApplication[] {
   const { tool } = options;
   const widthPx = scene.basePx * options.lineWeight;
   const diameterPx = Math.max(2, Math.round(widthPx * WEIGHT_HEADROOM));
-  const hand = toolHand(scene, tool, intent);
+  const hand = toolHand(scene, options, intent);
   const strokesKey = paintKey(marks.operation, marks.target, 'strokes'), spotKey = paintKey(marks.operation, marks.target, 'spot-black');
   const charge = { kind: 'paint' as const, mix: { parts: [{ pigment: options.lineColor, amount: 1 }], strength: 1 } };
-  const subpaths: Subpath[] = marks.runs.flatMap((run) => {
-    const weighted = { ...run, points: run.points.map((p) => ({ ...p, weight: p.weight / WEIGHT_HEADROOM })) };
-    // Seeded by where the run starts, not its index: a run that comes or goes leaves the others' strokes where they were.
-    return lineStrokeSubpaths(weighted, hand, `${strokesKey}|${Math.round(run.points[0].x)},${Math.round(run.points[0].y)}`);
-  });
+  const subpaths: Subpath[] = lineRunsSeeded(marks.runs, marks.centre, marks.roleOf, strokesKey).flatMap(({ run, seed }) =>
+    lineStrokeSubpaths({ ...run, points: run.points.map((p) => ({ ...p, weight: p.weight / WEIGHT_HEADROOM })) }, hand, seed));
   const spot: DirectApplication[] = marks.spot ? [{
     key: spotKey, kind: 'fill', area: { region: subjectAreaRegion(marks.spot.area) },
     ...(marks.spot.reserved.length && { reserves: marks.spot.reserved.map((area) => ({ kind: 'region' as const, region: subjectAreaRegion(area) })) }),
@@ -260,8 +275,11 @@ function paintLineSubject(context: LineContext, brushes: LineSubjectBrushes): Su
       const weight = contourWeight(scene, point, intent, options.detail);
       return weight === undefined ? undefined : weight * share;
     }, { at: (point) => contourHandedOver(scene, point), reachPx: handoverReach }));
+    // A contour run's role is the edge its middle inks: the silhouette, or another part's.
+    const roleOf = ({ points }: LineRun): LineCategory => (scene.edges.onSilhouette(points[Math.floor(points.length / 2)]) ? 'silhouette' : 'contour');
     const spot = isSpotBlack(intent, options) ? lineSpotBlack(context, part.visibility.geometry, part.id, part.ref) : undefined;
-    return painted('contours', { operation: 'contour', target: part.ref, runs, ...(spot && { spot }) }, options, intent);
+    const centre = boxCentre(subjectAreaBox(part.visibility.geometry));
+    return painted('contours', { operation: 'contour', target: part.ref, runs, roleOf, centre, ...(spot && { spot }) }, options, intent);
   });
 
   const features = context.paintedFeatures('features').flatMap((feature) => {
@@ -284,14 +302,16 @@ function paintLineSubject(context: LineContext, brushes: LineSubjectBrushes): Su
       ? category === 'region' && scene.stated.covers(point)
       : (point === points[0] || point === points.at(-1)) && scene.edges.onSilhouette(point)) })) : [];
     const spot = feature.kind === 'region' && isSpotBlack(intent, options) ? lineSpotBlack(context, feature.visibility.geometry, feature.owner, feature.ref) : undefined;
-    return painted('features', { operation: 'line', target: feature.ref, runs, ...(spot && { spot }) }, options, intent);
+    const centre = boxCentre(feature.kind === 'path' ? stampPolygonBox(feature.visibility.geometry.runs.flatMap(({ points }) => points)) : subjectAreaBox(feature.visibility.geometry));
+    return painted('features', { operation: 'line', target: feature.ref, runs, roleOf: () => category, centre, ...(spot && { spot }) }, options, intent);
   });
 
   return [...contours, ...features];
 }
 
-const lineOptionProblems = ({ lineWeight, detail, lineColor }: LineSubjectOptions): SubjectPainterReport[] => [
+const lineOptionProblems = ({ lineWeight, detail, lineColor, overshoot }: LineSubjectOptions): SubjectPainterReport[] => [
   ...subjectOptionRangeProblems('lineWeight', lineWeight, 0.1, 4),
+  ...subjectOptionRangeProblems('overshoot', overshoot, 0, 6),
   ...subjectOptionRangeProblems('detail', detail, 0, 1),
   ...subjectOptionHexProblems('lineColor', lineColor),
 ];
@@ -307,7 +327,7 @@ export const lineSubjectPainter = (brushes: LineSubjectBrushes) => defineSubject
   defaults: LINE_SUBJECT_DEFAULTS,
   slots: ['contours', 'features'],
   replaceAllAt: 'contours',
-  controls: ['tool', 'lineWeight', 'detail', 'lineColor', 'spotBlacks'],
+  controls: ['tool', 'lineWeight', 'detail', 'lineColor', 'spotBlacks', 'overshoot'],
   intents: ['localColor', 'emphasis', 'edge'],
   checkOptions: lineOptionProblems,
   paint: (context) => paintLineSubject(context, brushes),

@@ -4,6 +4,7 @@
 // replacements after its own contributions. Extra paint needs no override: put ordinary layers after `layers`.
 
 import type { LayerNode } from '#lib/paint/document/models/painting-document.ts';
+import { recordPaintingLayerOrigin } from '#lib/paint/document/models/painting-layer-origin.ts';
 import { requireSubjectEvidence } from '#lib/paint/subject/models/subject-check.ts';
 import { SubjectDiagnosticError, type SubjectResult } from '#lib/paint/subject/models/subject-diagnostic.ts';
 import type { SubjectEvidenceKind } from '#lib/paint/subject/models/subject-evidence.ts';
@@ -123,6 +124,16 @@ export function paintSubject<I extends SubjectIds, O extends object, Slot extend
   }
 
   if (diagnostics.some(({ severity }) => severity === 'error')) return { ok: false, diagnostics };
+  // Recorded on the layers themselves, so `studio paint check` names the part behind a problem in any factory using them.
+  const by = `subject '${subject.id}', painter '${painter.id}'`;
+  contributions.forEach((contribution, i) => recordPaintingLayerOrigin(contribution.layers, {
+    maker: `${by}, contribution ${contribution.key}`, targets: contributionEntries[i].targets,
+    fix: `retune or replace these targets, or change the painter's options`,
+  }));
+  drawn.forEach(({ replacement, layers: replacementLayers }, i) => recordPaintingLayerOrigin(replacementLayers, {
+    maker: `${by}, override[${replacement.override}] replacing ${replacement.selector} in ${replacement.slot}`, targets: replacementEntries[i].targets,
+    fix: 'fix the replacement\'s paint function',
+  }));
   const hidden = [...new Set(owned.matched.flatMap((match) => match.hidden))];
   return {
     ok: true,

@@ -3,10 +3,10 @@ import { test } from 'node:test';
 import type { LayerNode } from '#lib/paint/document/models/painting-document.ts';
 import type { SurfaceEvidence } from '#lib/paint/subject/models/subject-evidence.ts';
 import { SUBJECT_HIDDEN, subjectVisible, type SubjectArea } from '#lib/paint/subject/models/subject-geometry.ts';
-import { selectFeatureGroup, selectPart } from '#lib/paint/subject/models/subject-selector.ts';
+import { selectFeatureGroup, selectMaterial, selectPart } from '#lib/paint/subject/models/subject-selector.ts';
 import { defineSubject } from '#lib/paint/subject/models/subject.ts';
 import { paintSubject, requireSubjectPainting, type SubjectOverridesFor, type SubjectPainting } from '../paint-subject.ts';
-import { subjectReplace, subjectTune } from '../subject-overrides.ts';
+import { subjectIntent, subjectReplace, subjectTune } from '../subject-overrides.ts';
 import { subjectLayerDocumentKeys } from '../subject-painting-report.ts';
 import { gouacheSubjectPainter } from './gouache.ts';
 import { watercolorSubjectPainter } from './watercolor.ts';
@@ -120,3 +120,25 @@ for (const [name, paint] of Object.entries(painters)) {
     assert.deepEqual(formReservesOf(replaced), []);
   });
 }
+
+/** The frog's form washes: each application's area and clips, as the form layer lays them. */
+const formAreas = (result: SubjectPainting) => result.layers.filter(({ key }) => key === 'frog.form')
+  .flatMap((layer) => ('washes' in layer ? (layer.washes ?? []).flatMap(({ applications }) => applications) : []))
+  .flatMap((application) => (application.kind === 'fill' ? (application.clips ?? []).concat(application.area) : []));
+/** How far a point lies from the frog's silhouette, the box 20..152 × 15..140. */
+const offSilhouette = ({ x, y }: { x: number; y: number }) => Math.min(Math.abs(x - 20), Math.abs(x - 152), Math.abs(y - 15), Math.abs(y - 140));
+
+test('watercolour bleeds past the silhouette and nowhere inside the figure; bleed 0 or a firm edge stops it at the outline', () => {
+  const bleeding = (result: SubjectPainting) => formAreas(result).filter(({ edge }) => edge?.kind === 'bleed').length;
+  const opened = (result: SubjectPainting) => formAreas(result).flatMap(({ boundaries }) => boundaries ?? []);
+  const plain = painters.watercolor(frog());
+  // The washes bleed all round; their clips open only where they meet the silhouette.
+  assert.ok(bleeding(plain) > 0 && opened(plain).length > 0);
+  // Within a cell and a half of the ball's 4 px samples: how far a traced edge may wander from the silhouette.
+  assert.ok(opened(plain).every(({ path }) => path.every((point) => offSilhouette(point) <= 6)), 'a clip opens inside the figure');
+  const held = (overrides: SubjectOverridesFor<Frog, typeof watercolor>, options = {}) => requireSubjectPainting(paintSubject(frog(), watercolor, options, overrides));
+  for (const result of [held([], { bleed: 0 }), held([subjectIntent(selectMaterial('skin'), { edge: 'firm' })])]) {
+    assert.equal(bleeding(result), 0);
+    assert.deepEqual(opened(result), []);
+  }
+});

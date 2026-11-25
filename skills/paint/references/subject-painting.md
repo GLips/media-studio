@@ -16,7 +16,8 @@ replace or finish, below.
 ## Painting a subject
 
 ```ts
-import { paintSubject, requireSubjectPainting, type PaintingDocument } from '#studio';
+import type { PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
+import { paintSubject, requireSubjectPainting } from '#lib/paint/subject-painting/models/paint-subject.ts';
 import { clapperSubject, CLAPPER_SUBJECT_FRAME } from '#brands/media-studio/characters/clapper/clapper-subject.ts';
 import { watercolorSubject } from '#styles/watercolor/subject-painter.ts';
 
@@ -27,20 +28,19 @@ export default function clapper(): PaintingDocument {
 ```
 
 - Painters: `watercolorSubject` and `lineSubject` from `#styles/watercolor/subject-painter.ts`, `gouacheSubject` from
-  `#styles/gouache/subject-painter.ts`; list the style in the project's `styles`. The engine's painters are `watercolorSubjectPainter`, `gouacheSubjectPainter` and
-  `lineSubjectPainter`; `studio api <name>` gives each one's options (`WATERCOLOR_SUBJECT_DEFAULTS` and so on).
+  `#styles/gouache/subject-painter.ts`; list the style in the project's `styles`. `studio api` gives each painter's
+  options (`WATERCOLOR_SUBJECT_DEFAULTS` and so on).
 - `light` is `soft` (a feathered gradation), `cel` (one hard terminator) or `cel-full` (half-tone, shade and core). The
   light comes from the subject's own key; a three.js subject takes its scene's.
 - `contours` inks the silhouette and wherever one part lies in front of another. Watercolour's default is on, gouache's
   off: a brand character drawn with outlines wants it on in every style.
-- `paintSubject` returns problems instead of throwing; `requireSubjectPainting` throws them, formatted. Its keys name
-  what they paint (`clapper.form.tint.material:charcoal`), so a painting check problem says which part.
-- Make the style, light, pose and expression properties, so one source shows every pairing: `studio paint check` each
-  with `--set`, then `studio paint still`.
+- `requireSubjectPainting` throws `paintSubject`'s problems, formatted. `studio paint check` names the parts behind a
+  problem on a layer it made, unless you copied it (`{ ...layer }`).
+- Make style, light, pose and expression properties, so one source shows every pairing: check each with `--set`.
 
 A subject of your own: `defineSubjectFromThree` from an annotated three.js scene (each mesh a part, a region, a path or
-unpainted), or `definePrimitiveSubject` from a posed primitive figure. `studio api` documents both; `checkSubject` says
-what's wrong with one.
+unpainted), or `definePrimitiveSubject` from a posed primitive figure; `checkSubject` says what's wrong with one. Painters
+read three tags (`SUBJECT_WELL_KNOWN_TAGS`): `eye`, a drawn `pupil`, a blush landmark `cheek`.
 
 ## Retuning, replacing, finishing
 
@@ -58,7 +58,8 @@ paintSubject(subject, gouacheSubject, { light: 'soft' }, [
 
 - **Retune** with `subjectIntent` (`localColor`, `preserveLocalColor` to hold a brand colour exact, `emphasis`, `edge`)
   or `subjectTune` (the painter's per-target controls: `shadowDepth`, `mute`, `texture`, `lineWeight`, `lineColor`,
-  `blush`; line art's `tool`, `detail`, `lineWeight`, `lineColor`). A retuned part is washed apart; every other key stays put, so the rest of the painting doesn't move.
+  `blush`, watercolour's `bleed` past the silhouette; line art's `tool`, `detail`, `lineWeight`, `lineColor`,
+  `overshoot` past each stroke's ends). A retuned part washes apart; every other key stays put.
 - **Replace** with `subjectReplace`: the painter stops painting those targets in `slot` (`all`, or one of its slots,
   as `accents` for only the eyes), and your `paint` draws in their place, at that slot's depth. With `frame`, `paint`
   gets the frame's basis: `subjectFramePoint(frame, { x, y })` maps frame units to the page, and

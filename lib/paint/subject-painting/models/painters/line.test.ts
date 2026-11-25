@@ -9,29 +9,31 @@ import { paintSubject, requireSubjectPainting, type SubjectPainting } from '../p
 import { subjectReplace } from '../subject-overrides.ts';
 import { lineSubjectPainter } from './line.ts';
 
-const box = (x0: number, y0: number, x1: number, y1: number): SubjectRing => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
-
 /**
  * A box 400 px square: lid above, base below, meeting along y = 160, with eyes and a dark mouth on the base. `stated`
- * adds the lid's edge over the base as a projection states it.
+ * adds the lid's edge over the base as a projection states it; `at` moves it all.
  */
-const lantern = (surface?: SurfaceEvidence, stated = false) => defineSubject({
-  id: 'lantern',
-  materials: [{ id: 'tin', localColor: '#c0a060' }, { id: 'white', localColor: '#f4f0e8' }, { id: 'ink', localColor: '#201810', preserveLocalColor: true }],
-  parts: [
-    { id: 'lid', material: 'tin', visibility: subjectVisible({ rings: [box(0, 0, 400, 160)] }) },
-    { id: 'base', material: 'tin', visibility: subjectVisible({ rings: [box(0, 160, 400, 400)] }) },
-  ],
-  features: [
-    { kind: 'region', id: 'eye-left', owner: 'base', material: 'white', groups: ['face'], visibility: subjectVisible({ rings: [box(100, 200, 160, 260)] }) },
-    { kind: 'region', id: 'eye-right', owner: 'base', material: 'white', groups: ['face'], visibility: subjectVisible({ rings: [box(240, 200, 300, 260)] }) },
-    { kind: 'region', id: 'mouth', owner: 'base', material: 'ink', groups: ['face'], visibility: subjectVisible({ rings: [box(160, 300, 240, 340)] }) },
-    { kind: 'path', id: 'seam', owner: 'base', line: 'crease', visibility: subjectVisible({ runs: [{ points: [{ x: 20, y: 380 }, { x: 380, y: 380 }], closed: false }] }) },
-    { kind: 'path', id: 'lid-edge', owner: 'lid', line: 'occluding-edge', visibility: stated ? subjectVisible({ runs: [{ points: [{ x: 0, y: 160 }, { x: 400, y: 160 }], closed: false }] }) : SUBJECT_HIDDEN },
-  ],
-  silhouette: subjectVisible({ rings: [box(0, 0, 400, 400)] }),
-  ...(surface && { surface }),
-});
+const lantern = (surface?: SurfaceEvidence, stated = false, at = { x: 0, y: 0 }) => {
+  const box = (x0: number, y0: number, x1: number, y1: number): SubjectRing => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }].map(({ x, y }) => ({ x: x + at.x, y: y + at.y }));
+  const run = (points: { x: number; y: number }[]) => ({ runs: [{ points: points.map(({ x, y }) => ({ x: x + at.x, y: y + at.y })), closed: false }] as const });
+  return defineSubject({
+    id: 'lantern',
+    materials: [{ id: 'tin', localColor: '#c0a060' }, { id: 'white', localColor: '#f4f0e8' }, { id: 'ink', localColor: '#201810', preserveLocalColor: true }],
+    parts: [
+      { id: 'lid', material: 'tin', visibility: subjectVisible({ rings: [box(0, 0, 400, 160)] }) },
+      { id: 'base', material: 'tin', visibility: subjectVisible({ rings: [box(0, 160, 400, 400)] }) },
+    ],
+    features: [
+      { kind: 'region', id: 'eye-left', owner: 'base', material: 'white', groups: ['face'], visibility: subjectVisible({ rings: [box(100, 200, 160, 260)] }) },
+      { kind: 'region', id: 'eye-right', owner: 'base', material: 'white', groups: ['face'], visibility: subjectVisible({ rings: [box(240, 200, 300, 260)] }) },
+      { kind: 'region', id: 'mouth', owner: 'base', material: 'ink', groups: ['face'], visibility: subjectVisible({ rings: [box(160, 300, 240, 340)] }) },
+      { kind: 'path', id: 'seam', owner: 'base', line: 'crease', visibility: subjectVisible(run([{ x: 20, y: 380 }, { x: 380, y: 380 }])) },
+      { kind: 'path', id: 'lid-edge', owner: 'lid', line: 'occluding-edge', visibility: stated ? subjectVisible(run([{ x: 0, y: 160 }, { x: 400, y: 160 }])) : SUBJECT_HIDDEN },
+    ],
+    silhouette: subjectVisible({ rings: [box(0, 0, 400, 400)] }),
+    ...(surface && { surface }),
+  });
+};
 
 /** The base sits 100 px nearer the eye than the lid, as if it leant forward over the lid's lower edge. */
 const baseInFront = (): SurfaceEvidence => {
@@ -78,4 +80,26 @@ test('a face replaced in the features slot takes the face\'s lines and leaves th
   assert.deepEqual(result.layers.map(({ key }) => key), [
     'lantern.contour.part:lid', 'lantern.contour.part:base', 'lantern.line.feature:seam', 'lantern.replace.feature-group-face.features.hand-face',
   ]);
+});
+
+/** Every stroke point the painting lays, in document order. */
+const strokePoints = (layers: readonly LayerNode[]) => applicationsOf(layers).flatMap((application) => (application.kind === 'stroke' ? application.subpaths.flat() : []));
+
+test('a moved figure\'s strokes move with it: each run is seeded by its role and place round its target, not where it lies', () => {
+  const still = strokePoints(requireSubjectPainting(paintSubject(lantern(), painter)).layers);
+  const moved = strokePoints(requireSubjectPainting(paintSubject(lantern(undefined, false, { x: 37, y: 23 }), painter)).layers);
+  assert.equal(moved.length, still.length);
+  still.forEach((point, i) => {
+    assert.ok(Math.abs(moved[i].x - point.x - 37) < 1e-6 && Math.abs(moved[i].y - point.y - 23) < 1e-6, `point ${i} moved off`);
+    assert.ok(Math.abs((moved[i].scale ?? 1) - (point.scale ?? 1)) < 1e-9, `point ${i} rescaled`);
+  });
+});
+
+test('overshoot runs each stroke on past the line\'s ends, and none stops short of them', () => {
+  const seamXs = (overshoot: number) => strokePoints(requireSubjectPainting(paintSubject(lantern(), painter, { overshoot })).layers.filter(({ key }) => key === 'lantern.line.feature:seam'))
+    .map(({ x }) => x);
+  const plain = seamXs(0), inked = seamXs(3);
+  assert.ok(Math.min(...plain) >= 19.5 && Math.max(...plain) <= 380.5);
+  // Three widths of a 3.6 px line, each end between 0.6 and 1.2 of it.
+  assert.ok(Math.min(...inked) < 20 - 6 && Math.max(...inked) > 380 + 6, `${Math.min(...inked)}..${Math.max(...inked)}`);
 });
