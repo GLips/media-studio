@@ -13,6 +13,7 @@ final class Recording: RecorderTake {
   private let screen: ScreenTrack?
   private let camera: CameraTrack?
   private let mic: MicTrack?
+  private let system: SystemAudioTrack?
   private let input: InputLog
   private let clockLog: ClockLog
   /// The tracks that couldn't start, and why; each started track is the one above that isn't nil.
@@ -59,6 +60,15 @@ final class Recording: RecorderTake {
       try await track.start()
       screen = track
     } catch { failures[.screen] = error }
+    var system: SystemAudioTrack?
+    if config.systemAudio.records {
+      do {
+        let track = try await SystemAudioTrack.make(
+          config: config.systemAudio, url: folder.appendingPathComponent("system.m4a"), clockLog: clockLog)
+        try await track.start()
+        system = track
+      } catch { failures[.system] = error }
+    }
     guard screen != nil || camera != nil || mic != nil else {
       for (track, failure) in failures.sorted(by: { $0.key < $1.key }) { log("\(track.rawValue) left out: \(failure)") }
       clockLog.close()
@@ -69,16 +79,16 @@ final class Recording: RecorderTake {
     for (track, failure) in failures.sorted(by: { $0.key < $1.key }) { log("\(track.rawValue) left out: \(failure)") }
 
     let recording = Recording(
-      folder: folder, start: start, startedAt: startedAt, screen: screen, camera: camera, mic: mic, input: input, clockLog: clockLog,
-      startFailures: failures)
+      folder: folder, start: start, startedAt: startedAt, screen: screen, camera: camera, mic: mic, system: system, input: input,
+      clockLog: clockLog, startFailures: failures)
     await recording.awaitFirstSamples()
     recording.write(status: .recording, problems: recording.startProblems, stoppedAt: nil)
     return recording
   }
 
   private init(
-    folder: URL, start: CMTime, startedAt: Date, screen: ScreenTrack?, camera: CameraTrack?, mic: MicTrack?, input: InputLog,
-    clockLog: ClockLog, startFailures: [RecorderTrack: TrackFailure]
+    folder: URL, start: CMTime, startedAt: Date, screen: ScreenTrack?, camera: CameraTrack?, mic: MicTrack?, system: SystemAudioTrack?,
+    input: InputLog, clockLog: ClockLog, startFailures: [RecorderTrack: TrackFailure]
   ) {
     self.folder = folder
     self.start = start
@@ -86,6 +96,7 @@ final class Recording: RecorderTake {
     self.screen = screen
     self.camera = camera
     self.mic = mic
+    self.system = system
     self.input = input
     self.clockLog = clockLog
     self.startFailures = startFailures
@@ -97,7 +108,7 @@ final class Recording: RecorderTake {
   }
 
   private var writers: [(RecorderTrack, TrackWriter)] {
-    [(.screen, screen?.writer), (.camera, camera?.writer), (.mic, mic?.writer)].compactMap { track, writer in writer.map { (track, $0) } }
+    [(.screen, screen?.writer), (.camera, camera?.writer), (.mic, mic?.writer), (.system, system?.writer)].compactMap { track, writer in writer.map { (track, $0) } }
   }
 
   /// The menu's dot turns red only once every track has its first sample (the mic takes about a second to open), so
@@ -109,8 +120,9 @@ final class Recording: RecorderTake {
     }
   }
 
-  /// Looks for a camera or mic that went quiet (an HDMI signal lost, a cable pulled) or a screen stream that stopped,
-  /// skipping tracks with a problem already. The screen isn't timed out: a still screen sends no frames.
+  /// Looks for a camera, mic or system sound that went quiet (an HDMI signal lost, a cable pulled) or a screen or
+  /// system stream that stopped, skipping tracks with a problem already. The screen isn't timed out: a still screen
+  /// sends no frames. The system sound is: SCK sends it through silence.
   @MainActor
   func findTrackProblems(known: [RecorderTrack: String]) -> [RecorderTrack: String] {
     let now = HostClock.now()
@@ -123,6 +135,7 @@ final class Recording: RecorderTake {
       }
     }
     if known[.screen] == nil, let error = screen?.stopError { found[.screen] = "stopped: \(error)" }
+    if known[.system] == nil, found[.system] == nil, let error = system?.stopError { found[.system] = "stopped: \(error)" }
     if known[.screen] == nil, found[.screen] == nil, let closed = screen?.windowClosedAt {
       found[.screen] = "the window closed at \(String(format: "%.1f", closed)) s"
     }
@@ -149,7 +162,8 @@ final class Recording: RecorderTake {
     async let screenDone: Void? = screen?.stop(at: end)
     async let cameraDone: Void? = camera?.stop(at: end)
     async let micDone: Void? = mic?.stop()
-    _ = await (screenDone, cameraDone, micDone)
+    async let systemDone: Void? = system?.stop()
+    _ = await (screenDone, cameraDone, micDone, systemDone)
     clockLog.close()
     write(status: .complete, problems: problems, stoppedAt: end)
     return seconds(end)
@@ -187,6 +201,8 @@ final class Recording: RecorderTake {
         entry.sampleRate = mic?.sampleRate
         entry.latencySeconds = mic?.latencySeconds
         entry.hostDriftSeconds = mic?.driftSeconds
+      case .system:
+        entry.sampleRate = Double(SystemAudioTrack.sampleRate)
       case .input:
         break
       }

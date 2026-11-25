@@ -12,6 +12,8 @@ public enum TrackFailure: Error, CustomStringConvertible {
   case cantReadAudio(device: String)
   case writerWouldNotStart(RecorderTrack)
   case inputMonitoringNeeded
+  /// ScreenCaptureKit hears the system's sound only through a display's stream.
+  case noDisplayToHearThrough
   case noSamples
   /// An error a framework threw (a device that won't open, a file that can't be made), as it describes itself.
   case system(any Error)
@@ -28,6 +30,7 @@ public enum TrackFailure: Error, CustomStringConvertible {
     case .cantReadAudio(let device): "can't read audio from \(device)"
     case .writerWouldNotStart(let track): "\(track.rawValue): the writer wouldn't start"
     case .inputMonitoringNeeded: "the input log needs Input Monitoring: System Settings › Privacy & Security › Input Monitoring"
+    case .noDisplayToHearThrough: "no display connected to hear the system's sound through"
     case .noSamples: "no samples arrived"
     case .system(let error): "\(error)"
     }

@@ -56,6 +56,25 @@ const styles = stylex.create({
   },
 });
 
+/**
+ * The track heard, as a readout that steps through the item's tracks with sound on a click, as the speed does: the mic,
+ * say, then the Mac's own sound. None for an item with one track of sound.
+ */
+function LibraryHeardSwitch() {
+  const { playback, audible, hear } = useLibraryItemScreen();
+  if (audible.length < 2) return null;
+  const at = audible.findIndex(({ track }) => track === playback.heard);
+  const next = audible[(at + 1) % audible.length];
+  const label = audible[at]?.label ?? playback.heard;
+  return (
+    <HotkeyTooltip name={`Hearing ${label}: hear ${next.label}`}>
+      <UnstyledButton aria-label={`Hearing ${label}`} onClick={() => hear(next.track)} {...stylex.props(styles.rate)}>
+        <Readout bright={playback.heard !== audible[0].track}>{label}</Readout>
+      </UnstyledButton>
+    </HotkeyTooltip>
+  );
+}
+
 /** Play, the time, the speed and the sound: the render review's transport, on the library's clock. */
 function LibraryTransport() {
   const { view, playback, marked } = useLibraryItemScreen();
@@ -85,6 +104,7 @@ function LibraryTransport() {
         </UnstyledButton>
       </HotkeyTooltip>
       <IconButton name="Mute" active={muted} onClick={() => playback.setMuted(!muted)}>{muted ? <VolumeX size={14} /> : <Volume2 size={14} />}</IconButton>
+      <LibraryHeardSwitch />
       {marked && (
         <HotkeyTooltip name="Flag the marked range" hotkey="Flag range">
           <Text component="span" size="xs" {...stylex.props(styles.range)}>{formatReviewClockRange(marked.start, marked.end)}</Text>

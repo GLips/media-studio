@@ -108,7 +108,8 @@ export function LibraryRecordingMedia({ item, clock, placement, heard, children,
     : <LibraryTrackFollower item={item} track={item.tracks[name]} clock={clock} placement={placement} inset={inset} />);
   return (
     <Box {...stylex.props(styles.stage, letterbox ? styles.letterbox : ratio !== undefined && styles.fitted(ratio))}>
-      {!item.tracks[heard.track].video && <LibraryHeardElement item={item} heard={heard} />}
+      {/* Keyed by track: a switch to another sound loads a fresh element, never the last one's metadata. */}
+      {!item.tracks[heard.track].video && <LibraryHeardElement key={heard.track} item={item} heard={heard} />}
       {main && ratio !== undefined && (
         <Box {...stylex.props(styles.picture(ratio))}>
           {slot(main)}

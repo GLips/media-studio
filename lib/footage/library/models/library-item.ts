@@ -187,10 +187,10 @@ export const libraryProxiesWanted = (item: LibraryItem): { track: string; size: 
     return size && !streams.proxy ? [{ track, size }] : [];
   });
 
-/** The track to hear speech from: the mic, else the first with sound. */
+/** The track to hear speech from: the mic, else the first with sound but the system's, which is the Mac's own sound. */
 export function librarySpeechTrack(tracks: Readonly<Record<string, LibraryTrackStreams>>): string | undefined {
   if (tracks.mic?.audio) return 'mic';
-  return Object.entries(tracks).find(([, track]) => track.audio)?.[0];
+  return Object.entries(tracks).find(([name, track]) => track.audio && name !== 'system')?.[0];
 }
 
 /** `lg-ultrafine-trial`: lower case, words joined by hyphens, at most 48 characters. */
@@ -226,19 +226,24 @@ export function libraryPosterFrameOf(item: LibraryItem): LibraryPosterFrame | un
   return { file: track.proxy?.file ?? track.file, seconds };
 }
 
-/** What a track's name says its source is: the recorder's names, or a single file's. */
-export type LibrarySourceKind = 'screen' | 'camera' | 'mic' | 'video' | 'audio' | 'other';
+/** What a track's name says its source is: the recorder's names (`system` is the Mac's own sound), or a single file's. */
+export type LibrarySourceKind = 'screen' | 'camera' | 'mic' | 'system' | 'video' | 'audio' | 'other';
 
-const LIBRARY_SOURCE_ORDER: readonly LibrarySourceKind[] = ['screen', 'camera', 'mic', 'video', 'audio', 'other'];
+const LIBRARY_SOURCE_ORDER: readonly LibrarySourceKind[] = ['screen', 'camera', 'mic', 'system', 'video', 'audio', 'other'];
+
+const LIBRARY_SOURCE_LABELS: Partial<Record<LibrarySourceKind, string>> = { system: 'System audio' };
 
 const librarySourceKindOf = (track: string): LibrarySourceKind => LIBRARY_SOURCE_ORDER.find((kind) => kind === track) ?? 'other';
 
 /**
- * `item`'s tracks as sources, each named as a word (`screen` reads Screen), in one order whatever item.json's: screen,
- * camera, mic, then a file's video or audio.
+ * `item`'s tracks as sources, each named in words (`screen` reads Screen, `system` System audio), in one order whatever
+ * item.json's: screen, camera, mic, system, then a file's video or audio.
  */
 export function librarySourcesOf(item: LibraryItem): { track: string; kind: LibrarySourceKind; label: string }[] {
-  return Object.keys(item.tracks).map((track) => ({ track, kind: librarySourceKindOf(track), label: track.charAt(0).toUpperCase() + track.slice(1) }))
+  return Object.keys(item.tracks).map((track) => {
+    const kind = librarySourceKindOf(track);
+    return { track, kind, label: LIBRARY_SOURCE_LABELS[kind] ?? track.charAt(0).toUpperCase() + track.slice(1) };
+  })
     .toSorted((a, b) => LIBRARY_SOURCE_ORDER.indexOf(a.kind) - LIBRARY_SOURCE_ORDER.indexOf(b.kind));
 }
 

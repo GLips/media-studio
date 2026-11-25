@@ -45,17 +45,22 @@ const libraryAt = (root: string, latencies = makeRecorderDeviceLatenciesLayer(jo
   Layer.succeed(FootageTranscriber, fakeTranscriber),
 );
 
-/** A take folder as the recorder leaves it, its files last changed `stillFor` ms ago. */
-function writeTake(root: string, { status, stillFor, input, name = '2026-11-22 18.19.29', windowLog }: { status: 'recording' | 'complete'; stillFor: number; input: string; name?: string; windowLog?: string }) {
+/** A take folder as the recorder leaves it, its files last changed `stillFor` ms ago, with a screen and `sound`'s tracks. */
+function writeTake(root: string, { status, stillFor, input, name = '2026-11-22 18.19.29', windowLog, sound = ['mic'] }: {
+  status: 'recording' | 'complete'; stillFor: number; input: string; name?: string; windowLog?: string; sound?: readonly ('mic' | 'system')[];
+}) {
   const take = join(root, 'Studio Recordings', name);
   mkdirSync(take, { recursive: true });
   const window = windowLog === undefined ? {} : { window: { title: 'Notes', app: 'Notes', file: 'window.jsonl' } };
   writeFileSync(join(take, 'recording.json'), JSON.stringify({
     format: 'studio-recording/1', status, startedAt: '2026-11-22T18:19:29.847-08:00',
-    tracks: { screen: { file: 'screen.mp4', startSeconds: 0.34, device: 'Built-in Display', ...window }, mic: { file: 'mic.m4a', startSeconds: 0.83 } },
+    tracks: {
+      screen: { file: 'screen.mp4', startSeconds: 0.34, device: 'Built-in Display', ...window },
+      ...Object.fromEntries(sound.map((track) => [track, { file: `${track}.m4a`, startSeconds: 0.83 }])),
+    },
     input: { file: 'input.jsonl', coordinates: 'global-points' },
   }));
-  for (const file of ['screen.mp4', 'mic.m4a']) writeFileSync(join(take, file), file);
+  for (const file of ['screen.mp4', ...sound.map((track) => `${track}.m4a`)]) writeFileSync(join(take, file), file);
   if (windowLog !== undefined) writeFileSync(join(take, 'window.jsonl'), windowLog);
   writeFileSync(join(take, 'input.jsonl'), input);
   const changed = new Date(Date.now() - stillFor);
@@ -75,6 +80,17 @@ test('a complete take is moved into the library, transcribed and its speech leve
   assert.deepEqual(readdirSync(join(root, 'work/library/media', item.id)).toSorted(), ['input.jsonl', 'mic.m4a', 'proxies', 'recording.json', 'screen.mp4']);
   assert.match(readFileSync(join(root, 'work/library/items', item.id, 'transcript.json'), 'utf8'), /"track": *"mic"/);
   assert.deepEqual(item.tracks.mic.levelled, { file: 'proxies/mic-levelled.wav', lufs: -16.2 });
+}));
+
+test("a take's system audio is a track of its own, never transcribed or levelled as its speech", () => withStudioTemp('library-add', async (root) => {
+  const withMic = await runStudioEffect(addLibraryItem({ paths: [writeTake(root, { status: 'complete', stillFor: 0, input: CLICK, sound: ['system', 'mic'] })], ...MOVE }), libraryAt(root));
+  assert.equal(withMic.speech, 'mic');
+  assert.equal(withMic.tracks.system.file, 'system.m4a');
+  const alone = writeTake(root, { status: 'complete', stillFor: 0, input: CLICK, sound: ['system'], name: '2026-11-22 19.00.00' });
+  const item = await runStudioEffect(addLibraryItem({ paths: [alone], ...MOVE }), libraryAt(root));
+  assert.equal(item.speech, undefined);
+  assert.equal(item.tracks.system.levelled, undefined);
+  assert.equal(existsSync(join(root, 'work/library/items', item.id, 'transcript.json')), false);
 }));
 
 test("a window's take carries where the window sat into item.json, which places clicks in its pixels and tells those outside it", () => withStudioTemp('library-add', async (root) => {

@@ -1,6 +1,7 @@
 // The recorder's settings, in a JSON file. First launch writes the defaults (Graham's desk: the LG display, the
-// A6400 through the Cam Link, the Scarlett Solo). The menu picks the screen (a display or a window), camera and mic
-// and writes them back; everything else is edited in the file.
+// A6400 through the Cam Link, the Scarlett Solo, and the Mac's own sound). The menu picks the screen (a display or a
+// window), camera and mic, turns the system sound on and off, and writes them back; everything else is edited in the
+// file.
 import Foundation
 import RecorderCore
 
@@ -14,6 +15,7 @@ struct RecorderConfig: Codable {
   var camera: CameraConfig?
   /// Absent records no mic.
   var mic: MicConfig?
+  var systemAudio: SystemAudioConfig
 
   static let defaults = RecorderConfig(
     hotkey: "ctrl+opt+cmd+r",
@@ -22,7 +24,8 @@ struct RecorderConfig: Codable {
     // The Cam Link sends only 8-bit 4:2:0 at 4K, so quality is bitrate: 80 Mbps HEVC leaves room to grade the flat
     // picture profile without blocking in the shadows.
     camera: CameraConfig(device: "Cam Link", width: 3840, height: 2160, fps: 30, bitrateMbps: 80, latencyMsByDevice: ["Cam Link": 160]),
-    mic: MicConfig(device: "Scarlett Solo", channelByDevice: ["Scarlett": 1], bitrateKbps: 192, latencyMsByDevice: [:])
+    mic: MicConfig(device: "Scarlett Solo", channelByDevice: ["Scarlett": 1], bitrateKbps: 192, latencyMsByDevice: [:]),
+    systemAudio: SystemAudioConfig(records: true, bitrateKbps: 256)
   )
 
   var recordingsURL: URL { URL(fileURLWithPath: (recordingsDir as NSString).expandingTildeInPath) }
@@ -134,4 +137,12 @@ struct MicConfig: Codable {
   var latencyMsByDevice: [String: Double]
 
   func channel(forDevice deviceName: String) -> Int { settingForDevice(channelByDevice, named: deviceName) ?? 1 }
+}
+
+/// The Mac's own sound, as its own track: what's worth keeping of it is picked in the edit, never mixed in here.
+struct SystemAudioConfig: Codable {
+  /// The menu turns it on and off; off keeps the bitrate for when it's back on.
+  var records: Bool
+  /// Stereo AAC.
+  var bitrateKbps: Int
 }

@@ -192,6 +192,7 @@ final class RecorderApp {
       case .mic(let name): picked.mic?.device = name
       case .camera(let name): picked.camera?.device = name
       case .screen(let choice): picked.screen.pick(choice)
+      case .systemAudio(let records): picked.systemAudio.records = records
       }
       try picked.save(to: configURL)
       config = picked
@@ -210,6 +211,7 @@ extension RecorderInputPick {
     case .camera(let name): "camera \(name)"
     case .screen(.display(let name)): "screen display \(name)"
     case .screen(.window(let window)): "screen window \"\(window.title)\" (\(window.app))"
+    case .systemAudio(let records): "system audio \(records ? "on" : "off")"
     }
   }
 }

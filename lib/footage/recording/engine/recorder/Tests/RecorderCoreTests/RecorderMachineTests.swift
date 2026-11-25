@@ -279,7 +279,7 @@ struct SeededGenerator: RandomNumberGenerator {
 func randomEvent(_ rng: inout SeededGenerator) -> Event {
   let permissions = Set(Permission.allCases.filter { _ in Bool.random(using: &rng) })
   let fresh = Set(Permission.allCases.filter { _ in Bool.random(using: &rng) })
-  let track = [RecorderTrack.camera, .mic, .screen].randomElement(using: &rng)!
+  let track = [RecorderTrack.camera, .mic, .screen, .system].randomElement(using: &rng)!
   let events: [Event] = [
     .toggleRequested, .toggleRequested, .stopRequested, .quitRequested,
     // Ids from a small pool, so a stray start sometimes names the take already running.

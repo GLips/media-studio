@@ -64,7 +64,7 @@ if let seconds = argument("--check-inputs").flatMap(Double.init) {
   MainActor.assumeIsolated {
     let check = InputCheck(pictureRenderer: AVSampleBufferVideoRenderer())
     log("inputs: mics \(RecorderInputs.mics().map(\.localizedName)), cameras \(RecorderInputs.cameras().map(\.localizedName)), screens \(RecorderInputs.screens().map(\.localizedName))")
-    log("inputs: picked mic \(config.mic?.device ?? "off"), camera \(config.camera?.device ?? "off"), screen \(RecorderInputs.screen(named: config.screen.display)?.localizedName ?? "none")")
+    log("inputs: picked mic \(config.mic?.device ?? "off"), camera \(config.camera?.device ?? "off"), system audio \(config.systemAudio.records ? "on" : "off"), screen \(RecorderInputs.screen(named: config.screen.display)?.localizedName ?? "none")")
     check.start(config: config)
     let ticks = Timer(timeInterval: 0.5, repeats: true) { _ in
       MainActor.assumeIsolated { log("inputs: mic \(check.micSignal), camera \(check.picture)") }

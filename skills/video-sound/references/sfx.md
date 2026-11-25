@@ -49,6 +49,12 @@ import reveal from './sfx/reveal.ts';
 
 Redraft after adding one, so the list's accents keep clear of it.
 
+## A recording's own sound
+
+A Studio Recorder take keeps the Mac's sound (a demo's chime, a clip it played) as its `system` track, apart from the
+mic. `<LibraryAudio footage track="system" from to t at volume>` plays item seconds `from`–`to` starting at scene
+second `at`; `volume` may be a function of seconds into the stretch, to fade it. Unplaced, it's never heard.
+
 ## Sounds on the music's beat
 
 A music-led video places its hits and whips on the video's clock instead:

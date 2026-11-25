@@ -16,7 +16,8 @@ public protocol RecorderTake {
 
 /// A recording's tracks, as recording.json's `tracks`, `leftOut` and `problems` key them.
 public enum RecorderTrack: String, CaseIterable, Comparable, Sendable {
-  case camera, input, mic, screen
+  /// `system`: the Mac's own sound, every app's but the recorder's.
+  case camera, input, mic, screen, system
   public static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
 }
 
@@ -67,6 +68,8 @@ public enum RecorderInputPick: Equatable, Sendable {
   case mic(String)
   case camera(String)
   case screen(RecorderScreenChoice)
+  /// Whether takes record the Mac's own sound.
+  case systemAudio(Bool)
 }
 
 public enum RecorderInputKind: String, Sendable { case mic, camera, screen }

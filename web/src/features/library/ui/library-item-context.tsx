@@ -15,6 +15,10 @@ export type LibraryComposing = { kind: 'new'; range: LibraryMarkedRange } | { ki
 export type LibraryItemScreenValue = LibraryFlagUndo & {
   view: LibraryItemView;
   playback: LibraryItemPlayback;
+  /** The item's tracks with sound, in the shelf's order and words; the transport offers them when there are two or more. */
+  audible: readonly { track: string; label: string }[];
+  /** Hears the item through `track` from now on, carrying on from where the playback is. */
+  hear: (track: string) => void;
   /** Every word said, on item time; none before the item's transcript is made. */
   words: readonly SpokenWord[];
   /** The words as lines to read, on item time. */

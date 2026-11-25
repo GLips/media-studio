@@ -58,24 +58,37 @@ export type LibraryItemPlayback = {
   timeNow: () => number;
 } & Pick<LinkedMediaClock, 'addFollower' | 'onTick'>;
 
-/** The track a page hears an item through: its speech track, else the first with sound, else the first picture. */
-export function libraryHeardTrackOf(item: LibraryItem): string {
+/**
+ * The track a page hears an item through: `asked` when it has sound (a URL's `hear`), else its speech track, else the
+ * first with sound, else the first picture.
+ */
+export function libraryHeardTrackOf(item: LibraryItem, asked?: string): string {
+  if (asked !== undefined && item.tracks[asked]?.audio) return asked;
   const tracks = Object.entries(item.tracks);
   const heard = item.speech ?? tracks.find(([, t]) => t.audio)?.[0] ?? tracks[0]?.[0];
   if (heard === undefined) throw new Error(`${item.id} has no tracks to play`);
   return heard;
 }
 
+/** What a playback carries over to the next when the page switches the track it hears. */
+export type LibraryPlaybackCarried = Pick<LibraryPlaybackState, 'playing' | 'loop' | 'rate' | 'muted' | 'volume'>;
+
 /** The item seconds a track's media spans. */
 export const libraryTrackReach = (track: LibraryTrack) => ({ start: libraryItemTimeOf(track, 0), end: libraryItemTimeOf(track, track.mediaSeconds) });
 
-export function createLibraryItemPlayback(item: LibraryItem, startSeconds: number): LibraryItemPlayback {
-  const heard = libraryHeardTrackOf(item), track = item.tracks[heard];
+/**
+ * `item` played from `startSeconds`, heard through `asked` (see libraryHeardTrackOf). With `carried`, it takes over
+ * from the playback before it: its speed, sound and loop, and it plays once its leader has loaded if that one was.
+ */
+export function createLibraryItemPlayback(item: LibraryItem, startSeconds: number, asked?: string, carried?: LibraryPlaybackCarried): LibraryItemPlayback {
+  const heard = libraryHeardTrackOf(item, asked), track = item.tracks[heard];
   const reach = libraryTrackReach(track);
   const clamp = (seconds: number) => Math.max(reach.start, Math.min(reach.end, seconds));
   let media: HTMLMediaElement | null = null;
   let root: HTMLElement | null = null;
-  let state: LibraryPlaybackState = { time: clamp(startSeconds), playing: false, loop: null, rate: 1, muted: false, volume: 1 };
+  let state: LibraryPlaybackState = { loop: null, rate: 1, muted: false, volume: 1, ...carried, time: clamp(startSeconds), playing: false };
+  // Played as soon as the leader can: `play` needs its element loaded.
+  let playWhenLoaded = carried?.playing ?? false;
   const listeners = new Set<() => void>();
 
   const publish = (patch: Partial<LibraryPlaybackState>) => {
@@ -132,7 +145,12 @@ export function createLibraryItemPlayback(item: LibraryItem, startSeconds: numbe
       element.playbackRate = state.rate;
       element.muted = state.muted;
       element.volume = state.volume;
-      const onMetadata = () => seek(state.time);
+      const onMetadata = () => {
+        seek(state.time);
+        if (!playWhenLoaded) return;
+        playWhenLoaded = false;
+        play();
+      };
       // Played to its end, or stalled: settles as a pause does.
       const onPause = () => state.playing && halt();
       element.addEventListener('loadedmetadata', onMetadata);

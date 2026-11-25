@@ -1,5 +1,5 @@
 // library-search.ts: the library pages' URLs. The shelf's `/library?q=agent definition` keeps a search on reload and
-// Back; an item's `/library/<id>?t=72.4&flag=3` opens at a moment, or on a flag.
+// Back; an item's `/library/<id>?t=72.4&flag=3&hear=system` opens at a moment, or on a flag, heard through a track.
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { Schema } from 'effect';
 import { optionalSearchParam, useRouteSearchWriter, type RouteSearchWriting } from '#web/shared/route-search.ts';
@@ -28,6 +28,8 @@ export const LibraryItemSearch = Schema.Struct({
   t: optionalSearchParam(Schema.Number.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0)))),
   /** The flag in focus, by its number. */
   flag: optionalSearchParam(Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1)))),
+  /** The track heard, by name, when it isn't the item's usual one; a track without sound is ignored. */
+  hear: optionalSearchParam(Schema.String),
 });
 export type LibraryItemSearch = typeof LibraryItemSearch.Type;
 export const libraryItemSearchValidator = Schema.toStandardSchemaV1(LibraryItemSearch);

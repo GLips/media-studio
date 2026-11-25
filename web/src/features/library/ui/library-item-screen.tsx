@@ -4,6 +4,7 @@ import { useSuspenseQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { libraryFootage } from '#lib/footage/library/models/library-footage.ts';
 import { libraryFlagsInOrder, type LibraryFlag, type LibraryFlagFilter } from '#lib/footage/library/models/library-flags.ts';
+import { librarySourcesOf } from '#lib/footage/library/models/library-item.ts';
 import { transcriptLines } from '#lib/footage/transcript/models/footage-transcript.ts';
 import { RouteNotFoundPage } from '#web/shared/ui/route-not-found-page.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
@@ -52,7 +53,8 @@ function LibraryItemScreenBody({ view }: { readonly view: LibraryItemView }) {
   const [search, setSearch] = useLibraryItemSearch();
   const flags = useLibraryFlags(item.id);
   const ops = useLibraryFlagOps(item.id, item.durationSeconds);
-  const [playback] = useState(() => createLibraryItemPlayback(item, search.t ?? 0));
+  const [playback, setPlayback] = useState(() => createLibraryItemPlayback(item, search.t ?? 0, search.hear));
+  const audible = useMemo(() => librarySourcesOf(item).filter(({ track }) => item.tracks[track].audio).map(({ track, label }) => ({ track, label })), [item]);
   const [filter, setFilter] = useState<LibraryFlagFilter>('all');
   const [marked, setMarked] = useState<LibraryMarkedRange | null>(null);
   const [composing, setComposing] = useState<LibraryComposing | null>(null);
@@ -81,11 +83,19 @@ function LibraryItemScreenBody({ view }: { readonly view: LibraryItemView }) {
 
   const screen: LibraryItemScreenValue = {
     ...undo,
-    view, playback, words, lines, flags, queue, filter, setFilter, focused, marked, setMarked, composing,
+    view, playback, audible, words, lines, flags, queue, filter, setFilter, focused, marked, setMarked, composing,
     // A composer opened or left starts with no refusal from before on show.
     setComposing: (next) => {
       ops.reset();
       setComposing(next);
+    },
+    hear: (track) => {
+      if (track === playback.heard) return;
+      const { playing, loop, rate, muted, volume } = playback.getState();
+      const time = playback.timeNow();
+      playback.pause();
+      setPlayback(createLibraryItemPlayback(item, time, track, { playing, loop, rate, muted, volume }));
+      setSearch({ hear: track });
     },
     focusFlag: (flag) => {
       setSearch({ flag: flag?.id });

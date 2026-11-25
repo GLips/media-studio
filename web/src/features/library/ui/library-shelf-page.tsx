@@ -1,7 +1,7 @@
 import { Box, Code, Group, Stack, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { AudioLines, File, Film, Mic, Monitor, Video, type LucideIcon } from 'lucide-react';
+import { AudioLines, File, Film, Mic, Monitor, Speaker, Video, type LucideIcon } from 'lucide-react';
 import { useRef } from 'react';
 import { formatLibraryLength, librarySourcesOf, type LibrarySourceKind } from '#lib/footage/library/models/library-item.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
@@ -59,7 +59,7 @@ const styles = stylex.create({
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', alignItems: 'start', gap: spacing.gap, marginInline: spacing.tight },
 });
 
-const SOURCE_ICONS: Record<LibrarySourceKind, LucideIcon> = { screen: Monitor, camera: Video, mic: Mic, video: Film, audio: AudioLines, other: File };
+const SOURCE_ICONS: Record<LibrarySourceKind, LucideIcon> = { screen: Monitor, camera: Video, mic: Mic, system: Speaker, video: Film, audio: AudioLines, other: File };
 
 /** An item's two lines in the list: its title and marks, then its date where that isn't the title, and its opening words. */
 function LibraryShelfItemName({ shelved }: { readonly shelved: LibraryShelfItem }) {

@@ -16,6 +16,7 @@ export { PictureInPicture, type InsetRing } from '#lib/picture/inset/studio/pict
 export { DEFAULT_INSET_PLACEMENT, insetBoxAt, type InsetCorner, type InsetPlacement } from '#lib/picture/inset/models/inset-layout.ts';
 export { useLibraryInputLog } from '#lib/footage/library/studio/use-library-input-log.ts';
 export { LibraryVideo, type LibraryVideoProps } from '#lib/footage/library/studio/library-video.tsx';
+export { LibraryAudio, type LibraryAudioProps } from '#lib/footage/library/studio/library-audio.tsx';
 export type { RecordedSpeech, SpokenStretch } from '#lib/timing/voice/models/recorded-speech.ts';
 export { inputLogKeyStrikes, inputLogWaypoints, parseRecorderInputLog, type InputEvent, type InputLog, type InputLogCoordinates, type InputModifier, type InputWaypoint } from '#lib/footage/input-log/models/input-log.ts';
 export { beatGrid, steadyBeatGrid, type BeatGrid } from '#lib/timing/timeline/models/beat-grid.ts';

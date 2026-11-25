@@ -1,5 +1,5 @@
 // The menu's inputs section: a picker each for mic, camera and screen, the mic's live level under its picker and
-// the camera's picture under its. The screen's picker opens the system's window and display picker, or picks a
+// the camera's picture under its, and a switch for the system's sound. The screen's picker opens the system's window and display picker, or picks a
 // display by name. The machine says when the check runs (`RecorderActivity.inputCheck`) and when a
 // pick is taken; this draws them.
 import AppKit
@@ -18,6 +18,7 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
   private let micPicker = NSMenuItem(title: "", action: nil, keyEquivalent: "")
   private let cameraPicker = NSMenuItem(title: "", action: nil, keyEquivalent: "")
   private let screenPicker = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+  private let systemAudioSwitch = NSMenuItem(title: "Record System Audio", action: #selector(switchSystemAudio), keyEquivalent: "")
   private let meterItem = NSMenuItem()
   private let previewItem = NSMenuItem()
   private let meter = LevelMeterView()
@@ -30,8 +31,9 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     check = InputCheck(pictureRenderer: preview.renderer)
     meterItem.view = meter
     previewItem.view = preview
-    items = [micPicker, meterItem, cameraPicker, previewItem, screenPicker]
+    items = [micPicker, meterItem, cameraPicker, previewItem, screenPicker, systemAudioSwitch]
     super.init()
+    systemAudioSwitch.target = self
     for picker in [micPicker, cameraPicker, screenPicker] {
       picker.submenu = NSMenu()
       picker.submenu?.delegate = self
@@ -46,6 +48,7 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     micPicker.title = "Mic: " + pickedName(config.mic.map { RecorderInputs.device(named: $0.device, in: RecorderInputs.mics())?.localizedName ?? "\($0.device) (not connected)" })
     cameraPicker.title = "Camera: " + pickedName(config.camera.map { RecorderInputs.device(named: $0.device, in: RecorderInputs.cameras())?.localizedName ?? "\($0.device) (not connected)" })
     screenPicker.title = "Screen: " + screenTitle(config.screen)
+    systemAudioSwitch.state = config.systemAudio.records ? .on : .off
   }
 
   func startCheck() {
@@ -122,13 +125,18 @@ final class InputMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
       if case .idle = app.state.phase { return true }
       return false
     }
+    if item.action == #selector(switchSystemAudio) { return app.state.atRest }
     guard let pick = (item.representedObject as? PickedInput)?.pick else { return true }
     let config = app.config
     return switch pick {
     case .mic: app.state.atRest && config.mic != nil
     case .camera: app.state.atRest && config.camera != nil
-    case .screen: app.state.atRest
+    case .screen, .systemAudio: app.state.atRest
     }
+  }
+
+  @objc private func switchSystemAudio() {
+    app.send(.inputPicked(.systemAudio(!app.config.systemAudio.records)))
   }
 
   @objc private func chooseScreen() {
