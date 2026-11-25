@@ -4,7 +4,7 @@
 //
 // The copy keeps its track's media time, sample for sample, so the track's sync numbers and its transcript's times
 // apply to it unchanged. PCM, not AAC: AAC's encoder delay would shift it. Mono, as the mix places a voice line: the
-// system track is stereo. A mic is denoised first (libraryLevelledProcessing), by RNNoise inside ffmpeg, whose model
+// system track is stereo. A mic is denoised once levelled (libraryLevelledProcessing), by RNNoise inside ffmpeg, whose model
 // is fetched once into the studio's user cache.
 import { Effect, FileSystem, Path, Schema } from 'effect';
 import { StudioFfmpeg } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
@@ -73,13 +73,14 @@ const levelLibraryTrack = Effect.fn('LibraryLevelled.levelTrack')(function* (id:
   const track = item.tracks[name], processing = libraryLevelledProcessing(name);
   if (track.levelled?.processing === processing && track.levelled.quiet) return item;
   yield* Effect.log(`levelling ${name} for the mix (${processing})`);
-  // Measured and levelled after the denoise, so the loudness is the cleaned speech's. A path inside a filter is quoted.
-  const denoise = processing === 'loudnorm' ? '' : `highpass=f=80:poles=2,arnndn=m='${yield* rnnoiseModel(id, name)}':mix=0.8,`;
+  // After loudnorm, not before: its dynamic mode lifts quiet stretches, so noise left by a denoise ahead of it would come
+  // back up in the pauses, about 11 dB louder. A path inside a filter is quoted.
+  const denoise = processing === 'loudnorm' ? '' : `,highpass=f=80:poles=2,arnndn=m='${yield* rnnoiseModel(id, name)}':mix=0.8`;
   const source = yield* media.itemFile(id, track.file), file = `proxies/${name}-levelled.wav`;
   const out = path.join(yield* media.online(), id, file), temp = `${out}.part.wav`;
   const target = `I=${LIBRARY_LEVELLED_LUFS}:TP=${LEVELLED_TRUE_PEAK}:LRA=${LEVELLED_LRA}`;
   // loudnorm's two passes: measure, then apply the gain linearly where the peaks allow it.
-  const { stderr, exitCode } = yield* ffmpeg.report(['-hide_banner', '-nostats', '-i', source, '-vn', '-af', `${denoise}loudnorm=${target}:print_format=json`, '-f', 'null', '-']);
+  const { stderr, exitCode } = yield* ffmpeg.report(['-hide_banner', '-nostats', '-i', source, '-vn', '-af', `loudnorm=${target}:print_format=json`, '-f', 'null', '-']);
   if (exitCode !== 0) return yield* new LibrarySpeechUnmeasured({ id, track: name, why: lastLine(stderr) });
   const measured = yield* Schema.decodeUnknownEffect(LoudnormReport)(stderr.slice(stderr.lastIndexOf('{'), stderr.lastIndexOf('}') + 1)).pipe(
     Effect.mapError((error) => new LibrarySpeechUnmeasured({ id, track: name, why: `its loudness report isn't loudnorm's: ${error.message}` })),
@@ -89,7 +90,7 @@ const levelLibraryTrack = Effect.fn('LibraryLevelled.levelTrack')(function* (id:
     yield* Effect.log(`${name} is silent: nothing to level, so no line can be spoken from it`);
     return item;
   }
-  const second = `${denoise}loudnorm=${target}:measured_I=${measured.input_i}:measured_TP=${measured.input_tp}:measured_LRA=${measured.input_lra}:measured_thresh=${measured.input_thresh}:offset=${measured.target_offset}:linear=true`;
+  const second = `loudnorm=${target}:measured_I=${measured.input_i}:measured_TP=${measured.input_tp}:measured_LRA=${measured.input_lra}:measured_thresh=${measured.input_thresh}:offset=${measured.target_offset}:linear=true${denoise}`;
   // loudnorm resamples to 192 kHz inside; the copy goes back to the track's rate.
   yield* fs.makeDirectory(path.dirname(out), { recursive: true });
   yield* ffmpeg.run(['-v', 'error', '-y', '-i', source, '-vn', '-af', second, '-ac', '1', '-ar', String(track.audio?.sampleRate ?? 48000), '-c:a', 'pcm_s16le', temp]);

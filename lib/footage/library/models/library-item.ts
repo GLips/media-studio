@@ -56,11 +56,11 @@ export const LibraryTrackLevelled = Schema.Struct({
 export type LibraryTrackLevelled = typeof LibraryTrackLevelled.Type;
 
 /**
- * How spoken track `track` is processed before levelling, named so a copy made another way is remade. A mic's room
- * noise drops in and out at every cut: an 80 Hz high-pass takes its rumble, RNNoise at a 0.8 mix its hiss, leaving a
- * faint floor. The system track is clean, so it's levelled alone.
+ * How spoken track `track`'s levelled copy is made, named so a copy made another way is remade. A mic's room noise
+ * drops in and out at every cut, so once levelled an 80 Hz high-pass takes its rumble and RNNoise, at a 0.8 mix, its
+ * hiss, leaving a faint floor. The system track is clean, so it's levelled alone.
  */
-export const libraryLevelledProcessing = (track: string) => (track === 'system' ? 'loudnorm' : 'highpass80+rnnoise-sh-0.8+loudnorm');
+export const libraryLevelledProcessing = (track: string) => (track === 'system' ? 'loudnorm' : 'loudnorm+highpass80+rnnoise-sh-0.8');
 
 /** Where a levelled copy is brought to: above the mix's voice level, so the mix only ever lowers it. */
 export const LIBRARY_LEVELLED_LUFS = -16;
