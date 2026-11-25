@@ -17,7 +17,7 @@ export type StoryboardTextEdit =
 /** The new source; or the file's value when it isn't `was`; or why the edit can't be written. */
 export type StoryboardTextEditResult = { source: string } | { conflict: { current: string } } | { refused: string };
 
-type PathStep = string | number;
+export type PathStep = string | number;
 
 /** The storyboard path an edit writes, from the `defineStoryboard({...})` object down. */
 function storyboardTextEditPath(edit: StoryboardTextEdit): PathStep[] {
@@ -29,7 +29,7 @@ function storyboardTextEditPath(edit: StoryboardTextEdit): PathStep[] {
 }
 
 /** The object literal the storyboard is written as: `defineStoryboard`'s first argument. */
-function storyboardDeclarationIn(program: Program): ObjectExpression | undefined {
+export function storyboardDeclarationIn(program: Program): ObjectExpression | undefined {
   let found: ObjectExpression | undefined;
   new Visitor({
     CallExpression(call) {
@@ -44,14 +44,14 @@ function isStringLiteral(node: Expression | PropertyKey): node is StringLiteral 
   return node.type === 'Literal' && typeof node.value === 'string';
 }
 
-function propertyKeyName(property: ObjectPropertyKind): string | undefined {
+export function propertyKeyName(property: ObjectPropertyKind): string | undefined {
   if (property.type !== 'Property' || property.computed) return undefined;
   if (property.key.type === 'Identifier') return property.key.name;
   return isStringLiteral(property.key) ? property.key.value : undefined;
 }
 
 /** The node at `step` under `node`, or a refusal naming where the walk stopped. The last same-named key wins, as in JS. */
-function stepInto(node: Expression, step: PathStep, at: string): Expression | string {
+export function stepInto(node: Expression, step: PathStep, at: string): Expression | string {
   if (typeof step === 'number') {
     if (node.type !== 'ArrayExpression') return `${at} isn't written as an array literal`;
     const element = node.elements[step];
@@ -64,7 +64,7 @@ function stepInto(node: Expression, step: PathStep, at: string): Expression | st
 }
 
 /** A string literal's value and quote, or undefined for anything computed. */
-function readStringLiteral(node: Expression): { value: string; quote: Quote } | undefined {
+export function readStringLiteral(node: Expression): { value: string; quote: Quote } | undefined {
   // SAFETY: a parsed string literal's raw text starts with its quote.
   if (isStringLiteral(node)) return { value: node.value, quote: node.raw![0] as Quote };
   if (node.type !== 'TemplateLiteral' || node.expressions.length > 0) return undefined;
@@ -73,7 +73,7 @@ function readStringLiteral(node: Expression): { value: string; quote: Quote } | 
   return cooked === undefined || cooked === null ? undefined : { value: cooked, quote: '`' };
 }
 
-type Quote = "'" | '"' | '`';
+export type Quote = "'" | '"' | '`';
 
 function storyboardQuoteFor(text: string, original: Quote): Quote {
   if (text.includes('\n')) return '`';
@@ -86,7 +86,7 @@ function storyboardQuoteFor(text: string, original: Quote): Quote {
  * `text` as a literal in the original's quote, escaped. Multi-line text goes in a template, as briefs are written; a
  * quoted string whose text holds its own quote mark but not the other flips to the other, so it needs no escape.
  */
-function writeStoryboardStringLiteral(text: string, original: Quote): string {
+export function writeStoryboardStringLiteral(text: string, original: Quote): string {
   const quote = storyboardQuoteFor(text, original);
   let body = text.replaceAll('\\', '\\\\').replaceAll('\r', '\\r');
   body = quote === '`'

@@ -1,5 +1,6 @@
 import { Box, Button, Group, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
+import { useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, MessageSquarePlus } from 'lucide-react';
 import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
 import type { StoryboardScene, StoryboardSceneCue } from '#lib/timing/storyboard/models/storyboard.ts';
@@ -159,6 +160,8 @@ function PlanSceneApprove({ scene }: { readonly scene: string }) {
  */
 export function PlanScenePanel() {
   const { project, plan, timing, threads, videoNotes, render, focusedScene, signoffs, playback, setSearch } = usePlanScreen();
+  // The line a new one is being written after; line ids are unique across scenes, so it can't open in another.
+  const [addingAfter, setAddingAfter] = useState<string | null>(null);
   const ids = Object.keys(plan.storyboard.scenes);
   const id = focusedScene ?? ids[0];
   const row = id === undefined ? undefined : plan.storyboard.scenes[id];
@@ -209,7 +212,8 @@ export function PlanScenePanel() {
           <Box {...stylex.props(styles.lines)}>
             {Object.keys(row.lines ?? {}).map((line) => (
               <PlanLine key={line} scene={id} id={line} timed={placed?.lines.find((l) => l.id === line) ?? null} cues={placed?.cues ?? []}
-                threads={onField('line').filter((t) => t.plan.line === line)} />
+                threads={onField('line').filter((t) => t.plan.line === line)}
+                adding={addingAfter === line} onAdding={(open) => setAddingAfter(open ? line : null)} />
             ))}
             {!row.lines && <Text size="prose" {...stylex.props(styles.driven)}>{planDrivenBy(row)}</Text>}
           </Box>

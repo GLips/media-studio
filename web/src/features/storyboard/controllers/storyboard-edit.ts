@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start';
 import { setResponseStatus } from '@tanstack/react-start/server';
 import { Schema } from 'effect';
-import { editProjectStoryboardText, projectFolderNamed } from '#web/infrastructure/studio-engine.server.ts';
+import { editProjectStoryboardLines, editProjectStoryboardText, projectFolderNamed } from '#web/infrastructure/studio-engine.server.ts';
 
 const Index = Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)));
 const Texts = { was: Schema.String, text: Schema.String };
@@ -25,6 +25,25 @@ export const editStoryboardTextFn = createServerFn({ method: 'POST' })
   .handler(({ data }) => {
     const result = editProjectStoryboardText(projectFolderNamed(data.project), data.edit);
     if ('edited' in result) return { ok: true as const };
+    setResponseStatus('conflict' in result ? 409 : 422);
+    return result;
+  });
+
+// Spells out the engine's StoryboardLinesEdit, as above.
+const StoryboardLinesEditSchema = Schema.Union([
+  Schema.Struct({ op: Schema.Literal('splitLine'), scene: Schema.String, line: Schema.String, was: Schema.String, first: Schema.String, second: Schema.String }),
+  Schema.Struct({ op: Schema.Literal('addLine'), scene: Schema.String, after: Schema.NullOr(Schema.String), text: Schema.String }),
+]);
+
+/**
+ * Splits a spoken line in two or adds one, in the scene's lines in storyboard.ts. Answers `{ ok: true, line }` with
+ * the new line's id; 409 and 422 as editStoryboardTextFn.
+ */
+export const editStoryboardLinesFn = createServerFn({ method: 'POST' })
+  .validator(Schema.toStandardSchemaV1(Schema.Struct({ project: Schema.String, edit: StoryboardLinesEditSchema })))
+  .handler(({ data }) => {
+    const result = editProjectStoryboardLines(projectFolderNamed(data.project), data.edit);
+    if ('edited' in result) return { ok: true as const, line: result.line };
     setResponseStatus('conflict' in result ? 409 : 422);
     return result;
   });

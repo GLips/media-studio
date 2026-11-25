@@ -25,6 +25,7 @@ export { reviewPeaksFileOf } from '#lib/output/review/engine/review-peaks.ts';
 export { listReviewRenderVersions, type ReviewRenderVersion } from '#lib/output/review/engine/review-history.ts';
 export { summarizeReviewProjects, type ReviewProjectSummary } from '#lib/output/review/engine/review-dashboard.ts';
 export { editProjectStoryboardText, type StoryboardTextEdit } from '#lib/timing/storyboard/engine/storyboard-source-edit.ts';
+export { editProjectStoryboardLines } from '#lib/timing/storyboard/engine/storyboard-lines-edit.ts';
 
 export type { LibraryItemView, LibraryShelf, LibraryShelfItem } from '#lib/footage/library/engine/library-app.ts';
 
