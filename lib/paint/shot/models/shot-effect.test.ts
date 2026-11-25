@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { PAINT_SIMILARITY_IDENTITY } from '#lib/paint/animation/models/paint-similarity.ts';
+import type { Layer, PaintingDocument, Region } from '#lib/paint/document/models/painting-document.ts';
+import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
+import { painting } from '#lib/paint/document/models/painting-source.ts';
+import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
+import { compilePaintedShot, type CompiledShotEffectPlane } from './shot-compile.ts';
+import { defineShotEffect, shotImageLeafReads, shotMomentMapped } from './shot-effect.ts';
+import { shotFigure, shotPlace } from './shot-figure.ts';
+import { shotEffectImageKey } from './shot-images.ts';
+import { offsetCopies } from './shot-offset-copies.ts';
+import type { PaintedShotProps, PlaneProps } from './shot-props.ts';
+import { shotEffectExtent, shotPaintedExtent } from './shot-reach.ts';
+
+const FPS = 24;
+const SPAN: SceneShownSpan = { from: 0, to: 1 + 1 / FPS, fps: FPS };
+const camera: PaintedShotProps['camera'] = { stage: stampStage({ width: 160, height: 120 }, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, animationFps: FPS };
+const paper = { color: '#f4f2ed', absorbency: 0.5 } as const;
+const layer = (key: string): Layer => ({
+  key, washes: [{ key: `${key}-wash`, applications: [{
+    kind: 'stroke', subpaths: [[{ x: 40, y: 60 }, { x: 100, y: 60 }]], brush: { style: 'watercolor', brush: 'wash' }, diameterPx: 12,
+    seed: key, charge: { kind: 'paint', mix: { parts: [{ pigment: '#3a4a6b', amount: 1 }], strength: 0.6 } },
+  }] }],
+});
+const square: Region = { kind: 'polygon', rings: [[{ x: 20, y: 20 }, { x: 60, y: 20 }, { x: 60, y: 100 }, { x: 20, y: 100 }]] };
+const street = { default: (): PaintingDocument => ({
+  widthPx: 160, heightPx: 120, paper, medium: 'watercolour', layers: [
+    layer('shadow'), { key: 'walker', sheet: { kind: 'own', paper, card: { figure: square, fadePx: 2 } }, children: [layer('body')] },
+  ],
+}) };
+const back: PlaneProps = { id: 'street', depth: 2, source: layersOf(painting(street), ['shadow']) };
+const hero = shotFigure(painting(street), 'walker');
+const compiled = (...planes: PlaneProps[]) => compilePaintedShot({ camera, span: SPAN, planes: [back, ...planes] }, []);
+const messages = (...planes: PlaneProps[]) => compiled(...planes).problems.map(({ field, message }) => `${field}: ${message}`).join('\n');
+
+const twoReads = (key: string) => [{ key, map: PAINT_SIMILARITY_IDENTITY }, { key, map: { ...PAINT_SIMILARITY_IDENTITY, kx: 30 } }];
+
+/** Two inputs, each read once, the second at the moment a quarter second earlier. */
+const trail = defineShotEffect({
+  name: 'trail', inputs: ['lead', 'follow'], defaults: { lag: 0.25 },
+  problems: ({ lag }) => (lag >= 0 ? [] : [{ field: 'lag', message: `${lag} s runs ahead` }]),
+  reads: ({ lag }) => [{ input: 'lead' }, { input: 'follow', moment: ({ at, frame }) => ({ at: at - lag, frame: frame - lag }) }],
+});
+
+test("an effect's input in no plane compiles under the effect's plane, unplaced, and its output grows past the input's box by its offsets", () => {
+  const { shot, problems } = compiled(shotPlace(offsetCopies(hero, { count: 2, dx: 30, dy: -10 }), { id: 'echo', depth: 1 }));
+  assert.deepEqual(problems, []);
+  const plane = shot!.planes.find(({ id }) => id === 'echo') as CompiledShotEffectPlane, [leaf] = shotImageLeafReads(plane.image).map((read) => read.leaf);
+  assert.equal(plane.kind, 'effect');
+  assert.equal(leaf.id, 'echo');
+  assert.equal(leaf.placed, false);
+  assert.deepEqual(plane.occurrences.map(({ key }) => key), ['echo/walker', 'echo/body']);
+  const input = shotPaintedExtent(leaf, shot!.motion, new Set()), output = shotEffectExtent(plane.image, shot!.motion, new Set());
+  assert.ok(input.kind === 'box' && output.kind === 'box');
+  assert.deepEqual(output.box, { x0: input.box.x0, y0: input.box.y0 - 20, x1: input.box.x1 + 60, y1: input.box.y1 });
+});
+
+test('bad parameters and graphs are refused with what to do, each at its field', () => {
+  const said = messages(
+    shotPlace(offsetCopies(hero, { count: 0, fade: 2 }), { id: 'a', depth: 1 }),
+    { id: 'b', depth: 1, source: { ...offsetCopies(hero), params: { speed: 3 } } },
+    { id: 'c', depth: 1, source: trail({ lead: hero } as never) },
+    { id: 'd', depth: 1, source: offsetCopies(layersOf(painting(street), ['shadow'])) },
+    { id: 'e', depth: 1, source: offsetCopies(hero), masks: [{ kind: 'alphaOf', drawable: 'street/shadow' }] },
+  );
+  assert.match(said, /source\.params\.count: offsetCopies: 0 isn't a whole number of copies from 1 to 11/);
+  assert.match(said, /source\.params\.fade: offsetCopies: 2 isn't within 0\.\.1/);
+  assert.match(said, /source\.params\.speed: offsetCopies: takes no parameter speed; it takes count, dx, dy, fade/);
+  assert.match(said, /source\.inputs: trail: reads follow, which isn't given: give lead, follow/);
+  assert.match(said, /source\.inputs\.source: lays its paper ground, and offsetCopies reads colour and transmittance/);
+  assert.match(said, /masks: places offsetCopies's output, and masks cut a painted plane's films/);
+});
+
+test("an effect's reads at moments map the frame's outermost first, and its output's key names its effect, parameters and reads, never a moment", () => {
+  const { shot, problems } = compiled(shotPlace(trail({ lead: hero, follow: trail({ lead: hero, follow: hero }, { lag: 0.5 }) }), { id: 'chase', depth: 1 }));
+  assert.deepEqual(problems, []);
+  const plane = shot!.planes.find(({ id }) => id === 'chase') as CompiledShotEffectPlane;
+  assert.deepEqual(shotImageLeafReads(plane.image).map(({ moments }) => shotMomentMapped(moments, paintMoment(1)).at), [1, 0.75, 0.25]);
+  assert.equal(shotEffectImageKey(plane.image.key, 1, twoReads('hero at 0')), shotEffectImageKey(plane.image.key, 1, twoReads('hero at 0')));
+  assert.notEqual(shotEffectImageKey(plane.image.key, 1, twoReads('hero at 0')), shotEffectImageKey(plane.image.key, 1, twoReads('hero at 1')));
+  assert.notEqual(shotEffectImageKey(plane.image.key, 1, twoReads('hero at 0')), shotEffectImageKey(plane.image.key, 0.5, twoReads('hero at 0')));
+});

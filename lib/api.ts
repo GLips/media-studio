@@ -255,6 +255,13 @@ export { dissolve, type Dissolve, type PaintedSource } from '#lib/paint/shot/mod
 export { paintingInTime, type PaintingInTime, type PaintingInTimeOptions, type PaintingInTimeValues } from '#lib/paint/shot/models/shot-painting-in-time.ts';
 // A figure card's subtree as an image a plane places, its silhouette read beside it (the paint skill's shots).
 export { shotFigure, shotFigureInTime, shotFigureSilhouette, shotPlace, type ShotFigure } from '#lib/paint/shot/models/shot-figure.ts';
+// Effects: a definition's models half and its studio half, made alike by the built-ins and a project's own.
+export {
+  defineShotEffect, SHOT_EFFECT_READS_MOST, type ShotEffect, type ShotEffectDefinition, type ShotEffectImage, type ShotEffectParams, type ShotEffectProblem, type ShotEffectRead,
+  type ShotImageSource,
+} from '#lib/paint/shot/models/shot-effect.ts';
+export { offsetCopies, type ShotOffsetCopiesParams } from '#lib/paint/shot/models/shot-offset-copies.ts';
+export { defineShotEffectGpu, SHOT_EFFECT_PARAMS_MOST, type ShotEffectGpu } from '#lib/paint/shot/studio/shot-effect-gpu.ts';
 export type {
   CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceProps, OccurrenceRig, PaintedShotProps, PaintedTexture, PictureSource, PinPoint, PlaneInstance,
   PlaneLay, PlaneMask, PlaneProps, RigPart, RigPartPose, RigPose, ScreenPin, ShotNodePlay, ThreeSource,

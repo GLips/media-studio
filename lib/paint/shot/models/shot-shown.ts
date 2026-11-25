@@ -46,7 +46,8 @@ function shotPlanePosedAway(shot: CompiledPaintedShot, plane: CompiledShotPainte
 function shotPlaneShowsAt(shot: CompiledPaintedShot, plane: CompiledShotPaintedPlane, moment: PaintMoment, read: ShotRigRead): boolean {
   const shown = (key: OccurrenceKey) => shotVisibilityAt(shot, plane.id, key, moment) > 0;
   if (!shown(plane.id)) return false;
-  if (plane.paints.ground === 'paper') return true;
+  // An effect may read its input at another moment, where other occurrences show: it's solved while its plane shows.
+  if (plane.paints.ground === 'paper' || !plane.placed) return true;
   const away = shotPlanePosedAway(shot, plane, moment, read);
   return plane.occurrences.some(({ kind, key, node, groups }) => kind === 'layer' && !away.has(node) && shown(key) && groups.every(shown));
 }
