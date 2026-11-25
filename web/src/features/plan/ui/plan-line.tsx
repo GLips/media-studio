@@ -1,9 +1,10 @@
 import { Box, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import { Pencil } from 'lucide-react';
+import { Pencil, Plus } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
 import { findScriptPhrase } from '#lib/timing/voice/models/voice-words.ts';
+import { editStoryboardLinesFn } from '#web/features/storyboard/index.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { colors, fonts, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
@@ -74,15 +75,18 @@ type PlanLineProps = {
   readonly timed: PlanTimedLine | null;
   readonly cues: readonly PlanCue[];
   readonly threads: readonly PlanPlacedThread[];
+  /** A new line is being written after this one: saving adds it to storyboard.ts, leaving it empty drops it. */
+  readonly adding: boolean;
+  readonly onAdding: (open: boolean) => void;
 };
 
 /**
  * A spoken line as the scene panel reads it: its start (click to play from it), its words large, lit as they're said
- * (click one to jump to it; drag across some to comment on them), each cue's name tagged under the word it lands on,
- * and the pencil that edits the line's text in storyboard.ts.
+ * (click one to jump to it; drag across some to comment on them), each cue's name tagged under its word, its pencil
+ * (Shift+Enter in the field splits the line) and a + that adds a line after it.
  */
-export function PlanLine({ scene, id, timed, cues, threads }: PlanLineProps) {
-  const { plan, timing, playback, draft, setSearch } = usePlanScreen();
+export function PlanLine({ scene, id, timed, cues, threads, adding, onAdding }: PlanLineProps) {
+  const { project, plan, timing, playback, draft, setSearch } = usePlanScreen();
   const [editing, setEditing] = useState(false);
   const fps = timing?.fps ?? 1;
   const said = plan.resolved.voice[id];
@@ -100,55 +104,71 @@ export function PlanLine({ scene, id, timed, cues, threads }: PlanLineProps) {
     setSearch({ scene });
   };
   return (
-    <Box data-plan-line={id} {...planTargetAttributes({ field: 'line', scene, line: id })} {...stylex.props(styles.line)}>
-      {timed
-        ? (
-          <HotkeyTooltip name={`Play from here · this line runs ${formatPlanSeconds(said.duration)}`}>
-            <UnstyledButton fz="xs" onClick={() => playback.seek(timed.from)} {...stylex.props(styles.stamp)}>{formatReviewClock(timed.from / fps)}</UnstyledButton>
-          </HotkeyTooltip>
-        )
-        : <Box component="span" />}
-      {editing
-        ? (
+    <>
+      <Box data-plan-line={id} {...planTargetAttributes({ field: 'line', scene, line: id })} {...stylex.props(styles.line)}>
+        {timed
+          ? (
+            <HotkeyTooltip name={`Play from here · this line runs ${formatPlanSeconds(said.duration)}`}>
+              <UnstyledButton fz="xs" onClick={() => playback.seek(timed.from)} {...stylex.props(styles.stamp)}>{formatReviewClock(timed.from / fps)}</UnstyledButton>
+            </HotkeyTooltip>
+          )
+          : <Box component="span" />}
+        {editing
+          ? (
+            <Text component="div" size="line" {...stylex.props(styles.words)}>
+              <PlanEditableText value={text} target={{ field: 'line', scene, line: id }} startEditing onDone={() => setEditing(false)}
+                onSplit={(first, second, was) => editStoryboardLinesFn({ data: { project, edit: { op: 'splitLine', scene, line: id, was, first, second } } })}>
+                {text}
+              </PlanEditableText>
+            </Text>
+          )
+          : (
+            <Text component="p" size="line" {...stylex.props(styles.words)}>
+              {words.map((word, k) => {
+                const noted = threads.find((t) => t.state !== 'resolved' && inRun(t.plan.words, k));
+                const on = cuesOn(k);
+                const shown = (
+                  <Text component="span" inherit data-word={k} onClick={() => seekWord(k)}
+                    {...stylex.props(styles.word, word.mark === 'emphasis' && styles.emphasis, word.mark === 'keycap' && styles.keycap,
+                      noted && [styles.noted, underlines[planThreadMarkOf(noted).tone]], inRun(draftRun, k) && styles.draft,
+                      word.to !== undefined && styles.saidOn(word.to))}>
+                    {word.text}
+                    {word.from !== undefined && word.to !== undefined && <Box component="span" {...stylex.props(styles.wash, styles.washOn(word.from, word.to))} />}
+                  </Text>
+                );
+                return (
+                  // oxlint-disable-next-line react/no-array-index-key -- a word's place in its line is its identity
+                  <Fragment key={k}>
+                    {shown}
+                    {on.length > 0 && (
+                      <HotkeyTooltip name={on.map((c) => `The picture's “${c.name}” lands on this word, at ${formatReviewClock(c.frame / fps)}`).join(' · ')}>
+                        <Text component="span" size="xs" {...planUnquotedAttributes} {...stylex.props(styles.tag)}>{on.map((c) => c.name).join(' · ')}</Text>
+                      </HotkeyTooltip>
+                    )}
+                    {k < words.length - 1 && ' '}
+                  </Fragment>
+                );
+              })}
+            </Text>
+          )}
+        <Box {...stylex.props(styles.tools)}>
+          <PlanThreadMarks threads={threads} />
+          {!editing && <IconButton name="Edit this line" onClick={() => setEditing(true)}><Pencil size={14} /></IconButton>}
+          {!editing && <IconButton name="Add a line after this one" onClick={() => onAdding(true)}><Plus size={14} /></IconButton>}
+        </Box>
+      </Box>
+      {adding && (
+        <Box {...stylex.props(styles.line)}>
+          <Box component="span" />
           <Text component="div" size="line" {...stylex.props(styles.words)}>
-            <PlanEditableText value={text} target={{ field: 'line', scene, line: id }} startEditing onDone={() => setEditing(false)}>
-              {text}
+            <PlanEditableText value="" target={{ field: 'line', scene, line: id }} startEditing onDone={() => onAdding(false)}
+              write={(next) => editStoryboardLinesFn({ data: { project, edit: { op: 'addLine', scene, after: id, text: next } } })}>
+              {null}
             </PlanEditableText>
           </Text>
-        )
-        : (
-          <Text component="p" size="line" {...stylex.props(styles.words)}>
-            {words.map((word, k) => {
-              const noted = threads.find((t) => t.state !== 'resolved' && inRun(t.plan.words, k));
-              const on = cuesOn(k);
-              const shown = (
-                <Text component="span" inherit data-word={k} onClick={() => seekWord(k)}
-                  {...stylex.props(styles.word, word.mark === 'emphasis' && styles.emphasis, word.mark === 'keycap' && styles.keycap,
-                    noted && [styles.noted, underlines[planThreadMarkOf(noted).tone]], inRun(draftRun, k) && styles.draft,
-                    word.to !== undefined && styles.saidOn(word.to))}>
-                  {word.text}
-                  {word.from !== undefined && word.to !== undefined && <Box component="span" {...stylex.props(styles.wash, styles.washOn(word.from, word.to))} />}
-                </Text>
-              );
-              return (
-                // oxlint-disable-next-line react/no-array-index-key -- a word's place in its line is its identity
-                <Fragment key={k}>
-                  {shown}
-                  {on.length > 0 && (
-                    <HotkeyTooltip name={on.map((c) => `The picture's “${c.name}” lands on this word, at ${formatReviewClock(c.frame / fps)}`).join(' · ')}>
-                      <Text component="span" size="xs" {...planUnquotedAttributes} {...stylex.props(styles.tag)}>{on.map((c) => c.name).join(' · ')}</Text>
-                    </HotkeyTooltip>
-                  )}
-                  {k < words.length - 1 && ' '}
-                </Fragment>
-              );
-            })}
-          </Text>
-        )}
-      <Box {...stylex.props(styles.tools)}>
-        <PlanThreadMarks threads={threads} />
-        {!editing && <IconButton name="Edit this line" onClick={() => setEditing(true)}><Pencil size={14} /></IconButton>}
-      </Box>
-    </Box>
+        </Box>
+      )}
+    </>
   );
 }
+

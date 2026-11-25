@@ -41,6 +41,9 @@ export type PlanTextTarget =
   | { field: 'brief'; section: string }
   | { field: 'leftOut'; index: number };
 
+/** What a write to storyboard.ts answers, from editStoryboardTextFn or editStoryboardLinesFn. */
+export type PlanTextWriteAnswer = { ok: true } | { conflict: { current: string } } | { refused: string };
+
 type PlanEditableTextProps = {
   /** The text as storyboard.ts holds it now. */
   readonly value: string;
@@ -53,6 +56,10 @@ type PlanEditableTextProps = {
   /** Opens as a field at once (its pencil was clicked), and calls `onDone` once saved or cancelled. */
   readonly startEditing?: boolean;
   readonly onDone?: () => void;
+  /** Writes the text in place of editStoryboardTextFn at `target` (a line not yet in storyboard.ts adds itself). */
+  readonly write?: (text: string, was: string) => Promise<PlanTextWriteAnswer>;
+  /** Shift+Enter splits the text at the cursor through this, instead of breaking the line. */
+  readonly onSplit?: (first: string, second: string, was: string) => Promise<PlanTextWriteAnswer>;
 };
 
 /**
@@ -60,7 +67,7 @@ type PlanEditableTextProps = {
  * field, and saving writes storyboard.ts. The save names the text the field opened on, so it never overwrites an
  * agent's edit made meanwhile: the field stays open with what was typed and asks which to keep.
  */
-export function PlanEditableText({ value, target, children, multiline = false, startEditing = false, onDone }: PlanEditableTextProps) {
+export function PlanEditableText({ value, target, children, multiline = false, startEditing = false, onDone, write, onSplit }: PlanEditableTextProps) {
   const { project, playback } = usePlanScreen();
   const [draft, setDraft] = useState<string | null>(startEditing ? value : null);
   // The text the field opened on. `value` follows the file while the field is open, so saving against it would
@@ -89,12 +96,8 @@ export function PlanEditableText({ value, target, children, multiline = false, s
     setDraft(null);
     setRefusedOver(null);
   };
-  const save = async (text: string, was: string) => {
-    if (settled.current) return;
-    const next = multiline ? text.trim() : text.replace(/\s+/g, ' ').trim();
-    hide();
-    if (!next || next === was) return onDone?.();
-    const answer = await editStoryboardTextFn({ data: { project, edit: { ...target, text: next, was } } });
+  const answered = async (text: string, was: string, pending: Promise<PlanTextWriteAnswer>) => {
+    const answer = await pending;
     if ('conflict' in answer) {
       // Reopen on what was typed; the panel below it shows the file's text and asks which to keep.
       settled.current = false;
@@ -107,11 +110,30 @@ export function PlanEditableText({ value, target, children, multiline = false, s
     setProblem('refused' in answer ? `Not saved: ${answer.refused}` : null);
     onDone?.();
   };
+  const tidy = (text: string) => (multiline ? text.trim() : text.replace(/\s+/g, ' ').trim());
+  const save = async (text: string, was: string) => {
+    if (settled.current) return;
+    const next = tidy(text);
+    hide();
+    if (!next || next === was) return onDone?.();
+    await answered(text, was, write ? write(next, was) : editStoryboardTextFn({ data: { project, edit: { ...target, text: next, was } } }));
+  };
+  const split = async (text: string, at: number, was: string) => {
+    if (settled.current || !onSplit) return;
+    const first = tidy(text.slice(0, at)), second = tidy(text.slice(at));
+    // At either end there's nothing to split off: it's a plain save.
+    if (!first || !second) return save(text, was);
+    hide();
+    await answered(text, was, onSplit(first, second, was));
+  };
   // While the file holds other text than the field opened on, Enter and blur don't save: the reviewer picks.
   const saveUnlessChanged = (text: string) => {
     if (changedUnder === null) void save(text, base);
   };
   if (draft !== null) {
+    let hint = '↵ saves to storyboard.ts · Esc cancels';
+    if (onSplit) hint = '↵ saves to storyboard.ts · ⇧↵ splits the line here · Esc cancels';
+    else if (multiline) hint = '↵ saves to storyboard.ts · ⇧↵ breaks the line · Esc cancels';
     return (
       <Box {...stylex.props(styles.editing)}>
         <Textarea
@@ -122,11 +144,16 @@ export function PlanEditableText({ value, target, children, multiline = false, s
           onBlur={() => saveUnlessChanged(draft)}
           onEscape={close}
           onEnter={() => saveUnlessChanged(draft)}
-          onKeyDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+            if (!onSplit || event.key !== 'Enter' || !event.shiftKey || event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            if (changedUnder === null) void split(draft, event.currentTarget.selectionStart, base);
+          }}
           classNames={{ root: stylex.props(styles.passType).className, wrapper: stylex.props(styles.passType).className, input: stylex.props(styles.field).className }}
         />
         {changedUnder === null
-          ? <Text component="span" size="xs" {...stylex.props(styles.hint)}>{multiline ? '↵ saves to storyboard.ts · ⇧↵ breaks the line · Esc cancels' : '↵ saves to storyboard.ts · Esc cancels'}</Text>
+          ? <Text component="span" size="xs" {...stylex.props(styles.hint)}>{hint}</Text>
           : (
             <Box {...stylex.props(styles.changed)}>
               <Text component="div" size="xs">storyboard.ts changed while you were typing. It now reads:</Text>
