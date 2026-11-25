@@ -168,7 +168,7 @@ function spokenPhrase(scene: string, line: string, cue: string, at: StoryboardWo
 function gridOf(storyboard: AnyStoryboard, music: StoryboardMusic | undefined, diagnostics: StoryboardDiagnostic[]): TimelineGrid | undefined | null {
   const grid = storyboard.grid;
   if (!grid) return undefined;
-  if ('tempo' in grid) return tempoGrid(grid.tempo, { firstBeat: grid.firstBeat });
+  if ('tempo' in grid) return tempoGrid(grid.tempo, { firstBeat: grid.firstBeat, beatsPerBar: grid.beatsPerBar });
   const track = music?.[grid.music];
   if (!track) {
     diagnostics.push({ message: `the grid's music ${grid.music} isn't in music/index.ts: ${Object.keys(music ?? {}).join(', ') || 'it has no tracks'}` });
@@ -178,7 +178,7 @@ function gridOf(storyboard: AnyStoryboard, music: StoryboardMusic | undefined, d
     diagnostics.push({ message: `the grid's music ${grid.music} isn't fitted to the video: run studio music fit --bars` });
     return null;
   }
-  return recordedGrid({ ...track, fit: track.fit }, { steady: grid.steady });
+  return recordedGrid({ ...track, fit: track.fit }, { steady: grid.steady, beatsPerBar: grid.beatsPerBar });
 }
 
 const escaped = (id: string) => id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

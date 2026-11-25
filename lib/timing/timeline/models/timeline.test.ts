@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { bindTimeline } from './bind-timeline.ts';
 import { assertTimelineRetimes } from './retime.ts';
 import { sceneSecondsOf } from './scene-seconds.ts';
-import { beatSpan, defineTimeline, fixedSpan, recordedGrid, voiceSpan } from './timeline.ts';
+import { beatSpan, defineTimeline, fixedSpan, recordedGrid, tempoGrid, voiceSpan } from './timeline.ts';
 
 // 120 BPM from 0.5 s: 15 frames a beat, beat 0 on frame 15. Two four-beat scenes end on the final hit, beat 8, at 4.5 s.
 const track = {
@@ -38,6 +38,13 @@ test('a scene clock reads in seconds of its own s.t: cues and beats as times, be
   assert.deepEqual([b.cue('late'), b.cue('a.hit'), b.beat(1), b.beats(2), b.frames(3)], [10 / 30, -38 / 30, 7 / 30, 1, 0.1]);
   assert.deepEqual([b.beatAt(b.beat(1)), b.beatAt(b.beat(1) + 0.25)], [1, 1.5]);
   assert.deepEqual(b.span, { from: -3 / 30, to: 84 / 30, fps: 30 });
+});
+
+test('a grid\'s meter reaches every scene\'s clock: 4 beats a bar unless the grid names its own, and a broken one is refused', () => {
+  assert.equal(defineTimeline({ ...base, scenes, landmarks }).clock('a').beatsPerBar, 4);
+  const waltz = defineTimeline({ grid: tempoGrid(90, { beatsPerBar: 3 }), scenes: { intro: fixedSpan(1), a: beatSpan(6) } });
+  assert.deepEqual([waltz.clock('intro').beatsPerBar, waltz.clock('a').beatsPerBar], [3, 3]);
+  assert.throws(() => defineTimeline({ grid: tempoGrid(90, { beatsPerBar: 2.5 }), scenes: { a: beatSpan(6) } }), /beatsPerBar is 2.5/);
 });
 
 test('a timeline that no longer ends on the music\'s final hit throws at load, naming both fixes', () => {
