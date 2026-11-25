@@ -159,7 +159,7 @@ type ReviewThreadRowProps = {
 /**
  * One note: its state glyph, kind (a fix by its icon alone), number, time and scene, then its words and replies: the
  * last at rest with a count of the rest, all in focus. A carried note shows the render it was written on, dim. Its
- * actions appear on hover or focus, never at rest.
+ * actions show on hover; the open note keeps Reply and Resolve at rest.
  */
 export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRowProps) {
   const [hot, setHot] = useState(false);
@@ -180,6 +180,8 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
   const said = replies.filter((r) => r.text.trim());
   const shown = look.expanded ? said : said.slice(-1);
   const inline = look.inline?.id === thread.id ? look.inline : null;
+  // Hovered, focused or picked for a batch, every action; the open note or the playhead's at rest, Reply and Resolve.
+  const allActions = hot || look.selected;
   // The field's text belongs to its field: reopening the same one finds it as left, opening another starts afresh,
   // an edit from the note's words.
   const fieldKey = inline && `${inline.mode}:${inline.conflict?.rev ?? ''}`;
@@ -235,15 +237,15 @@ export function ReviewThreadRow({ thread, look, actions, place }: ReviewThreadRo
           </Tooltip>
         )}
         <Box component="span" {...stylex.props(styles.number)}><Readout>#{thread.id}</Readout></Box>
-        {(hot || look.selected) && (
+        {(allActions || look.current || look.expanded) && (
           <Group gap={0} wrap="nowrap" {...stylex.props(styles.actions)} onClick={(event) => event.stopPropagation()}>
             <IconButton name="Reply" onClick={() => actions.startInline(thread.id, 'reply')}><CornerUpLeft size={14} /></IconButton>
             {thread.state === 'resolved' || <IconButton name="Resolve" onClick={() => actions.resolve([thread.id])}><Check size={14} /></IconButton>}
-            {(thread.state === 'addressed' || thread.state === 'resolved') && (
+            {allActions && (thread.state === 'addressed' || thread.state === 'resolved') && (
               <IconButton name="Reopen" onClick={() => actions.reopen([thread.id])}><RotateCcw size={14} /></IconButton>
             )}
-            {note.author === 'reviewer' && <IconButton name="Edit" onClick={() => actions.startInline(thread.id, 'edit')}><Pencil size={14} /></IconButton>}
-            <IconButton name="Delete" onClick={() => actions.remove([thread.id])}><Trash2 size={14} /></IconButton>
+            {allActions && note.author === 'reviewer' && <IconButton name="Edit" onClick={() => actions.startInline(thread.id, 'edit')}><Pencil size={14} /></IconButton>}
+            {allActions && <IconButton name="Delete" onClick={() => actions.remove([thread.id])}><Trash2 size={14} /></IconButton>}
           </Group>
         )}
       </Group>

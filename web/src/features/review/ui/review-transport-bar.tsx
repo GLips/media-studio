@@ -3,7 +3,7 @@ import * as stylex from '@stylexjs/stylex';
 import { LayoutGrid, Pause, Pencil, Play, Repeat, Scan, SquareDashed, Volume2, VolumeX } from 'lucide-react';
 import { useRef } from 'react';
 import { nextReviewGuideSet } from '#lib/output/review/models/review-guides.ts';
-import { formatReviewClock } from '#lib/output/review/models/review-timeline-geometry.ts';
+import { formatReviewClock, formatReviewTimecode } from '#lib/output/review/models/review-timeline-geometry.ts';
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { useLinkedMediaTick } from '#web/shared/ui/linked-media-clock.ts';
 import { Readout } from '#web/shared/ui/readout.tsx';
@@ -59,7 +59,7 @@ function useReviewPlayingReadouts(playback: ReviewPlayback, playing: boolean, fp
 }
 
 /**
- * `▶ 0:04.53 f136 ⟲ ♪ │ compare        [✎ ⌗ ⊡ ▦]`: the transport between the stage and the dock, with the playhead's notch on the
+ * `▶ 0:04.53 / 0:23 f136 ⟲ ♪ │ compare        [✎ ⌗ ⊡ ▦]`: the transport between the stage and the dock, with the playhead's notch on the
  * stage's edge. While playing, the time is written straight into its nodes, as the playhead is, so the bar re-renders
  * only when the clock settles.
  */
@@ -85,6 +85,7 @@ export function ReviewTransportBar() {
       <Box {...stylex.props(styles.edge)}><Box {...stylex.props(styles.notch, styles.at(reviewPlayheadLeft(view)))} /></Box>
       <IconButton name="Play" onClick={playback.toggle}>{state.playing ? <Pause size={14} /> : <Play size={14} />}</IconButton>
       <Readout bright ref={time} chars={timeChars}>{formatReviewClock(state.frame / timing.fps)}</Readout>
+      <Readout>/ {formatReviewTimecode(timing.durationInFrames, timing.fps)}</Readout>
       <Readout ref={frameNumber} chars={frameChars}>{`f${state.frame}`}</Readout>
       {rate !== null && <Readout bright>{`${rate}×`}</Readout>}
       <IconButton name="Loop" active={state.loop !== null} onClick={toggleLoop}><Repeat size={14} /></IconButton>
