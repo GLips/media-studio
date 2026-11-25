@@ -12,11 +12,11 @@ import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 export type SpokenPiece = { from: number; to: number };
 
 /**
- * Something a line's cleanup took out: its `kind` (`filler`, `repeat`, `retake`, `false start`, `pause`, `cut`, or a
- * project rule's), what was said (empty for a pause), where it was in the item, and the line second `at` the line
- * jumps over it. `keepAt` is the item second a line's `keep` names to restore it; `flag` asks review to listen twice.
+ * Something a line's cleanup took out: its `kind` (`filler`, `pause`, `cut`, a rule's), what was said, where in the
+ * item, and the line second `at` the line jumps over it. A line's `keep` names `keepAt` to restore it; `flag` asks
+ * review to listen twice. `left`: it plays after all, from `at`: kept, or with no quiet to cut in.
  */
-export type SpokenRemoval = { kind: string; text: string; from: number; to: number; at: number; keepAt: number; flag?: string };
+export type SpokenRemoval = { kind: string; text: string; from: number; to: number; at: number; keepAt: number; flag?: string; left?: 'kept' | 'no quiet' };
 
 /** Speech whisper wrote no word for, left in the line (item seconds, and the line second it plays at) for review to hear. */
 export type SpokenUnheard = { from: number; to: number; at: number };

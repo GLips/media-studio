@@ -117,7 +117,10 @@ test('a recorded line drops its stutters and fillers and shortens its long pause
 });
 
 test("a line restores what its cleanup took by a moment in it, cuts a word the rules kept, and sets its own pause cap", () => {
-  assert.deepEqual(verbatim.speech(0.9, 5.5, { keep: [2.3], pauseCap: Infinity }).pieces, [{ from: 1.1, to: 5.5 }]);
+  const kept = verbatim.speech(0.9, 5.5, { keep: [2.3, 3.93] });
+  assert.deepEqual(kept.pieces, [{ from: 1.1, to: 5.5 }]);
+  // Review still lists what was restored, where it now plays, to take out again.
+  assert.deepEqual(kept.removals.map(({ kind, at, left }) => [kind, at, left]), [['repeat', 0, undefined], ['filler', 1, 'kept'], ['pause', 2.38, 'kept']]);
   assert.throws(() => verbatim.speech(0.9, 5.5, { keep: [0.95] }), /takes nothing out at 0\.95 s to keep/);
   // "on" runs into its neighbours with no quiet, so it's cut where it's asked, into sound.
   const cut = verbatim.speech(0.9, 5.5, { cut: [1.6], pauseCap: Infinity });

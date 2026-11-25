@@ -116,15 +116,15 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
   const found = (edits.rules ?? SPOKEN_CLEANUP_RULES).flatMap((rule) => rule(said.map((i) => sounds[i])))
     .map(({ kind, flag, first: word, count }): Find => ({ kind, flag, from: said[word], to: said[word + count - 1] }))
     // Two rules finding the same words ("we- we" is a stutter and a false start) make one removal, the first rule's.
-    .filter(({ from, to }, k, all) => all.findIndex((f) => f.from === from && f.to === to) === k)
-    .filter(({ from, to }) => !keeps(sounds[from].start, sounds[to].end));
+    .filter(({ from, to }, k, all) => all.findIndex((f) => f.from === from && f.to === to) === k);
+  const restored = found.filter(({ from, to }) => keeps(sounds[from].start, sounds[to].end));
   const forced = (edits.cut ?? []).map((t) => {
     const i = sounds.findIndex((s, k) => k >= first && k <= last && s.start <= t && t <= s.end);
     if (i < 0) throw new Error(`${where} says nothing at ${t} s in the line from ${asked} to ${askedTo} s to cut`);
     return { kind: 'cut', flag: undefined, from: i, to: i };
   });
   const takenBy = new Map<number, { finds: Set<Find>; forced: boolean }>();
-  for (const find of [...found, ...forced]) {
+  for (const find of [...found.filter((f) => !restored.includes(f)), ...forced]) {
     for (let i = find.from; i <= find.to; i++) {
       const at = takenBy.get(i) ?? { finds: new Set(), forced: false };
       at.finds.add(find);
@@ -152,7 +152,7 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
 
   // Pieces: runs of kept sounds, split where a run was taken and where a pause runs past the cap.
   const cap = edits.pauseCap ?? LIBRARY_PAUSE_CAP;
-  const pieces: Span[] = [], gaps: { from: number; to: number; run?: Taken }[] = [];
+  const pieces: Span[] = [], gaps: { from: number; to: number; run?: Taken }[] = [], keptPauses: Span[] = [];
   let start = leadEdge(voice, keptSounds[0]);
   keptSounds.forEach((i, k) => {
     const next = keptSounds[k + 1];
@@ -165,7 +165,11 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
       return;
     }
     const pause = shortenedPause(voice, i, next, cap);
-    if (!pause || keeps(sounds[i].end, sounds[next].start)) return;
+    if (!pause) return;
+    if (keeps(sounds[i].end, sounds[next].start)) {
+      keptPauses.push({ start: pause.from, end: pause.to });
+      return;
+    }
     pieces.push({ start, end: pause.from });
     start = pause.to;
     gaps.push(pause);
@@ -188,6 +192,15 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
   const head = taken.find((r) => r.first === first), tail = taken.find((r) => r.last === last);
   if (head) removals.unshift(...removalsOf(head.finds, sounds, 0));
   if (tail) removals.push(...removalsOf(tail.finds, sounds, lineTime(Infinity)));
+  // What the line leaves in, at the line second it plays: what its `keep` restored, and runs with no quiet to cut in.
+  const left: SpokenRemoval[] = [
+    ...restored.flatMap((f) => removalsOf([f], sounds, lineTime(sounds[f.from].start)).map((r) => Object.assign(r, { left: 'kept' as const }))),
+    ...runs.filter((r) => !taken.includes(r))
+      .flatMap((r) => removalsOf(r.finds, sounds, lineTime(sounds[r.first].start)).map((x) => Object.assign(x, { left: 'no quiet' as const }))),
+    ...keptPauses.map(({ start: from, end: to }) => ({ kind: 'pause', text: '', from: round(from), to: round(to), at: lineTime(from), keepAt: round((from + to) / 2), left: 'kept' as const })),
+  ];
+  removals.push(...left);
+  removals.sort((a, b) => a.at - b.at);
 
   const within = (span: Span) => pieces.some((p) => p.start <= span.start && span.end <= p.end);
   const dips: SpokenDip[] = [
