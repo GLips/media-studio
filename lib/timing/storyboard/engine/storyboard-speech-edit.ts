@@ -55,7 +55,7 @@ export function applyStoryboardSpeechEdit(source: string, edit: StoryboardSpeech
   const array = `[${next.join(', ')}]`;
   if (property) {
     if (next.length) return { source: source.slice(0, property.value.start) + array + source.slice(property.value.end) };
-    return { source: dropProperty(source, edits!, index, node.arguments[1].end) };
+    return { source: dropProperty(source, edits, index, node.arguments[1].end) };
   }
   const written = `${edit.list}: ${array}`;
   if (!edits) return { source: `${source.slice(0, node.arguments[1].end)}, { ${written} }${source.slice(node.arguments[1].end)}` };
