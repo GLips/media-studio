@@ -81,6 +81,13 @@ export { defineVideo, videoFormatOf, type ScenePrevis, type VideoSound } from '#
 export type { LineSpan, SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
 export { sceneForTimelineClock } from '#lib/picture/video/studio/timeline-scene.tsx';
 export { sceneCueSeconds } from '#lib/timing/timeline/models/scene-cue-seconds.ts';
+export { defineCueCharacter, type AnyCueCharacter, type CueCharacter, type CueCharacterState, type CueMove, type CueSlider } from '#lib/timing/character-cues/models/cue-character.ts';
+export type { CueBlend, CueEaseCurve, CueSpring } from '#lib/timing/character-cues/models/cue-blend.ts';
+export type { CueCast, CueFrame, CueMoveCall, CueMoveEnd, CueRow, CueVector } from '#lib/timing/character-cues/models/cue-score.ts';
+export type { CueLeaf, CueLeafPath, CueNumberPath, CuePatch, CuePath, CueState } from '#lib/timing/character-cues/models/cue-state.ts';
+export { cueSecondsOf, cueTimeSeconds, type CueAnchor, type CueClock, type CueNamesOfClock, type CueOffset, type CueSeconds, type CueTime } from '#lib/timing/character-cues/models/cue-time.ts';
+export { compileCueScore, type CueScore } from '#lib/timing/character-cues/models/cue-tracks.ts';
+export { defineLookCatalog, type LookCatalog, type LookDescription, type LookPaletteOf, type LookSampling } from '#lib/paint/looks/models/look-catalog.ts';
 export { sceneSecondsOf, type SceneClockSeconds, type SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 export type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
 export { blockingScene } from '#lib/footage/previs/studio/blocking-scene.tsx';
