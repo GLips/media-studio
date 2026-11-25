@@ -47,7 +47,8 @@ Done when the rough cut is open for review.
 
 ## 4. Refine
 
-Work the notes in the review UI, and any in the chat, round by round. Each round, also judge the cut against the craft
+Work the notes in the review UI, and any in the chat, round by round, as `studio-review`'s loop runs them: this session
+watches, and a subagent takes each note, side by side when none waits on another. Each round, also judge the cut against the craft
 yourself and fix what falls short: the picture follows what the words are about, the frame is filled, a newcomer can
 tell what they're looking at. Moves, cards, labels and cursor zooms come in here, written as `video-motion` writes
 them. A pickup the person records, or a recapture they approve, is logged and cut in like any recording; the cut
