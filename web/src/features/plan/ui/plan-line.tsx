@@ -110,9 +110,11 @@ export function PlanLine({ scene, id, timed, cues, threads }: PlanLineProps) {
         : <Box component="span" />}
       {editing
         ? (
-          <PlanEditableText value={text} target={{ field: 'line', scene, line: id }} size="line" startEditing onDone={() => setEditing(false)}>
-            {text}
-          </PlanEditableText>
+          <Text component="div" size="line" {...stylex.props(styles.words)}>
+            <PlanEditableText value={text} target={{ field: 'line', scene, line: id }} startEditing onDone={() => setEditing(false)}>
+              {text}
+            </PlanEditableText>
+          </Text>
         )
         : (
           <Text component="p" size="line" {...stylex.props(styles.words)}>

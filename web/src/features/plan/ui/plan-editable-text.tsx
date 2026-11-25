@@ -12,12 +12,16 @@ const styles = stylex.create({
     outlineWidth: '1px', outlineStyle: 'solid', outlineColor: { default: 'transparent', ':hover': colors.line }, outlineOffset: spacing.tight,
   },
   empty: { color: colors.dim, fontStyle: 'italic' },
-  editing: { display: 'flex', flexDirection: 'column', gap: spacing.tight },
+  // The field sits exactly where the text read and takes all its type from what surrounds it, so opening it moves
+  // nothing; the hint floats below rather than pushing the next row down.
+  editing: { position: 'relative', borderRadius: radius.control, backgroundColor: colors.raised, outlineWidth: '1px', outlineStyle: 'solid', outlineColor: colors.cobalt, outlineOffset: spacing.tight },
   field: {
-    borderRadius: radius.control, backgroundColor: colors.raised,
-    outlineWidth: '1px', outlineStyle: 'solid', outlineColor: colors.cobalt, outlineOffset: spacing.tight,
+    font: 'inherit', letterSpacing: 'inherit', color: 'inherit',
+    padding: 0, margin: 0, borderWidth: 0, minHeight: 0, backgroundColor: 'transparent', resize: 'none',
   },
-  hint: { color: colors.dim },
+  // Mantine's input root and wrapper set their own line height; the field can only inherit the text's through them.
+  passType: { lineHeight: 'inherit' },
+  hint: { position: 'absolute', insetInlineStart: 0, top: `calc(100% + ${spacing.gap})`, zIndex: 2, whiteSpace: 'nowrap', color: colors.dim },
   problem: { color: colors.danger },
 });
 
@@ -38,8 +42,6 @@ type PlanEditableTextProps = {
   readonly children: ReactNode;
   /** Keeps its line breaks (a brief section); a spoken line is folded onto one. Shift+Enter breaks a line either way. */
   readonly multiline?: boolean;
-  /** The field's text size while editing, to match what it replaces. */
-  readonly size?: 'md' | 'prose' | 'line';
   /** Opens as a field at once (its pencil was clicked), and calls `onDone` once saved or cancelled. */
   readonly startEditing?: boolean;
   readonly onDone?: () => void;
@@ -50,7 +52,7 @@ type PlanEditableTextProps = {
  * field, and saving writes storyboard.ts, which the page re-times from once Vite sends the new copy. An edit to text
  * the agent changed meanwhile is refused, never merged.
  */
-export function PlanEditableText({ value, target, children, multiline = false, size = 'md', startEditing = false, onDone }: PlanEditableTextProps) {
+export function PlanEditableText({ value, target, children, multiline = false, startEditing = false, onDone }: PlanEditableTextProps) {
   const { project, playback } = usePlanScreen();
   const [draft, setDraft] = useState<string | null>(startEditing ? value : null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -75,7 +77,7 @@ export function PlanEditableText({ value, target, children, multiline = false, s
     return (
       <Box {...stylex.props(styles.editing)}>
         <Textarea
-          autoFocus autosize minRows={1} maxRows={14} size={size} variant="unstyled" aria-label="Edit"
+          autoFocus autosize minRows={1} variant="unstyled" aria-label="Edit"
           value={draft}
           onFocus={(event) => event.currentTarget.select()}
           onChange={(event) => setDraft(event.currentTarget.value)}
@@ -83,7 +85,7 @@ export function PlanEditableText({ value, target, children, multiline = false, s
           onEscape={close}
           onEnter={() => void save(draft)}
           onKeyDown={(event) => event.stopPropagation()}
-          {...stylex.props(styles.field)}
+          classNames={{ root: stylex.props(styles.passType).className, wrapper: stylex.props(styles.passType).className, input: stylex.props(styles.field).className }}
         />
         <Text component="span" size="xs" {...stylex.props(styles.hint)}>{multiline ? '↵ saves to storyboard.ts · ⇧↵ breaks the line · Esc cancels' : '↵ saves to storyboard.ts · Esc cancels'}</Text>
       </Box>
