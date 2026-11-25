@@ -18,7 +18,7 @@ export type LibraryItemScreenValue = LibraryFlagUndo & {
   audible: readonly { track: string; label: string }[];
   /** Hears the item through `track` from now on, carrying on from where the playback is. */
   hear: (track: string) => void;
-  /** Every word said on any spoken track, in item-time order; none before the item's transcript is made. */
+  /** Every word said on any spoken track, in reading order (libraryFootage's); none before the item's transcript is made. */
   words: readonly LibraryWord[];
   /** The words as lines to read, on item time. */
   lines: readonly LibraryTranscriptLine[];

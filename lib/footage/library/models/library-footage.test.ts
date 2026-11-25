@@ -68,6 +68,9 @@ test("a call's two sides are one transcript: its words interleave by track, and 
   const both = libraryFootage(call, { tracks: { mic, system: agent } });
   // The mic's words, then the agent's 0.2 s later on item time: one line each, though no pause parts "um" from "Want".
   assert.deepEqual(libraryTranscriptLines(both.words).map((l) => [l.track, l.text]), [['mic', 'Each agent has a definition'], ['mic', 'um'], ['system', 'Want it?']]);
+  // A word said over the mic's line ("Yes" under "has") reads as a line of its own, after the line it interrupts.
+  const over = libraryFootage(call, { tracks: { mic, system: { ...agent, words: [{ text: 'Yes', start: 1.8, end: 2.0 }] } } });
+  assert.deepEqual(libraryTranscriptLines(over.words).map((l) => l.text), ['Each agent has a definition', 'Yes', 'um']);
   const reply = both.speech(5.0, 6.5, 'system');
   assert.deepEqual(reply.heard.map((w) => w.text), ['Want', 'it?']);
   assert.deepEqual(reply.sound && { file: reply.sound.file, lufs: reply.sound.lufs }, { file: 'proxies/system-levelled.wav', lufs: -15 });

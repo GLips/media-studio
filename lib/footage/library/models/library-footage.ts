@@ -42,7 +42,7 @@ export type LibraryScreenWaypoint = InputWaypoint & { inside: boolean };
 /** A library item as a project uses it (libraryFootage). */
 export type LibraryFootage = {
   item: LibraryItem;
-  /** Every word said on any spoken track, in item-time order, each with its track; none before its transcript. */
+  /** Every word said on any spoken track, each with its track, in reading order (libraryTranscriptLines's); none before its transcript. */
   words: readonly LibraryWord[];
   /**
    * The words on spoken `track` (the item's speech unless named; `system` for a call's far side) whose middles lie
@@ -108,7 +108,10 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
     };
     return [name, voice] as const;
   }));
-  const allWords = [...voices.values()].flatMap((voice) => voice.words).toSorted((x, y) => x.start - y.start);
+  // In reading order: each track's lines (its words run together until a pause) by when they start, so two sides
+  // talking over each other read as two whole lines, not their words shuffled together.
+  const allWords = [...voices.values()].flatMap((voice) => transcriptLines(voice).map((line) => voice.words.slice(line.firstWord, line.firstWord + line.wordCount)))
+    .toSorted((x, y) => x[0].start - y[0].start).flat();
   const voiceOf = (name: string): LibraryVoice | undefined => {
     if (voices.has(name)) return voices.get(name);
     const track = item.tracks[name];
@@ -177,8 +180,8 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
 }
 
 /**
- * `words` (libraryFootage's, in item-time order) as lines to read: each line one track's, broken where the other
- * side starts speaking as well as at a pause. `firstWord` indexes `words`.
+ * `words` (libraryFootage's, in reading order) as lines to read: each line one track's, broken at a pause or where
+ * the other side speaks. `firstWord` indexes `words`.
  */
 export function libraryTranscriptLines(words: readonly LibraryWord[]): LibraryTranscriptLine[] {
   const runs: { track: string; first: number; words: LibraryWord[] }[] = [];
