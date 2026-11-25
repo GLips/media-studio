@@ -88,7 +88,8 @@ export function compileCueScore<Clock extends CueClock, C extends AnyCueCharacte
       if (!(ends > begins)) throw new Error(`${where(n)}: move ${call.name} ends before it begins`);
       const leavesOf = (paths: readonly string[]) => [...new Set(paths.flatMap((path) => cueSchemaLeaves(schema, `character.${path}`)))];
       const leaves = leavesOf(move.writes), returns = move.returns ? leavesOf(move.returns) : leaves;
-      if (returns.some((leaf) => !leaves.includes(leaf))) throw new Error(`move ${call.name} returns a control it doesn't write`);
+      if (returns.some((leaf) => !leaves.includes(leaf))) throw new Error(`${where(n)}: move ${call.name} returns a control it doesn't write`);
+      if (call.end !== undefined && call.end !== 'hold' && ends === Infinity) throw new Error(`${where(n)}: move ${call.name} plays on until a cue ends it, so it returns only with an until`);
       const index = moves.push({ row: n, begins, ends, returns, end: call.end ?? 'hold' }) - 1;
       const local = (t: number) => Math.min(Math.max(t - begins, 0), ends - begins) * rate;
       let memo: { seconds: number; patch: CuePatch<CueState> } | undefined;
@@ -109,7 +110,7 @@ export function compileCueScore<Clock extends CueClock, C extends AnyCueCharacte
   // A returning move hands each of its controls back only where no later row has taken that control since it began.
   for (const [index, move] of moves.entries()) {
     const { end } = move;
-    if (end === 'hold' || move.ends === Infinity) continue;
+    if (end === 'hold') continue;
     const curve = curveOf(end.return, move.ends);
     for (const leaf of move.returns) {
       if (tracks[leaf].some((w) => w.row !== move.row && w.start > move.begins && w.start <= move.ends)) continue;
@@ -120,7 +121,7 @@ export function compileCueScore<Clock extends CueClock, C extends AnyCueCharacte
   for (const [leaf, track] of tracks.entries()) {
     track.sort((a, b) => a.start - b.start);
     for (let k = 1; k < track.length; k++) {
-      if (track[k].start === track[k - 1].start) {
+      if (track[k].start - track[k - 1].start <= CUE_TIME_SLACK) {
         throw new Error(`score for scene ${clock.id}: rows ${track[k - 1].row + 1} and ${track[k].row + 1} both set ${schema.paths[leaf]} at ${track[k].start.toFixed(3)} s`);
       }
     }
@@ -187,12 +188,13 @@ function lookSpans(catalog: LookCatalog, rows: readonly { seconds: number; look?
   const sorted = rows.map((row, n) => ({ ...row, n })).filter((row) => row.look !== undefined || row.palette !== undefined)
     .toSorted((a, b) => a.seconds - b.seconds);
   for (const [k, row] of sorted.entries()) {
-    if (k > 0 && sorted[k - 1].seconds === row.seconds) throw new Error(`score for scene ${scene}: rows ${sorted[k - 1].n + 1} and ${row.n + 1} both set the look at ${row.seconds.toFixed(3)} s`);
+    if (k > 0 && row.seconds - sorted[k - 1].seconds <= CUE_TIME_SLACK) throw new Error(`score for scene ${scene}: rows ${sorted[k - 1].n + 1} and ${row.n + 1} both set the look at ${row.seconds.toFixed(3)} s`);
     const now = spans.at(-1)!;
     if (row.look !== undefined) {
       const named = typeof row.palette === 'string' ? row.palette : undefined;
-      if (row.look === now.look) spans.push({ ...now, start: row.seconds, palette: named ?? now.palette });
-      else spans.push({ start: row.seconds, look: row.look, palette: named ?? catalog[row.look].palettes[0], phase: row.seconds });
+      const palette = named ?? catalog[row.look].palettes[0];
+      if (row.look === now.look) spans.push({ ...now, start: row.seconds, palette });
+      else spans.push({ start: row.seconds, look: row.look, palette, phase: row.seconds });
     } else if (typeof row.palette === 'object') {
       if (row.palette.look !== now.look) throw new Error(`score for scene ${scene}, row ${row.n + 1}: palette ${row.palette.name} is ${row.palette.look}'s, but ${now.look} is showing`);
       spans.push({ ...now, start: row.seconds, palette: row.palette.name });

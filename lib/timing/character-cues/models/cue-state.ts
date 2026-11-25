@@ -36,18 +36,22 @@ export type CueSchema = {
   readonly index: ReadonlyMap<string, number>;
   /** Each subtree's (and leaf's) path to the leaf indices under it. */
   readonly under: ReadonlyMap<string, readonly number[]>;
+  /** Every subtree's path, parents first: an empty one (a model with no morphs) holds no leaf but still rebuilds. */
+  readonly groups: readonly string[];
 };
 
 type CueNode = CueLeaf | CueState | CuePatch<CueState> | undefined;
 const isLeaf = (value: CueNode): value is CueLeaf => typeof value !== 'object' || Array.isArray(value);
 
 export function cueSchema(initial: CueState): CueSchema {
-  const paths: string[] = [], under = new Map<string, number[]>();
+  const paths: string[] = [], groups: string[] = [], under = new Map<string, number[]>();
   const walk = (node: CueState, prefix: string, owners: readonly string[]) => {
     for (const [key, value] of Object.entries(node)) {
       if (key.includes('.')) throw new Error(`cue state: the key "${key}" holds a dot, which paths split on`);
       const path = prefix ? `${prefix}.${key}` : key, chain = [...owners, path];
       if (!isLeaf(value)) {
+        groups.push(path);
+        under.set(path, under.get(path) ?? []);
         walk(value, path, chain);
         continue;
       }
@@ -56,7 +60,7 @@ export function cueSchema(initial: CueState): CueSchema {
     }
   };
   walk(initial, '', []);
-  return { paths, index: new Map(paths.map((path, n) => [path, n])), under };
+  return { paths, index: new Map(paths.map((path, n) => [path, n])), under, groups };
 }
 
 /** The leaf indices a path names: one leaf, or every leaf of a subtree. Throws on a path the state doesn't have. */
@@ -89,7 +93,7 @@ export function cueStateLeaves(schema: CueSchema, state: CueState): CueLeaf[] {
 export function cueStateFromLeaves(schema: CueSchema, leaves: readonly CueLeaf[]): CueState {
   type Building = { [key: string]: CueLeaf | Building };
   const root: Building = {};
-  schema.paths.forEach((path, n) => {
+  const place = (path: string, value: CueLeaf | Building) => {
     const keys = path.split('.');
     let node = root;
     for (const key of keys.slice(0, -1)) {
@@ -97,8 +101,10 @@ export function cueStateFromLeaves(schema: CueSchema, leaves: readonly CueLeaf[]
       if (isLeaf(next)) throw new Error(`cue state: ${path} runs through the leaf ${key}`);
       node = node[key] = next;
     }
-    node[keys.at(-1)!] = leaves[n];
-  });
+    node[keys.at(-1)!] = value;
+  };
+  for (const group of schema.groups) place(group, {});
+  schema.paths.forEach((path, n) => place(path, leaves[n]));
   return root;
 }
 

@@ -73,10 +73,11 @@ export type CueFrame<C extends AnyCueCharacter, L extends LookCatalog, Camera ex
   /** Where it stands, and the camera: both live at `t`, so a held look's camera never steps. */
   readonly position: CueVector;
   readonly camera: Camera;
-  readonly look: keyof L & string;
-  readonly palette: string;
   /** Which drawing of the current look this is, from 0 at its cut: a seed for boil. */
   readonly drawing: number;
   /** When this drawing was taken: `t` for a live look, the drawing's start for a held one. */
   readonly drawingTime: number;
-};
+} & CueLookShowing<L>;
+
+/** The look showing and its palette, paired, so a renderer reads the palette as its own look's. */
+export type CueLookShowing<L extends LookCatalog> = { [K in keyof L & string]: { readonly look: K; readonly palette: LookPaletteOf<L, K> } }[keyof L & string];

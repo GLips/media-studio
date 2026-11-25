@@ -12,7 +12,7 @@ export type CueOffset =
   | { readonly frames: number; readonly seconds?: never; readonly beats?: never }
   | { readonly beats: number; readonly seconds?: never; readonly frames?: never };
 
-/** A named moment: a cue, or `[bar, beat]` counted from 1 at a beat scene's origin. */
+/** A named moment: a cue, or `[bar, beat]` from 1, bars counted in the grid's meter from the scene's own first beat. */
 export type CueAnchor<Cue extends string> = Cue | readonly [bar: number, beat: number];
 
 /** When a cue lands: an anchor, or an offset from one, as `{ from: 'first', offset: { seconds: 0.5 } }`. */
@@ -25,9 +25,9 @@ export type CueClock<Cue extends string = string, AnyCue extends string = string
 export type CueNamesOfClock<C> = C extends ResolvedSceneClock<string, infer Cue, string, infer AnyCue> ? Cue | AnyCue : never;
 
 /** A scene's clock read for a score: in seconds, with its meter. */
-export type CueSeconds = SceneClockSeconds & { readonly id: string; readonly beatsPerBar: number };
+export type CueSeconds = SceneClockSeconds & { readonly id: string; readonly beatsPerBar: number; readonly sceneBeats: number };
 
-export const cueSecondsOf = (clock: CueClock): CueSeconds => ({ ...sceneSecondsOf(clock), id: clock.id, beatsPerBar: clock.beatsPerBar });
+export const cueSecondsOf = (clock: CueClock): CueSeconds => ({ ...sceneSecondsOf(clock), id: clock.id, beatsPerBar: clock.beatsPerBar, sceneBeats: clock.beats });
 
 function anchorSeconds(clock: CueSeconds, anchor: CueAnchor<string>): number {
   if (typeof anchor === 'string') return clock.cue(anchor);
@@ -40,7 +40,14 @@ function anchorSeconds(clock: CueSeconds, anchor: CueAnchor<string>): number {
 export function cueOffsetSeconds(clock: CueSeconds, from: number, offset: CueOffset): number {
   if (offset.seconds !== undefined) return offset.seconds;
   if (offset.frames !== undefined) return clock.frames(offset.frames);
-  return clock.beat(clock.beatAt(from) + offset.beats) - from;
+  return gridSeconds(clock, clock.beatAt(from) + offset.beats) - from;
+}
+
+/** Beat `n`'s time, at the grid's pace past either end of the scene: a blend in beats may run on past its cut. */
+function gridSeconds(clock: CueSeconds, n: number): number {
+  const last = clock.sceneBeats;
+  if (n < 0) return clock.beat(0) + clock.beats(n);
+  return n > last ? clock.beat(last) + clock.beats(n - last) : clock.beat(n);
 }
 
 /** Where `at` lands, in the scene's `s.t` seconds, 0 on its cut. */

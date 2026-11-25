@@ -100,6 +100,8 @@ test('bars and beats land on the grid, and a score that names a cue twice or a c
   // rounds it to: 38, at 1.267 s.
   assert.deepEqual([score.sample(1.99).character.arm.angle, score.sample(2).character.arm.angle], [0, 90]);
   assert.deepEqual([score.sample(1.26).character.face.smile, score.sample(38 / 30).character.face.smile], [0, 1]);
+  // An ease in beats may run on past the scene's cut, at the grid's pace.
+  assert.equal(compileCueScore(b, cast, [{ at: [2, 4], pose: 'up', by: { ease: { beats: 2 } } }]).sample(3.5 + 1).character.arm.angle, 90);
   // A render reads frame 158 as 158 / 30 less b's start, a rounding error before the cue: it still lands there.
   assert.equal(score.sample(158 / 30 - 4).character.face.smile, 1);
   assert.throws(() => compileCueScore(a, cast, [{ at: 'go', pose: 'up' }, { at: 'go', pose: 'down' }]), /rows 1 and 2 both set character.arm.angle/);

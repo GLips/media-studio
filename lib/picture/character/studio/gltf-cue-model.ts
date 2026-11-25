@@ -54,6 +54,9 @@ export async function loadGltfCueModel<const M extends GltfCueManifest>(name: st
   });
   const found: GltfFileContents = { clips: gltf.animations.map((clip) => ({ name: clip.name, seconds: clip.duration })), morphs };
   checkGltfCueManifest(name, manifest, found);
+  if (rootMotion !== 'keep' && !gltf.animations.some((clip) => clip.tracks.some((track) => track.name === `${rootMotion.inPlace}.position`))) {
+    throw new Error(`${name}: no clip moves a node ${rootMotion.inPlace}, so it can't be held in place (GLTFLoader may have renamed it)`);
+  }
   const clips = new Map(gltf.animations.map((clip) => [clip.name, rootMotion === 'keep' ? clip : inPlace(clip, rootMotion.inPlace)]));
   return { manifest, scene: gltf.scene, clips };
 }

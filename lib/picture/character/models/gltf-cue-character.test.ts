@@ -30,6 +30,11 @@ test('a crossfade between two clips keeps each clip on its own time, its weights
   assert.ok(Math.abs(fading.Wave.time - 1.8333) < 1e-9 && fading.Wave.weight > 0 && fading.Wave.weight < 1);
 });
 
+test('a model without morph targets still samples an empty morphs group, for the posing to read', () => {
+  const plain = gltfCueCharacter({ clips: { Idle: 1 }, morphs: {} }, { rest: 'Idle', poses: {}, moves: {}, expressions: {} });
+  assert.deepEqual(compileCueScore(clock, { ...cast, character: plain }, []).sample(1).character.morphs, {});
+});
+
 test('a file missing a declared clip or morph target fails to load, naming each', () => {
   assert.throws(
     () => checkGltfCueManifest('robot.glb', manifest, { clips: [{ name: 'Idle', seconds: 3.3333 }], morphs: [{ mesh: 'Head', targets: ['Angry'] }] }),

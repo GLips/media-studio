@@ -7,8 +7,8 @@ row's fields; `studio api defineCueCharacter` what a character declares.
 
 ## When
 
-`at` is a storyboard cue (`'first'`, a word cue, `'arrive.settle'`), `[bar, beat]` from 1 in a beat scene (the grid's
-`beatsPerBar` sets the bar), or `{ from, offset: { seconds | frames | beats } }`. There's no bare number: a score
+`at` is a storyboard cue (`'first'`, a word cue, `'arrive.settle'`), `[bar, beat]` from 1, counted from the beat scene's own
+first beat (the grid's `beatsPerBar` sets the bar), or `{ from, offset: { seconds | frames | beats } }`. There's no bare number: a score
 holds no times of its own, so a retimed storyboard moves the performance. Put a repeated rhythm in the score as
 offsets from one cue (`{ from: 'first', offset: { seconds: 0.5 * k } }`), and check its last hit lands on the cue
 the plan names for it.
@@ -24,5 +24,6 @@ the plan names for it.
   and the pose steps with it, while the camera stays smooth.
 - `by`: a cut unless given; `{ ease: { seconds } }` or `{ spring: { duration, bounce } }` (curves.md's springs).
 
-A character only does what it was built with: an imported model has its clips and morph targets, not the clapper's
+An imported model's poses and moves are clips: leave their `by` a cut, since the clip fades itself in and an eased
+clip would scrub its playhead. A character only does what it was built with: an imported model has its clips and morph targets, not the clapper's
 brows. Don't promise a control the model lacks.
