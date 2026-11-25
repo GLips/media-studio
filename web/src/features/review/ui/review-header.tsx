@@ -7,10 +7,12 @@ import { AgentPresence, formatStudioClock } from '#web/shared/ui/agent-presence.
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { IconButton } from '#web/shared/ui/icon-button.tsx';
+import { Readout } from '#web/shared/ui/readout.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { reviewReplacementHashOf } from '../controllers/review-queries.ts';
 import { useReviewOps } from '../controllers/use-review-ops.ts';
 import { ReviewRenderMenu } from './review-render-menu.tsx';
+import { useReviewStillSiblings } from './review-still-siblings.ts';
 import { useReviewScreen } from './review-screen-context.tsx';
 import { reviewVersionLabelOf, useReviewRenderVersions } from './use-review-render-versions.ts';
 
@@ -55,19 +57,25 @@ export function ReviewHeader({ onLoadReplacement }: { readonly onLoadReplacement
   const { project, artifact, pulse, draft, search } = useReviewScreen();
   const navigate = useNavigate();
   const ops = useReviewOps(project);
-  const { versions } = useReviewRenderVersions();
+  const { versions, shown } = useReviewRenderVersions();
   const { files, rendering } = pulse;
   const replacement = reviewReplacementHashOf(pulse, artifact, search.r);
+  // The grid shows the folder, so the crumb names it; the open still is named in the rail.
+  const stills = useReviewStillSiblings();
+  const folderShown = search.view === 'grid' && stills.length > 1;
+  const crumbPath = folderShown ? artifact.path.slice(0, artifact.path.lastIndexOf('/')) : artifact.path;
   return (
     <Group justify="space-between" wrap="nowrap" gap="gap" {...stylex.props(styles.header)}>
       <Group gap="tight" wrap="nowrap">
         <Menu position="bottom-start" withinPortal>
           <Menu.Target>
             <UnstyledButton {...stylex.props(styles.crumb)}>
-              <Text component="span" size="sm"><Text component="span" inherit {...stylex.props(styles.project)}>{project} / </Text>{artifact.path} ▾</Text>
+              <Text component="span" size="sm"><Text component="span" inherit {...stylex.props(styles.project)}>{project} / </Text>{crumbPath} ▾</Text>
             </UnstyledButton>
           </Menu.Target>
           <Menu.Dropdown>
+            {/* A render never kept has no version menu: the hash that names it sits here, over the files. */}
+            {!shown && artifact.kind !== 'still' && <Menu.Label>render <Readout>{artifact.render.hash.slice(0, 6)}</Readout></Menu.Label>}
             <Box {...stylex.props(styles.files)}>
               <FadeScroll>
                 {reviewFileFoldersOf(files).map(({ folder, paths }) => (

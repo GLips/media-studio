@@ -25,11 +25,11 @@ const styles = stylex.create({
 });
 
 /**
- * The full-height thread of its scope's subject: filter chips, the notes and their replies, the resolved folded at
- * the end, the unplaced group, and the composer at its foot. The list follows the playhead; `G N` puts the keys in it.
- * `head` leads the filter row: which thread this is, where a screen has several (a decision's candidates).
+ * The full-height thread of its scope's subject: its labelled header, the notes, the earlier renders' behind a toggle,
+ * and the composer at its foot. The list follows the playhead; `G N` puts the keys in it. `head` takes the header's
+ * `Notes` place where a screen has several threads (a decision's candidates); `lead` sits above it all (a still's name).
  */
-export function ReviewThreadPanel({ head }: { readonly head?: ReactNode }) {
+export function ReviewThreadPanel({ head, lead }: { readonly head?: ReactNode; readonly lead?: ReactNode }) {
   const scope = useReviewThreadScope();
   const { subject, threads, media, search, setSearch, draft } = scope;
   const threadRef = useRef<HTMLDivElement>(null);
@@ -64,14 +64,18 @@ export function ReviewThreadPanel({ head }: { readonly head?: ReactNode }) {
 
   return (
     <Stack ref={threadRef} gap={0} tabIndex={-1} aria-label="Thread" {...{ [REVIEW_THREAD_ATTRIBUTE]: subject.on }} {...stylex.props(styles.panel, stylex.defaultMarker())}>
+      {lead}
+      {/* A still's rail has room to spare: its prompt sits right under the still's facts, not a screen's height below. */}
+      {subject.on === 'still' && <ReviewThreadComposer docked="head" />}
       <ReviewThreadFilter head={head} counts={counts} filter={filter} onFilter={(next) => setSearch({ filter: next })} actions={actions} check={check} />
       {reviewThreadListEmpty(listing, actions) ? (
-        <Group gap="tight" wrap="nowrap" {...stylex.props(styles.empty, draft.isOpen && styles.hidden)}>
+        // A still's resting composer is its own prompt, key and all: the hint would say it twice.
+        <Group gap="tight" wrap="nowrap" {...stylex.props(styles.empty, (draft.isOpen || subject.on === 'still') && styles.hidden)}>
           <Text component="span" size="sm" inherit>New note</Text>
           <Readout>N</Readout>
         </Group>
       ) : <ReviewThreadList listing={listing} actions={actions} live={live} rowOf={rowOf} />}
-      <ReviewThreadComposer />
+      {subject.on === 'still' || <ReviewThreadComposer docked="foot" />}
     </Stack>
   );
 }

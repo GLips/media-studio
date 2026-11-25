@@ -38,10 +38,11 @@ export const reviewPlayheadLeft = (view: ReviewTimelineView) =>
 
 /**
  * The flag's words: `▼136` on a render with a snapshot, whose frames are what a note pins; `▼0:04.12` on one with
- * none, whose frames aren't known.
+ * none, whose frames aren't known. At the start, a bare `▼`: a time there would sit on the ruler's first tick as one
+ * more label, and the transport already reads 0:00.
  */
 export const reviewPlayheadFlagOf = (artifact: ReviewArtifact, frame: number, fps: number) =>
-  `▼${artifact.frameSize === null ? formatReviewClock(frame / fps) : frame}`;
+  frame === 0 ? '▼' : `▼${artifact.frameSize === null ? formatReviewClock(frame / fps) : frame}`;
 
 /** The flag's span across the ruler: 4px left of its frame's middle, its words plus padding. */
 export function reviewPlayheadFlagSpanOf(view: ReviewTimelineView, artifact: ReviewArtifact, frame: number, fps: number) {
@@ -85,7 +86,8 @@ export function ReviewLanePlayhead({ view, sketch }: ReviewLanePlayheadProps) {
       {loop && <Box {...stylex.props(styles.wash, spanStyle(view, loop.from, loop.to + 1))} />}
       {sketch && <Box {...stylex.props(styles.wash, styles.sketch, spanStyle(view, sketch.from, sketch.to + 1))} />}
       <Box {...stylex.props(styles.line, styles.at(left))} />
-      <Text component="span" ref={number} fz="xs" {...stylex.props(styles.flag, styles.at(left))}>{reviewPlayheadFlagOf(artifact, frame, timing.fps)}</Text>
+      {/* Held inside the lane at the start, where its 4px lead would clip the ▼. */}
+      <Text component="span" ref={number} fz="xs" {...stylex.props(styles.flag, styles.at(`max(4px, ${left})`))}>{reviewPlayheadFlagOf(artifact, frame, timing.fps)}</Text>
     </Box>
   );
 }

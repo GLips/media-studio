@@ -1,25 +1,30 @@
 import { useHotkeys } from '@tanstack/react-hotkeys';
 import type { RefObject } from 'react';
-import { PROJECT_ROW_ATTRIBUTE } from './project-row.tsx';
+import { studioSpatialStepOf, type StudioStepDirection } from '#web/shared/studio-spatial-step.ts';
+import { PROJECT_ROW_ATTRIBUTE } from './project-target-link.tsx';
 
-/** Focuses the row `by` steps from the focused one, or the first row when none is focused; the list doesn't wrap. */
-function focusProjectRow(list: HTMLElement | null, by: 1 | -1) {
+/** Focuses the row or tile an arrow leads to from the focused one (studioSpatialStepOf), or the first when none is. */
+function focusProjectItem(list: HTMLElement | null, direction: StudioStepDirection) {
   if (!list) return;
-  const rows = [...list.querySelectorAll<HTMLElement>(`[${PROJECT_ROW_ATTRIBUTE}]`)];
-  const at = rows.findIndex((row) => row === document.activeElement);
-  const next = at === -1 ? rows[0] : rows[Math.min(Math.max(at + by, 0), rows.length - 1)];
-  next?.focus();
-  next?.scrollIntoView({ block: 'nearest' });
+  const items = [...list.querySelectorAll<HTMLElement>(`[${PROJECT_ROW_ATTRIBUTE}]`)];
+  const at = items.findIndex((item) => item === document.activeElement);
+  const next = studioSpatialStepOf(items.map((item) => item.getBoundingClientRect()), at === -1 ? null : at, direction);
+  if (next === null) return;
+  items[next].focus();
+  items[next].scrollIntoView({ block: 'nearest' });
 }
 
 /**
- * The dashboard's and a project page's keys: the arrows walk the rows, and `Enter` opens the focused one.
+ * The dashboard's and a project page's keys: the arrows move through the rows and a grid's tiles as they sit on
+ * screen, and `Enter` opens the focused one.
  * Document-wide: these screens have no other list to hold the arrows.
  */
 export function useProjectRowHotkeys(listRef: RefObject<HTMLElement | null>) {
   useHotkeys([
-    { hotkey: 'ArrowDown', callback: () => focusProjectRow(listRef.current, 1), options: { meta: { group: 'dashboard', name: 'Next row' } } },
-    { hotkey: 'ArrowUp', callback: () => focusProjectRow(listRef.current, -1), options: { meta: { group: 'dashboard', name: 'Previous row' } } },
+    { hotkey: 'ArrowDown', callback: () => focusProjectItem(listRef.current, 'down'), options: { meta: { group: 'dashboard', name: 'Move down' } } },
+    { hotkey: 'ArrowUp', callback: () => focusProjectItem(listRef.current, 'up'), options: { meta: { group: 'dashboard', name: 'Move up' } } },
+    { hotkey: 'ArrowLeft', callback: () => focusProjectItem(listRef.current, 'left'), options: { meta: { group: 'dashboard', name: 'Move left' } } },
+    { hotkey: 'ArrowRight', callback: () => focusProjectItem(listRef.current, 'right'), options: { meta: { group: 'dashboard', name: 'Move right' } } },
     // Listed for the cheatsheet only: a row is a link, and the browser's own `Enter` opens it (and presses any button).
     { hotkey: 'Enter', callback: () => {}, options: { preventDefault: false, stopPropagation: false, meta: { group: 'dashboard', name: 'Open row' } } },
   ]);

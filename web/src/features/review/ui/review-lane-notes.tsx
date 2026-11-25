@@ -1,9 +1,10 @@
 import { Box, Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useEffect, useRef, useState } from 'react';
-import { reviewThreadTone } from '#lib/output/review/models/review-threads.ts';
+import type { PlacedReviewThread } from '#lib/output/review/models/review-placement.ts';
+import { REVIEW_THREAD_TONES, reviewThreadTone } from '#lib/output/review/models/review-threads.ts';
 import { REVIEW_READOUT_CHAR_PX, reviewTimelineFramePx, reviewTimelineSpan, type ReviewTimelineView } from '#lib/output/review/models/review-timeline-geometry.ts';
-import { colors, fonts, radius, typography } from '#web/shared/ui/theme.stylex.ts';
+import { colors, fonts, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
 import { useReviewScreen } from './review-screen-context.tsx';
 import { ReviewThreadKindIcon } from './review-thread-kind.tsx';
 import type { ReviewTimelineNote } from './use-review-dock-lanes.ts';
@@ -51,12 +52,24 @@ const styles = stylex.create({
     borderRadius: radius.pill, borderWidth: '2px', borderStyle: 'dashed', borderColor: colors.cobalt, backgroundColor: colors.flash,
   },
   span: (left: string, width: string) => ({ left, width }),
+  // The whole project's notes, which have no frame: a chip on the lane's start, over the first moments' marks.
+  project: {
+    position: 'absolute', zIndex: 1, left: 0, top: '1px', bottom: '1px', display: 'flex', alignItems: 'center', gap: spacing.tight,
+    paddingInline: spacing.tight, borderRadius: radius.pill, whiteSpace: 'nowrap', cursor: 'pointer',
+    color: { default: colors.dim, ':hover': colors.cream }, backgroundColor: colors.raised,
+    outlineColor: colors.cream, outlineStyle: 'solid', outlineOffset: '-1px', outlineWidth: { default: 0, ':focus-visible': '1px' },
+  },
+  projectSelected: { color: colors.cream, outlineWidth: '1px' },
+  openText: { color: colors.accent },
+  addressedText: { color: colors.pass },
+  asksText: { color: colors.caution },
+  settledText: { color: colors.dim },
 });
 
 /** A note's state, most pressing first: open on the agent, asked or addressed on you, or settled (resolved, `keep`). */
 const REVIEW_NOTE_STATES = ['open', 'asks', 'addressed', 'settled'] as const;
 
-function reviewNoteStateOf(note: ReviewTimelineNote): (typeof REVIEW_NOTE_STATES)[number] {
+function reviewNoteStateOf(note: PlacedReviewThread): (typeof REVIEW_NOTE_STATES)[number] {
   const tone = reviewThreadTone(note);
   return tone === 'resolved' || tone === 'keep' ? 'settled' : tone;
 }
@@ -113,10 +126,16 @@ function noteStateStyle(state: (typeof REVIEW_NOTE_STATES)[number]) {
   return state === 'addressed' ? styles.addressed : styles.settled;
 }
 
-const reviewNoteSummary = (note: ReviewTimelineNote) => `#${note.id} ${(note.entries[0]?.text ?? '').split('\n')[0]}`;
+function noteStateTextStyle(state: (typeof REVIEW_NOTE_STATES)[number]) {
+  if (state === 'open') return styles.openText;
+  if (state === 'asks') return styles.asksText;
+  return state === 'addressed' ? styles.addressedText : styles.settledText;
+}
+
+const reviewNoteSummary = (note: Pick<ReviewTimelineNote, 'id' | 'entries'>) => `#${note.id} ${(note.entries[0]?.text ?? '').split('\n')[0]}`;
 
 /** A note's line in the mark's tooltip: its kind's icon, then its id and first line. */
-function ReviewNoteSummaryLine({ note }: { readonly note: ReviewTimelineNote }) {
+function ReviewNoteSummaryLine({ note }: { readonly note: Pick<ReviewTimelineNote, 'id' | 'entries' | 'kind'> }) {
   return (
     <Group gap="tight" wrap="nowrap" align="center">
       <ReviewThreadKindIcon kind={note.kind} />
@@ -143,11 +162,34 @@ function useReviewNotesPulsing(notes: readonly ReviewTimelineNote[]): ReadonlySe
 }
 
 /**
+ * `● 1 project note`: the notes on the whole project, at the timeline's start in the most pressing one's colour, so the
+ * media says where they are. A click selects the next of them; they have no moment to seek to.
+ */
+function ReviewProjectNotesChip({ notes }: { readonly notes: readonly PlacedReviewThread[] }) {
+  const { search, setSearch } = useReviewScreen();
+  const state = REVIEW_NOTE_STATES.find((s) => notes.some((n) => reviewNoteStateOf(n) === s)) ?? 'settled';
+  const at = notes.findIndex((n) => n.id === search.note);
+  return (
+    <Tooltip label={<Box>{notes.map((n) => <ReviewNoteSummaryLine key={n.id} note={n} />)}</Box>} openDelay={300} withinPortal multiline maw={320} position="right">
+      <UnstyledButton onClick={() => setSearch({ note: notes[(at + 1) % notes.length].id })} fz="xs"
+        {...stylex.props(styles.project, at >= 0 && styles.projectSelected)}>
+        <Text component="span" inherit {...stylex.props(noteStateTextStyle(state))}>{REVIEW_THREAD_TONES[state === 'settled' ? 'resolved' : state].glyph}</Text>
+        <Text component="span" inherit>{notes.length === 1 ? '1 project note' : `${notes.length} project notes`}</Text>
+      </UnstyledButton>
+    </Tooltip>
+  );
+}
+
+/**
  * The notes on this render, the only colour in the dock: a dot for a moment, a bar for a range, in its state's colour.
  * Marks that would touch are one, counted, in the most pressing state's colour; a click selects the next of them
  * and seeks to it. The draft's pin or range is a dashed cobalt outline.
  */
-export function ReviewLaneNotes({ view, notes }: { readonly view: ReviewTimelineView; readonly notes: readonly ReviewTimelineNote[] }) {
+export function ReviewLaneNotes({ view, notes, projectNotes }: {
+  readonly view: ReviewTimelineView;
+  readonly notes: readonly ReviewTimelineNote[];
+  readonly projectNotes: readonly PlacedReviewThread[];
+}) {
   const { draft, search, setSearch, playback } = useReviewScreen();
   const pulsing = useReviewNotesPulsing(notes);
   const pinned = draft.anchor.on === 'video' && draft.anchor.frame !== undefined
@@ -179,6 +221,7 @@ export function ReviewLaneNotes({ view, notes }: { readonly view: ReviewTimeline
           </Tooltip>
         );
       })}
+      {projectNotes.length > 0 && <ReviewProjectNotesChip notes={projectNotes} />}
       {pinned && <Box {...stylex.props(styles.draft, styles.span(`${pinned.w > REVIEW_DRAFT_PX ? pinned.x : pinned.x + pinned.w / 2 - REVIEW_DRAFT_PX / 2}px`, `${Math.max(pinned.w, REVIEW_DRAFT_PX)}px`))} />}
     </Box>
   );

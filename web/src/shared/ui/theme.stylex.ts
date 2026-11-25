@@ -2,8 +2,8 @@ import * as stylex from '@stylexjs/stylex';
 
 /**
  * The token source: the only module allowed a raw visual value. The look: near-black ground, cream type, colour only
- * for a note's state. Copy on a working screen: no all-caps headings, no zero counts or counts of one, states as
- * glyphs with words in tooltips, icon tooltips from `useHotkeyLabel`, never typed. StyleX requires `.stylex.ts` to
+ * for a note's state. Copy: no all-caps headings, no zero counts, states in plain words (`1 open note`), icon
+ * tooltips from `useHotkeyLabel`, never typed. StyleX requires `.stylex.ts` to
  * export only `defineVars`.
  */
 
@@ -18,6 +18,8 @@ export const colors = stylex.defineVars({
   line: '#2a2a31',
   /** Type, the playhead, the focus ring and the current row's rule. */
   cream: '#f3f0e7',
+  /** Supporting text a step under cream, above dim: a row's question, a take's opening words. Cream at 70%. */
+  textMuted: 'rgba(243,240,231,0.7)',
   /** Secondary type, a resolved note, an absent agent. */
   dim: '#8d8a83',
   /** An open or reopened note, and the one primary action on a screen. */
@@ -76,8 +78,8 @@ export const typography = stylex.defineVars({
   heading: '30px',
   /** Text read for itself, large: a decision's text candidate. */
   reading: '19px',
-  /** Project names on the dashboard, and nowhere else. */
-  display: '16px',
+  /** A sidebar page's title (Awaiting you, Library), on the studio wordmark's line: StudioPageTitle. */
+  pageTitle: '22px',
   /** One line height for every size, so rows line up across panels. */
   lineHeight: '16px',
   /** The large sizes read as running text, so they open up past the one shared height. */
@@ -102,6 +104,10 @@ export const spacing = stylex.defineVars({
   sideWidth: '360px',
   /** The decisions' queue down the left of their screen. */
   queueWidth: '240px',
+  /** The studio's sidebar beside the index and the library: what waits, the library, every project. */
+  sidebarWidth: '240px',
+  /** A sidebar page's title row, and the sidebar's wordmark row level with it. */
+  titleRow: '56px',
 });
 
 export const radius = stylex.defineVars({

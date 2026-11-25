@@ -18,22 +18,30 @@ import { createLibraryItemPlayback, LIBRARY_CLOCK_FPS } from './library-item-pla
 import { LibraryRecordingMedia } from './library-recording-media.tsx';
 import { LibraryTimeline } from './library-timeline.tsx';
 import { LibraryTranscript } from './library-transcript.tsx';
+import { useLibraryFlagUndo } from './use-library-flag-undo.ts';
 import { useLibraryItemHotkeys } from './use-library-item-hotkeys.ts';
 
 const styles = stylex.create({
   body: {
     display: 'grid', height: '100%', minHeight: 0,
-    gridTemplateColumns: `minmax(0, 1fr) minmax(320px, 34%)`, gridTemplateRows: 'minmax(0, 1fr) auto minmax(120px, 30%)',
-    gridTemplateAreas: '"picture transcript" "timeline transcript" "flags transcript"',
+    // The picture and its transport own the left; the rail on the right holds the flags over the transcript.
+    gridTemplateColumns: 'minmax(0, 1fr) 400px', gridTemplateRows: 'minmax(0, 1fr)', gridTemplateAreas: '"media rail"',
   },
-  picture: { gridArea: 'picture', minHeight: 0, position: 'relative' },
+  // The picture and its transport as one block, centred down the column: the picture's row is as tall as the picture
+  // at the column's width, shrinking (minmax from 0) when that and the transport would overflow.
+  media: { gridArea: 'media', minHeight: 0, display: 'grid', gridTemplateRows: 'minmax(0, auto) auto', alignContent: 'center' },
+  picture: { minHeight: 0, position: 'relative' },
   offline: {
     position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: spacing.inset, color: colors.dim,
     backgroundColor: colors.screen, textAlign: 'center',
   },
-  timeline: { gridArea: 'timeline', minWidth: 0 },
-  flags: { gridArea: 'flags', minHeight: 0, borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line },
-  transcript: { gridArea: 'transcript', minHeight: 0, borderLeftWidth: '1px', borderLeftStyle: 'solid', borderLeftColor: colors.line },
+  timeline: { minWidth: 0 },
+  // The flags as tall as they are, to under half the rail, past which they scroll; the transcript has the rest.
+  rail: {
+    gridArea: 'rail', minHeight: 0, display: 'grid', gridTemplateRows: 'fit-content(45%) minmax(0, 1fr)',
+    borderLeftWidth: '1px', borderLeftStyle: 'solid', borderLeftColor: colors.line,
+  },
+  transcript: { minHeight: 0, borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line },
 });
 
 /** A flag played over and over while it's on show: an instant flag gets a moment around it to hear. */
@@ -66,8 +74,19 @@ function LibraryItemScreenBody({ view }: { readonly view: LibraryItemView }) {
     playback.setLoop(loopStart === undefined || loopEnd === undefined ? null : { start: loopStart, end: loopEnd });
   }, [playback, loopStart, loopEnd]);
 
+  const undo = useLibraryFlagUndo((op) => {
+    ops.reset();
+    ops.apply(op);
+  });
+
   const screen: LibraryItemScreenValue = {
-    view, playback, words, lines, flags, queue, filter, setFilter, focused, marked, setMarked, composing, setComposing,
+    ...undo,
+    view, playback, words, lines, flags, queue, filter, setFilter, focused, marked, setMarked, composing,
+    // A composer opened or left starts with no refusal from before on show.
+    setComposing: (next) => {
+      ops.reset();
+      setComposing(next);
+    },
     focusFlag: (flag) => {
       setSearch({ flag: flag?.id });
       if (!flag) return;
@@ -75,11 +94,12 @@ function LibraryItemScreenBody({ view }: { readonly view: LibraryItemView }) {
       playback.seek(flag.start);
       playback.play();
     },
-    changeFlags: (op) => {
+    changeFlags: (op, onSaved) => {
       ops.reset();
-      ops.apply(op);
+      ops.apply(op, onSaved);
     },
     refusal: ops.error?.message,
+    saving: ops.saving,
   };
   useLibraryItemHotkeys(screen);
   const { reach, heard, attachRoot, attachLeader } = playback;
@@ -87,18 +107,22 @@ function LibraryItemScreenBody({ view }: { readonly view: LibraryItemView }) {
     <LibraryItemScreenProvider value={screen}>
       <StudioShell start={<LibraryItemHeader />}>
         <Box ref={attachRoot} {...stylex.props(styles.body)}>
-          <Box {...stylex.props(styles.picture)}>
-            <LibraryRecordingMedia item={item} clock={playback} placement={{ offsetSeconds: 0, fps: LIBRARY_CLOCK_FPS }}
-              heard={{ track: heard, attach: attachLeader }} />
-            {!view.media.online && (
-              <Text size="sm" {...stylex.props(styles.offline)}>
-                Media offline: {view.media.path} isn&apos;t there, so nothing plays. The transcript, search and flags still work.
-              </Text>
-            )}
+          <Box {...stylex.props(styles.media)}>
+            <Box {...stylex.props(styles.picture)}>
+              <LibraryRecordingMedia item={item} clock={playback} placement={{ offsetSeconds: 0, fps: LIBRARY_CLOCK_FPS }}
+                heard={{ track: heard, attach: attachLeader }} letterbox={false} />
+              {!view.media.online && (
+                <Text size="sm" {...stylex.props(styles.offline)}>
+                  Media offline: {view.media.path} isn&apos;t there, so nothing plays. The transcript, search and flags still work.
+                </Text>
+              )}
+            </Box>
+            <Box {...stylex.props(styles.timeline)}><LibraryTimeline reach={reach} /></Box>
           </Box>
-          <Box {...stylex.props(styles.timeline)}><LibraryTimeline reach={reach} /></Box>
-          <Box {...stylex.props(styles.flags)}><LibraryFlagPanel /></Box>
-          <Box {...stylex.props(styles.transcript)}><LibraryTranscript /></Box>
+          <Box {...stylex.props(styles.rail)}>
+            <LibraryFlagPanel />
+            <Box {...stylex.props(styles.transcript)}><LibraryTranscript /></Box>
+          </Box>
         </Box>
       </StudioShell>
     </LibraryItemScreenProvider>

@@ -1,6 +1,7 @@
 import { formatReviewThreadsMarkdown } from '#lib/output/review/models/review-markdown.ts';
 import { useReviewOps } from '../controllers/use-review-ops.ts';
 import { useReviewScreen } from './review-screen-context.tsx';
+import { ReviewStillRailHead } from './review-still-rail-head.tsx';
 import { ReviewThreadPanel } from './review-thread-panel.tsx';
 import { ReviewThreadScopeProvider, type ReviewThreadScope } from './review-thread-scope.tsx';
 import { useReviewRenderVersions } from './use-review-render-versions.ts';
@@ -29,7 +30,7 @@ export function ReviewScreenThread({ on }: { readonly on: 'video' | 'still' }) {
   };
   return (
     <ReviewThreadScopeProvider value={scope}>
-      <ReviewThreadPanel />
+      <ReviewThreadPanel lead={on === 'still' ? <ReviewStillRailHead /> : undefined} />
     </ReviewThreadScopeProvider>
   );
 }

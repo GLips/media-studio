@@ -1,7 +1,7 @@
 // library-item-playback.ts: a library item played on a linked media clock, in item time. The leader is the track heard
 // (its speech track, else the first with sound, else the first picture); every picture is a follower, lined up by its
 // sync corrections. Each tick writes item seconds to `--library-time` on the screen's root, which the playhead, the
-// flags and the lit word read; React hears only settled changes (a play, a pause, a seek, a loop).
+// flags and the lit word read; React hears only settled changes (a play, a pause, a seek, a loop, a rate or the sound).
 //
 // Negative space: item time outside the heard track's span can't be reached. A recording's mic runs the whole take,
 // so nothing worth watching lies there.
@@ -16,6 +16,13 @@ export const LIBRARY_TIME_VAR = '--library-time';
 /** The clock's frames, in item time: finer than any track's, so a follower's own frame is always found. */
 export const LIBRARY_CLOCK_FPS = 120;
 
+/** The speeds the transport's rate button steps through, back to real time. */
+export const LIBRARY_PLAYBACK_RATES = [1, 1.5, 2, 0.5] as const;
+export type LibraryPlaybackRate = (typeof LIBRARY_PLAYBACK_RATES)[number];
+
+/** How far Alt+↑ and Alt+↓ move the volume, as the render review's keys do. */
+export const LIBRARY_VOLUME_STEP = 0.1;
+
 /** A range of the item played over and over: a flag being checked, or a range being marked. */
 export type LibraryLoop = { start: number; end: number };
 
@@ -24,6 +31,10 @@ export type LibraryPlaybackState = {
   time: number;
   playing: boolean;
   loop: LibraryLoop | null;
+  rate: LibraryPlaybackRate;
+  muted: boolean;
+  /** 0 to 1. */
+  volume: number;
 };
 
 export type LibraryItemPlayback = {
@@ -38,6 +49,10 @@ export type LibraryItemPlayback = {
   toggle: () => void;
   seek: (seconds: number) => void;
   setLoop: (loop: LibraryLoop | null) => void;
+  /** The next of LIBRARY_PLAYBACK_RATES; the pictures follow the heard track's rate. */
+  cycleRate: () => void;
+  setMuted: (muted: boolean) => void;
+  setVolume: (volume: number) => void;
   subscribe: (listener: () => void) => () => void;
   getState: () => LibraryPlaybackState;
   timeNow: () => number;
@@ -60,7 +75,7 @@ export function createLibraryItemPlayback(item: LibraryItem, startSeconds: numbe
   const clamp = (seconds: number) => Math.max(reach.start, Math.min(reach.end, seconds));
   let media: HTMLMediaElement | null = null;
   let root: HTMLElement | null = null;
-  let state: LibraryPlaybackState = { time: clamp(startSeconds), playing: false, loop: null };
+  let state: LibraryPlaybackState = { time: clamp(startSeconds), playing: false, loop: null, rate: 1, muted: false, volume: 1 };
   const listeners = new Set<() => void>();
 
   const publish = (patch: Partial<LibraryPlaybackState>) => {
@@ -112,6 +127,11 @@ export function createLibraryItemPlayback(item: LibraryItem, startSeconds: numbe
       media = element;
       clock.attachLeader(element);
       if (!element) return undefined;
+      // The default too: a load resets the rate to it.
+      element.defaultPlaybackRate = state.rate;
+      element.playbackRate = state.rate;
+      element.muted = state.muted;
+      element.volume = state.volume;
       const onMetadata = () => seek(state.time);
       // Played to its end, or stalled: settles as a pause does.
       const onPause = () => state.playing && halt();
@@ -136,6 +156,22 @@ export function createLibraryItemPlayback(item: LibraryItem, startSeconds: numbe
     seek,
     setLoop(loop) {
       publish({ loop });
+    },
+    cycleRate() {
+      const rate = LIBRARY_PLAYBACK_RATES[(LIBRARY_PLAYBACK_RATES.indexOf(state.rate) + 1) % LIBRARY_PLAYBACK_RATES.length];
+      if (media) media.defaultPlaybackRate = media.playbackRate = rate;
+      publish({ rate });
+    },
+    setMuted(muted) {
+      if (media) media.muted = muted;
+      publish({ muted });
+    },
+    setVolume(volume) {
+      const clamped = Math.max(0, Math.min(1, volume));
+      if (media) media.volume = clamped;
+      // Turning it up is wanting to hear it.
+      publish({ volume: clamped, ...(clamped > state.volume && { muted: false }) });
+      if (media) media.muted = state.muted;
     },
     subscribe(listener) {
       listeners.add(listener);

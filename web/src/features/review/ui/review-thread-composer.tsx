@@ -1,5 +1,6 @@
-import { Box, Group, Text, UnstyledButton } from '@mantine/core';
+import { Box, Button, Group, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
+import { useHotkeys } from '@tanstack/react-hotkeys';
 import { CornerDownLeft, X } from 'lucide-react';
 import { useRef } from 'react';
 import { reviewAnchorOnLaidSlice, reviewCueNameOf, reviewNoteImageFrameOf, reviewVideoAnchorAt } from '#lib/output/review/models/review-placement.ts';
@@ -10,7 +11,8 @@ import { IconButton } from '#web/shared/ui/icon-button.tsx';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { Textarea } from '#web/shared/ui/textarea.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
-import { useReviewThreadScope, type ReviewThreadScope } from './review-thread-scope.tsx';
+import { useReviewPlaybackState } from './review-playback-store.ts';
+import { useReviewThreadScope, type ReviewThreadMedia, type ReviewThreadScope } from './review-thread-scope.tsx';
 import type { ReviewDraft } from './use-review-draft.ts';
 import { useReviewComposerHotkeys } from './use-review-composer-hotkeys.ts';
 import { REVIEW_THREAD_KINDS, ReviewThreadKindIcon } from './review-thread-kind.tsx';
@@ -18,16 +20,31 @@ import { composeShownReviewFrame } from './review-mark-paint.ts';
 import { shownReviewSlicesOf } from './review-slice-layer.tsx';
 
 const styles = stylex.create({
-  composer: {
-    flexShrink: 0, padding: spacing.gap, backgroundColor: colors.panel,
-    borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line,
+  composer: { flexShrink: 0, padding: spacing.gap, backgroundColor: colors.panel },
+  foot: { borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: colors.line },
+  head: { borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: colors.line },
+  on: { marginBottom: spacing.tight, paddingInline: spacing.gap, color: colors.dim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  // On the field's first line, beside the words, as Frame.io sets a comment's timecode.
+  pins: { flexShrink: 0, minHeight: '24px' },
+  text: { flex: 1, minWidth: 0 },
+  // What the note will pin to, as a chip: dim while it follows the playhead, cobalt once pinned, as the draft is.
+  chip: {
+    flexShrink: 0, paddingInline: spacing.tight, borderRadius: radius.control,
+    borderWidth: '1px', borderStyle: 'solid', borderColor: colors.line,
   },
-  on: { marginTop: spacing.tight, paddingInline: spacing.gap, color: colors.dim, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  chipPinned: { borderColor: colors.cobalt },
   field: {
-    marginTop: spacing.tight, paddingInline: spacing.gap, paddingBlock: spacing.tight,
+    display: 'flex', alignItems: 'flex-start', gap: spacing.gap, paddingInline: spacing.gap, paddingBlock: spacing.tight,
     borderRadius: radius.control, borderWidth: '1px', borderStyle: 'solid', backgroundColor: colors.ground,
     borderColor: { default: colors.line, ':focus-within': colors.cream },
   },
+  // At rest on a still, the composer is this one line, looking like the field it opens into.
+  prompt: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingInline: spacing.gap, paddingBlock: spacing.tight,
+    borderRadius: radius.control, borderWidth: '1px', borderStyle: 'solid', backgroundColor: colors.ground,
+    borderColor: { default: colors.line, ':hover': colors.dim }, color: colors.dim,
+  },
+  actions: { marginTop: spacing.tight },
   kinds: { borderRadius: radius.control, borderWidth: '1px', borderStyle: 'solid', borderColor: colors.line, padding: '1px' },
   kind: {
     display: 'inline-flex', alignItems: 'center', gap: spacing.tight, paddingInline: spacing.tight, height: spacing.rowDense,
@@ -79,11 +96,11 @@ function anchorOfDraft({ subject, media, draft, timeNow }: ReviewThreadScope): N
 export const REVIEW_COMPOSER_ATTRIBUTE = 'data-review-composer';
 
 /**
- * The draft's field, docked at the thread's foot so the list never jumps. A click picks the kind and `Tab` cycles it,
- * either one the next note's too; `Enter` (or `Mod+Enter`) saves with the frame as seen, `Shift+Enter` breaks the
- * line, `Escape` leaves the draft standing (its pin dims on the stage) and discards only an empty one.
+ * The draft's field, at the thread's foot so the list never jumps (a still's, under its facts). A click picks the
+ * kind and `Tab` cycles it, either one the next note's too; `Enter` saves with the frame as seen, `Shift+Enter`
+ * breaks the line, `Escape` leaves the draft standing (its pin dims on the stage) and discards only an empty one.
  */
-export function ReviewThreadComposer() {
+export function ReviewThreadComposer({ docked }: { readonly docked: 'head' | 'foot' }) {
   const scope = useReviewThreadScope();
   const { media, draft, ops } = scope;
   const composerRef = useRef<HTMLDivElement>(null);
@@ -129,37 +146,39 @@ export function ReviewThreadComposer() {
     save: () => void save(), cycleKind: draft.cycleKind, leave,
   });
 
+  // A still's composer rests as a one-line prompt until `N` or a click opens a draft on the still.
+  const collapsed = scope.subject.on === 'still' && !draft.isOpen;
+  const openOnStill = () => draft.setAnchor({ on: 'still' });
+  useHotkeys(collapsed ? [{ hotkey: 'N', callback: openOnStill, options: { meta: { group: 'still', name: 'New note' } } }] : []);
+  const placeholder = REVIEW_COMPOSER_PROMPTS[scope.subject.on];
+  // What the note will pin to leads the field, before a word is typed (the moment, a point, a cue, strokes).
+  const pins = (media && scope.subject.on === 'video') || pinned?.point || pinned?.cue || draft.marks.length > 0;
+
+  if (collapsed) {
+    return (
+      <Box ref={composerRef} {...{ [REVIEW_COMPOSER_ATTRIBUTE]: true }} {...stylex.props(styles.composer, styles[docked])}>
+        <UnstyledButton onClick={openOnStill} {...stylex.props(styles.prompt)}>
+          <Text component="span" size="md" inherit>{placeholder}</Text>
+          <Readout>N</Readout>
+        </UnstyledButton>
+      </Box>
+    );
+  }
   return (
-    <Box ref={composerRef} {...{ [REVIEW_COMPOSER_ATTRIBUTE]: true }} {...stylex.props(styles.composer)}>
-      <Group gap="tight" wrap="nowrap" justify="space-between">
-        <Group gap="tight" wrap="nowrap">
-          <Group gap={0} wrap="nowrap" role="radiogroup" aria-label="Kind" {...stylex.props(styles.kinds)}>
-            {REVIEW_THREAD_KINDS.map((kind) => (
-              <HotkeyTooltip key={kind} name="Kind" hotkey="Kind">
-                <UnstyledButton role="radio" aria-checked={draft.kind === kind} onClick={() => draft.setKind(kind)}
-                  {...stylex.props(styles.kind, draft.kind === kind && styles.kindPicked)}>
-                  <ReviewThreadKindIcon kind={kind} />
-                  <Text component="span" size="sm" inherit>{kind}</Text>
-                </UnstyledButton>
-              </HotkeyTooltip>
-            ))}
-          </Group>
-          {media && pinned?.frame !== undefined && (
-            <Readout>{formatReviewClock(pinned.frame / media.timing.fps)}{pinned.end !== undefined && `–${formatReviewClock(pinned.end / media.timing.fps)}`}</Readout>
-          )}
-          {pinned?.point && <Box aria-label="Pinned on the frame" {...stylex.props(styles.pinDot)} />}
-          {pinned?.cue && <Text component="span" size="xs" {...stylex.props(styles.pin)}>♪ {reviewCueNameOf(pinned.cue)}</Text>}
-          {draft.marks.length > 0 && <Readout>✎{draft.marks.length > 1 && draft.marks.length}</Readout>}
-        </Group>
-        <Group gap="hairline" wrap="nowrap">
-          {draft.isOpen && <IconButton name="Discard note" onClick={draft.discard}><X size={14} /></IconButton>}
-          <IconButton name="Save note" onClick={() => void save()} disabled={!draft.text.trim()}><CornerDownLeft size={14} /></IconButton>
-        </Group>
-      </Group>
-      {onLabel !== undefined && <Text size="xs" {...stylex.props(styles.on)}>{onLabel}</Text>}
+    <Box ref={composerRef} {...{ [REVIEW_COMPOSER_ATTRIBUTE]: true }} {...stylex.props(styles.composer, styles[docked])}>
+      {onLabel !== undefined && <Text size="sm" {...stylex.props(styles.on)}>{onLabel}</Text>}
       <Box {...stylex.props(styles.field)}>
+        {pins && (
+          <Group gap="tight" wrap="nowrap" {...stylex.props(styles.pins)}>
+            {media && scope.subject.on === 'video' && <ReviewComposerMoment media={media} pinned={pinned} />}
+            {pinned?.point && <Box aria-label="Pinned on the frame" {...stylex.props(styles.pinDot)} />}
+            {pinned?.cue && <Text component="span" size="xs" {...stylex.props(styles.pin)}>♪ {reviewCueNameOf(pinned.cue)}</Text>}
+            {draft.marks.length > 0 && <Readout>✎{draft.marks.length > 1 && draft.marks.length}</Readout>}
+          </Group>
+        )}
         <Textarea
-          placeholder={onLabel === undefined ? undefined : 'Write a note…'}
+          // A plan note with nothing to be on can't be saved: no prompt invites one.
+          placeholder={scope.subject.on === 'plan' && onLabel === undefined ? undefined : placeholder}
           ref={fieldRef}
           aria-label="Note"
           autosize
@@ -170,8 +189,54 @@ export function ReviewThreadComposer() {
           value={draft.text}
           onChange={(event) => draft.setText(event.currentTarget.value)}
           onEnter={() => void save()}
+          {...stylex.props(styles.text)}
         />
       </Box>
+      <Group gap="tight" wrap="nowrap" justify="space-between" {...stylex.props(styles.actions)}>
+        <Group gap={0} wrap="nowrap" role="radiogroup" aria-label="Kind" {...stylex.props(styles.kinds)}>
+          {REVIEW_THREAD_KINDS.map((kind) => (
+            <HotkeyTooltip key={kind} name="Kind" hotkey="Kind">
+              <UnstyledButton role="radio" aria-checked={draft.kind === kind} onClick={() => draft.setKind(kind)}
+                {...stylex.props(styles.kind, draft.kind === kind && styles.kindPicked)}>
+                <ReviewThreadKindIcon kind={kind} />
+                <Text component="span" size="sm" inherit>{kind}</Text>
+              </UnstyledButton>
+            </HotkeyTooltip>
+          ))}
+        </Group>
+        <Group gap="tight" wrap="nowrap">
+          {draft.isOpen && <IconButton name="Discard note" onClick={draft.discard}><X size={14} /></IconButton>}
+          <HotkeyTooltip name="Save note">
+            <Button size="compact-xs" onClick={() => void save()} disabled={!draft.text.trim()} rightSection={<CornerDownLeft size={12} />}>Post</Button>
+          </HotkeyTooltip>
+        </Group>
+      </Group>
+    </Box>
+  );
+}
+
+/** The prompt in the empty field, by what the note is on. */
+const REVIEW_COMPOSER_PROMPTS: Readonly<Record<ReviewThreadScope['subject']['on'], string>> = {
+  video: 'Add a note at this moment…',
+  still: 'Add a note on this still…',
+  decision: 'Add a note…',
+  plan: 'Add a note…',
+  project: 'Add a note on the project…',
+};
+
+/**
+ * `0:04.12`, or `0:07.00–0:08.10` for a range: the moment a video note will pin to, before a word is typed. Unpinned,
+ * it follows the playhead as it settles, since that's where Enter saves it.
+ */
+function ReviewComposerMoment({ media, pinned }: { readonly media: ReviewThreadMedia; readonly pinned: { readonly frame?: number; readonly end?: number } | undefined }) {
+  const settled = useReviewPlaybackState(media.playback, (s) => s.frame);
+  const { fps } = media.timing;
+  const frame = pinned?.frame ?? settled;
+  return (
+    <Box {...stylex.props(styles.chip, pinned?.frame !== undefined && styles.chipPinned)}>
+      <Readout bright={pinned?.frame !== undefined}>
+        {formatReviewClock(frame / fps)}{pinned?.end !== undefined && `–${formatReviewClock(pinned.end / fps)}`}
+      </Readout>
     </Box>
   );
 }

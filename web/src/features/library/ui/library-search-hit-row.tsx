@@ -1,4 +1,4 @@
-import { Text } from '@mantine/core';
+import { Group, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { librarySearchToken, type LibrarySearchHit } from '#lib/footage/library/models/library-search.ts';
 import { formatReviewClockRange } from '#lib/output/review/models/review-timeline-geometry.ts';
@@ -7,6 +7,8 @@ import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { LibraryShelfRow } from './library-shelf-row.tsx';
 
 const styles = stylex.create({
+  text: { minWidth: 0, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  end: { flexShrink: 0 },
   item: { color: colors.dim, marginInlineEnd: spacing.inset },
   said: { color: colors.dim },
   match: { color: colors.cream, fontWeight: 600 },
@@ -32,24 +34,18 @@ type LibrarySearchHitRowProps = { readonly hit: LibrarySearchHit; readonly title
 /** A search hit: the item, the line or flag note with the words found lit, and where it is. */
 export function LibrarySearchHitRow({ hit, title, query }: LibrarySearchHitRowProps) {
   return (
-    <LibraryShelfRow
-      item={hit.item}
-      at={{ t: hit.start, ...(hit.on === 'flag' && { flag: hit.flag }) }}
-      title={(
-        <>
-          <Text component="span" inherit {...stylex.props(styles.item)}>{title}</Text>
-          {libraryHitTextRuns(hit.text, query).map((run, i) => (
-            // oxlint-disable-next-line react/no-array-index-key -- the runs of one hit's text, never reordered.
-            <Text key={i} component="span" inherit {...stylex.props(run.match ? styles.match : styles.said)}>{run.text}</Text>
-          ))}
-        </>
-      )}
-      end={(
-        <>
-          {hit.on === 'flag' && <Readout>flag #{hit.flag}</Readout>}
-          <Readout>{formatReviewClockRange(hit.start, hit.end)}</Readout>
-        </>
-      )}
-    />
+    <LibraryShelfRow item={hit.item} at={{ t: hit.start, ...(hit.on === 'flag' && { flag: hit.flag }) }} layout="line">
+      <Text component="span" size="md" {...stylex.props(styles.text)}>
+        <Text component="span" inherit {...stylex.props(styles.item)}>{title}</Text>
+        {libraryHitTextRuns(hit.text, query).map((run, i) => (
+          // oxlint-disable-next-line react/no-array-index-key -- the runs of one hit's text, never reordered.
+          <Text key={i} component="span" inherit {...stylex.props(run.match ? styles.match : styles.said)}>{run.text}</Text>
+        ))}
+      </Text>
+      <Group gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>
+        {hit.on === 'flag' && <Readout>flag #{hit.flag}</Readout>}
+        <Readout>{formatReviewClockRange(hit.start, hit.end)}</Readout>
+      </Group>
+    </LibraryShelfRow>
   );
 }

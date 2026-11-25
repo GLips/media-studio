@@ -17,6 +17,8 @@ export type ReviewTimelineLine = { id: string; from: number; to: number; text: s
 export type ReviewDockLanes = {
   lanes: readonly ReviewLaneId[];
   notes: readonly ReviewTimelineNote[];
+  /** Notes on the whole project, which have no frame: the notes lane counts them in a chip at its start. */
+  projectNotes: readonly PlacedReviewThread[];
   lines: readonly ReviewTimelineLine[];
   peaks: ReviewPeaks | undefined;
 };
@@ -24,7 +26,7 @@ export type ReviewDockLanes = {
 const REVIEW_LANE_ORDER: readonly ReviewLaneId[] = ['ruler', 'scenes', 'marks', 'notes', 'voice', 'sound'];
 
 /** The thread filter, as the thread panel reads it: absent is everything but resolved. */
-function shownOnTimeline(note: ReviewTimelineNote, filter: ReviewSearch['filter']): boolean {
+function shownOnTimeline(note: PlacedReviewThread, filter: ReviewSearch['filter']): boolean {
   if (filter === 'all') return true;
   if (filter === 'open') return note.state === 'open' || note.state === 'reopened';
   return note.state !== 'resolved';
@@ -44,7 +46,9 @@ export function useReviewDockLanes(wanted: readonly ReviewLaneId[] = REVIEW_LANE
     enabled: artifact.kind === 'video' && wanted.includes('sound'),
   }).data;
 
-  const notes = (threads?.threads ?? []).filter(isOnTimeline).filter((n) => shownOnTimeline(n, search.filter));
+  const shown = (threads?.threads ?? []).filter((n) => shownOnTimeline(n, search.filter));
+  const notes = shown.filter(isOnTimeline);
+  const projectNotes = shown.filter((n) => n.anchor.on === 'project');
   const startsAt = artifact.timing?.startsAt ?? 0;
   const lines = (artifact.timing?.lines ?? []).map((line) => ({
     id: line.id, from: line.from - startsAt, to: line.to - startsAt, text: line.words.map((w) => w.text).join(' '),
@@ -55,9 +59,9 @@ export function useReviewDockLanes(wanted: readonly ReviewLaneId[] = REVIEW_LANE
     scenes: (artifact.scenes?.length ?? 0) > 0,
     marks: (artifact.marks?.moments.length ?? 0) > 0,
     // The draft's pin or range shows here too, so a note being written has its lane.
-    notes: notes.length > 0 || (draft.anchor.on === 'video' && draft.anchor.frame !== undefined),
+    notes: notes.length > 0 || projectNotes.length > 0 || (draft.anchor.on === 'video' && draft.anchor.frame !== undefined),
     voice: lines.length > 0,
     sound: (artifact.sounds?.length ?? 0) > 0 || (peaks?.peaks.some((p) => p > 0) ?? false),
   };
-  return { lanes: REVIEW_LANE_ORDER.filter((lane) => wanted.includes(lane) && has[lane]), notes, lines, peaks };
+  return { lanes: REVIEW_LANE_ORDER.filter((lane) => wanted.includes(lane) && has[lane]), notes, projectNotes, lines, peaks };
 }

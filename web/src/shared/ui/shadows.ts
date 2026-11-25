@@ -10,6 +10,8 @@ export const shadows = stylex.create({
   spokenUnderline: { boxShadow: `inset 0 -2px 0 ${colors.cobalt}` },
   /** A note dot ringed in the ground's dark, so it holds on a picture of its own colour. */
   groundRing: { boxShadow: `0 0 0 1px ${colors.ground}` },
+  /** The tile the keys are on: a 2px accent ring past a 2px ground gap, which holds on bright artwork as on dark. */
+  tileSelectedRing: { boxShadow: `0 0 0 2px ${colors.ground}, 0 0 0 4px ${colors.accent}` },
   /** A control floating over the page, as the plan's Comment button over a selection: lifted with a soft drop. */
   float: { boxShadow: `0 4px 14px ${colors.screen}` },
 });

@@ -24,13 +24,15 @@ type HotkeyTooltipProps = {
   /** The registered action (its meta `name`) whose key the tooltip shows. Absent, a label with no key. */
   readonly hotkey?: string;
   readonly children: ReactElement;
+  /** Kept shut: while the menu its child opens is open, so the tooltip doesn't sit over the menu's first items. */
+  readonly disabled?: boolean;
 };
 
 /**
  * `name <Kbd>` over its child: what it is, and the key of the action `hotkey` names, read from the hotkey registry so
  * the hint follows the binding. Only an explicit `hotkey` is looked up: a label's copy never picks up a key by chance.
  */
-export function HotkeyTooltip({ name, hotkey, children }: HotkeyTooltipProps) {
+export function HotkeyTooltip({ name, hotkey, children, disabled = false }: HotkeyTooltipProps) {
   const label = hotkey === undefined ? <Text size="sm" component="span">{name}</Text> : <HotkeyTooltipLabel name={name} hotkey={hotkey} />;
-  return <Tooltip label={label} openDelay={400} withinPortal>{children}</Tooltip>;
+  return <Tooltip label={label} openDelay={400} withinPortal disabled={disabled}>{children}</Tooltip>;
 }

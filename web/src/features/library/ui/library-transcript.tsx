@@ -1,5 +1,6 @@
-import { Box, Text, UnstyledButton } from '@mantine/core';
+import { Box, Button, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
+import { ArrowDownToLine } from 'lucide-react';
 import { Fragment, useMemo, useRef, useState } from 'react';
 import type { LibraryFlag } from '#lib/footage/library/models/library-flags.ts';
 import type { TranscriptLine } from '#lib/footage/transcript/models/footage-transcript.ts';
@@ -14,20 +15,34 @@ import { LIBRARY_CLOCK_FPS, useLibraryPlaybackState } from './library-item-playb
 // LIBRARY_TIME_VAR spelled out: StyleX compiles each file alone and can't read an imported value.
 const TIME = 'var(--library-time, 0)';
 
-/** How long after the reader scrolls the transcript stops following the playhead, so it doesn't snatch the page back. */
-const LIBRARY_FOLLOW_PAUSE_MS = 4000;
-
 const styles = stylex.create({
-  body: { padding: spacing.inset, display: 'flex', flexDirection: 'column', gap: spacing.gap },
+  body: { padding: spacing.inset, display: 'flex', flexDirection: 'column', gap: spacing.tight },
   empty: { padding: spacing.inset, color: colors.dim },
-  line: { display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr)', columnGap: spacing.gap, alignItems: 'baseline' },
+  frame: { position: 'relative', height: '100%', minHeight: 0 },
+  // Over the transcript's foot, where the eye goes when the lit line has scrolled out of view.
+  follow: { position: 'absolute', insetInline: 0, bottom: spacing.inset, display: 'flex', justifyContent: 'center', pointerEvents: 'none' },
+  followButton: { pointerEvents: 'auto' },
+  // A flag marks its lines with a rule down their edge, in its author's colour, so the lit word is the one mark in the text.
+  line: {
+    display: 'grid', gridTemplateColumns: '52px minmax(0, 1fr)', columnGap: spacing.gap, alignItems: 'baseline',
+    borderInlineStartWidth: '2px', borderInlineStartStyle: 'solid', borderInlineStartColor: 'transparent',
+  },
+  agentLine: { borderInlineStartColor: colors.caution },
+  reviewerLine: { borderInlineStartColor: colors.cobalt },
   stamp: {
     textAlign: 'start', paddingInline: spacing.tight, borderRadius: radius.control, backgroundColor: { default: 'transparent', ':hover': colors.raised },
   },
-  words: { margin: 0, color: colors.cream, lineHeight: typography.proseLeading },
+  // A line's time to the second; the hundredths only under the pointer, where they're wanted to place a cut.
+  whole: { display: { default: 'inline', [stylex.when.ancestor(':hover')]: 'none' } },
+  exact: { display: { default: 'none', [stylex.when.ancestor(':hover')]: 'inline' } },
+  // Words dragged over take the accent's tone, not the browser's blue, which reads as the cobalt of the word being said.
+  words: {
+    margin: 0, color: colors.cream, lineHeight: typography.proseLeading,
+    '::selection': { backgroundColor: `color-mix(in srgb, ${colors.accent} 40%, transparent)`, color: colors.cream },
+  },
   word: {
     position: 'relative', isolation: 'isolate', cursor: 'pointer', borderRadius: radius.control,
-    textUnderlineOffset: '5px', textDecorationThickness: '2px',
+    '::selection': { backgroundColor: `color-mix(in srgb, ${colors.accent} 40%, transparent)`, color: colors.cream },
   },
   // The word being said: lit in cobalt from its start to its end, pure CSS on the time variable, as the plan lights it.
   wash: {
@@ -38,10 +53,9 @@ const styles = stylex.create({
     opacity: `calc(0.8 * min(clamp(0, calc((${TIME} - ${from}) * 100000 + 1), 1), clamp(0, calc((${to} - ${TIME}) * 100000), 1)))`,
   }),
   marked: { backgroundColor: colors.rangeWash },
-  flagged: { textDecorationLine: 'underline' },
-  agent: { textDecorationColor: colors.caution },
-  reviewer: { textDecorationColor: colors.cobalt },
 });
+
+const LINE_RULES = { agent: styles.agentLine, reviewer: styles.reviewerLine } as const;
 
 /** The line spoken at `seconds`: the last to start by then. -1 before the first. */
 function lineIndexAt(lines: readonly TranscriptLine[], seconds: number): number {
@@ -81,38 +95,49 @@ function selectedWordRange(root: HTMLElement): [number, number] | null {
 }
 
 /**
- * The line being said, and the transcript's root kept scrolled to it while playing, unless the reader has just scrolled
- * away to read, which `readerScrolled` hears.
+ * The line being said, and the transcript's root kept scrolled to it while playing, until the reader scrolls away to
+ * read; `follow` brings it back to the playhead and keeps it there again.
  */
 function useLibraryTranscriptFollow() {
   const { playback, lines } = useLibraryItemScreen();
   const root = useRef<HTMLDivElement>(null);
-  const scrolledAt = useRef(0);
+  const [following, setFollowing] = useState(true);
   const [current, setCurrent] = useState(-1);
   const playing = useLibraryPlaybackState(playback, (s) => s.playing);
   const time = useLibraryPlaybackState(playback, (s) => s.time);
+  const shownLine = playing ? current : lineIndexAt(lines, time);
+  const scrollTo = (line: number) => root.current?.querySelector(`[data-line="${line}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   useLinkedMediaTick(playback, (frame) => {
     const at = lineIndexAt(lines, frame / LIBRARY_CLOCK_FPS);
     if (at === current) return;
     setCurrent(at);
-    if (Date.now() - scrolledAt.current < LIBRARY_FOLLOW_PAUSE_MS) return;
-    root.current?.querySelector(`[data-line="${at}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (following) scrollTo(at);
   }, playing);
-  const readerScrolled = () => {
-    scrolledAt.current = Date.now();
+  return {
+    root,
+    shownLine,
+    following,
+    readerScrolled: () => setFollowing(false),
+    follow: () => {
+      setFollowing(true);
+      scrollTo(shownLine);
+    },
   };
-  return { root, readerScrolled, shownLine: playing ? current : lineIndexAt(lines, time) };
 }
 
 /**
  * What's said, line by line, the word being said lit and the page following it while it plays. A word's click plays
- * from it; a line's time plays from the line. Words selected become the range to flag. Flagged words are underlined
- * in their author's colour.
+ * from it; a line's time plays from the line. Words selected become the range to flag. A flag's lines carry a
+ * rule in its author's colour.
  */
 export function LibraryTranscript() {
   const { view, playback, words, lines, flags, marked, setMarked } = useLibraryItemScreen();
-  const { root, readerScrolled, shownLine } = useLibraryTranscriptFollow();
-  const marks = useMemo(() => flaggedWords(words, flags.flags), [words, flags.flags]);
+  const { root, readerScrolled, shownLine, following, follow } = useLibraryTranscriptFollow();
+  // By line, the newest flag over any of its words.
+  const lineFlags = useMemo(() => {
+    const marks = flaggedWords(words, flags.flags);
+    return lines.map((line) => Array.from({ length: line.wordCount }, (_, k) => marks.get(line.firstWord + k)).findLast(Boolean));
+  }, [words, lines, flags.flags]);
 
   if (!words.length) {
     const why = view.item.speech ? 'No transcript yet: `studio library finish` makes it.' : 'Nothing in this item has sound to transcribe.';
@@ -124,38 +149,51 @@ export function LibraryTranscript() {
     playback.seek(seconds);
   };
   return (
-    <FadeScroll>
-      <Box
-        ref={root}
-        onWheel={readerScrolled}
-        onMouseUp={() => {
-          const range = root.current && selectedWordRange(root.current);
-          if (range) setMarked({ start: words[range[0]].start, end: words[range[1]].end });
-        }}
-        {...stylex.props(styles.body)}
-      >
-        {lines.map((line, n) => (
-          <Box key={line.firstWord} data-line={n} aria-current={n === shownLine || undefined} {...stylex.props(styles.line)}>
-            <UnstyledButton onClick={() => playback.seek(line.start)} {...stylex.props(styles.stamp)}><Readout>{formatReviewClock(line.start)}</Readout></UnstyledButton>
-            <Text component="p" size="prose" {...stylex.props(styles.words)}>
-              {words.slice(line.firstWord, line.firstWord + line.wordCount).map((word, k) => {
-                const i = line.firstWord + k, flag = marks.get(i), middle = (word.start + word.end) / 2;
-                const inMarked = marked !== null && marked.start <= middle && middle <= marked.end;
-                return (
-                  <Fragment key={i}>
-                    {k > 0 && ' '}
-                    <Text component="span" inherit data-word={i} onClick={() => seekTo(word.start)}
-                      {...stylex.props(styles.word, inMarked && styles.marked, flag && styles.flagged, flag && styles[flag.by])}>
-                      <Box component="span" aria-hidden {...stylex.props(styles.wash, styles.washOn(word.start, word.end))} />
-                      {word.text}
-                    </Text>
-                  </Fragment>
-                );
-              })}
-            </Text>
-          </Box>
-        ))}
-      </Box>
-    </FadeScroll>
+    <Box {...stylex.props(styles.frame)}>
+      <FadeScroll>
+        <Box
+          ref={root}
+          onWheel={readerScrolled}
+          onMouseUp={() => {
+            const range = root.current && selectedWordRange(root.current);
+            if (range) setMarked({ start: words[range[0]].start, end: words[range[1]].end });
+          }}
+          {...stylex.props(styles.body)}
+        >
+          {lines.map((line, n) => (
+            <Box key={line.firstWord} data-line={n} aria-current={n === shownLine || undefined}
+              {...stylex.props(styles.line, lineFlags[n] && LINE_RULES[lineFlags[n].by])}>
+              <UnstyledButton onClick={() => playback.seek(line.start)} {...stylex.props(styles.stamp, stylex.defaultMarker())}>
+                <Readout>
+                  <Box component="span" {...stylex.props(styles.whole)}>{formatReviewClock(line.start).slice(0, -3)}</Box>
+                  <Box component="span" {...stylex.props(styles.exact)}>{formatReviewClock(line.start)}</Box>
+                </Readout>
+              </UnstyledButton>
+              <Text component="p" size="md" {...stylex.props(styles.words)}>
+                {words.slice(line.firstWord, line.firstWord + line.wordCount).map((word, k) => {
+                  const i = line.firstWord + k, middle = (word.start + word.end) / 2;
+                  const inMarked = marked !== null && marked.start <= middle && middle <= marked.end;
+                  return (
+                    <Fragment key={i}>
+                      {k > 0 && ' '}
+                      <Text component="span" inherit data-word={i} onClick={() => seekTo(word.start)}
+                        {...stylex.props(styles.word, inMarked && styles.marked)}>
+                        <Box component="span" aria-hidden {...stylex.props(styles.wash, styles.washOn(word.start, word.end))} />
+                        {word.text}
+                      </Text>
+                    </Fragment>
+                  );
+                })}
+              </Text>
+            </Box>
+          ))}
+        </Box>
+      </FadeScroll>
+      {!following && (
+        <Box {...stylex.props(styles.follow)}>
+          <Button size="compact-xs" leftSection={<ArrowDownToLine size={12} />} onClick={follow} {...stylex.props(styles.followButton)}>Follow</Button>
+        </Box>
+      )}
+    </Box>
   );
 }
