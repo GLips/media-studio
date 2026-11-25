@@ -88,6 +88,11 @@ export type { CueLeaf, CueLeafPath, CueNumberPath, CuePatch, CuePath, CueState }
 export { cueSecondsOf, cueTimeSeconds, type CueAnchor, type CueClock, type CueNamesOfClock, type CueOffset, type CueSeconds, type CueTime } from '#lib/timing/character-cues/models/cue-time.ts';
 export { compileCueScore, type CueScore } from '#lib/timing/character-cues/models/cue-tracks.ts';
 export { defineLookCatalog, type LookCatalog, type LookDescription, type LookPaletteOf, type LookSampling } from '#lib/paint/looks/models/look-catalog.ts';
+export {
+  checkGltfCueManifest, gltfCueCharacter, type GltfClipMove, type GltfClipPose, type GltfClipSample, type GltfCueManifest, type GltfCueState, type GltfMorphPatch,
+} from '#lib/picture/character/models/gltf-cue-character.ts';
+export { gltfCueGlbBytes, gltfCueModelPosed, loadGltfCueModel, type GltfCueModel, type GltfRootMotion } from '#lib/picture/character/studio/gltf-cue-model.ts';
+export { useGltfCueModel } from '#lib/picture/character/studio/use-gltf-cue-model.ts';
 export { sceneSecondsOf, type SceneClockSeconds, type SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 export type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
 export { blockingScene } from '#lib/footage/previs/studio/blocking-scene.tsx';

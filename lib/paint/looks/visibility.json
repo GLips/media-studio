@@ -1,3 +1,4 @@
 {
-  "lib/timing/character-cues": "A score names looks and palettes from a look catalog and samples each look at its own drawing rate."
+  "lib/timing/character-cues": "A score names looks and palettes from a look catalog and samples each look at its own drawing rate.",
+  "lib/picture/character": "An imported model's tests compile a score, which needs a look catalog for its cast."
 }

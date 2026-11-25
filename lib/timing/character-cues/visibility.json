@@ -1,0 +1,3 @@
+{
+  "lib/picture/character": "An imported model declares itself as a cue character (its clips as poses and moves, its morphs as sliders) and is checked through a compiled score."
+}
