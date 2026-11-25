@@ -11,7 +11,7 @@ import { makeLibraryMediaFolderLayer } from '#lib/footage/library-media/engine/l
 import { StudioFfmpeg } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
 import { runStudioEffect } from '#lib/platform/process/engine/studio-effect-runtime.ts';
 import { withStudioTemp } from '#lib/platform/temp/engine/studio-temp.ts';
-import { addLibraryItem } from './add-library-item.ts';
+import { addLibraryItem, finishLibraryItem } from './add-library-item.ts';
 import { listLibraryRecorderTakes, removeLibraryRecorderTake } from './library-recorder-takes.ts';
 import { LibraryFileUnreadable } from '../models/library-errors.ts';
 import { libraryFootage, LibraryTranscriptFileText } from '../models/library-footage.ts';
@@ -37,13 +37,23 @@ const fakeFfmpeg = StudioFfmpeg.of({
 
 const fakeTranscriber = FootageTranscriber.of({ transcribe: () => Effect.succeed({ duration: 10, words: [{ text: 'Hello', start: 1, end: 1.4 }], pauses: [] }) });
 
-const libraryAt = (root: string, latencies = makeRecorderDeviceLatenciesLayer(join(root, 'no-recorder-config.json'))) => Layer.mergeAll(
+/**
+ * The user cache moved into the test's folder, holding a stand-in RNNoise model, so levelling never fetches the real
+ * one: ffmpeg is faked, so the model is only ever named, never read.
+ */
+function cacheWithDenoiseModel(root: string) {
+  process.env.XDG_CACHE_HOME = join(root, 'cache');
+  mkdirSync(join(root, 'cache/media-studio/rnnoise-models'), { recursive: true });
+  writeFileSync(join(root, 'cache/media-studio/rnnoise-models/sh.rnnn'), '');
+}
+
+const libraryAt = (root: string, latencies = makeRecorderDeviceLatenciesLayer(join(root, 'no-recorder-config.json'))) => (cacheWithDenoiseModel(root), Layer.mergeAll(
   makeLibraryStoreLayer({ libraryDir: join(root, 'work/library'), projectsDir: join(root, 'work/projects'), workspaceRequired: false }),
   makeLibraryMediaFolderLayer(join(root, 'work')),
   latencies,
   Layer.succeed(StudioFfmpeg, fakeFfmpeg),
   Layer.succeed(FootageTranscriber, fakeTranscriber),
-);
+));
 
 /** A take folder as the recorder leaves it, its files last changed `stillFor` ms ago, with a screen and `sound`'s tracks. */
 function writeTake(root: string, { status, stillFor, input, name = '2026-11-22 18.19.29', windowLog, sound = ['mic'] }: {
@@ -82,7 +92,12 @@ test('a complete take is moved into the library, transcribed and its speech leve
   assert.equal(existsSync(take), false);
   assert.deepEqual(readdirSync(join(root, 'work/library/media', item.id)).toSorted(), ['input.jsonl', 'mic.m4a', 'proxies', 'recording.json', 'screen.mp4']);
   assert.deepEqual(heardTracks(join(root, 'work/library/items', item.id)), ['mic']);
-  assert.deepEqual(item.tracks.mic.levelled, { file: 'proxies/mic-levelled.wav', lufs: -16.2 });
+  assert.deepEqual(item.tracks.mic.levelled, { file: 'proxies/mic-levelled.wav', lufs: -16.2, processing: 'highpass80+rnnoise-sh-0.8+loudnorm' });
+  // A copy levelled before the denoise records no processing, so finish remakes it.
+  const itemJson = join(root, 'work/library/items', item.id, 'item.json');
+  writeFileSync(itemJson, JSON.stringify({ ...item, tracks: { ...item.tracks, mic: { ...item.tracks.mic, levelled: { file: 'proxies/mic-levelled.wav', lufs: -16.2 } } } }));
+  const remade = await runStudioEffect(finishLibraryItem(item.id, { proxies: false }), libraryAt(root));
+  assert.equal(remade.tracks.mic.levelled?.processing, 'highpass80+rnnoise-sh-0.8+loudnorm');
 }));
 
 test("a take's system audio is never its speech, but is transcribed and levelled beside it, as the other side of a call", () => withStudioTemp('library-add', async (root) => {

@@ -45,8 +45,20 @@ export type LibraryTrackProxy = typeof LibraryTrackProxy.Type;
  * A speech track's sound levelled for the mix: a copy on the track's own media time, brought up (or down) to about
  * LIBRARY_LEVELLED_LUFS, and its loudness as measured. A raw mic can sit 20 dB under a voice line; the mix only lowers.
  */
-export const LibraryTrackLevelled = Schema.Struct({ file: Schema.String, lufs: Schema.Finite });
+export const LibraryTrackLevelled = Schema.Struct({
+  file: Schema.String,
+  lufs: Schema.Finite,
+  /** The chain it was made with, libraryLevelledProcessing's; a copy made with another (or none recorded) is stale. */
+  processing: Schema.optionalKey(Schema.String),
+});
 export type LibraryTrackLevelled = typeof LibraryTrackLevelled.Type;
+
+/**
+ * How spoken track `track` is processed before levelling, named so a copy made another way is remade. A mic's room
+ * noise drops in and out at every cut: an 80 Hz high-pass takes its rumble, RNNoise at a 0.8 mix its hiss, leaving a
+ * faint floor. The system track is clean, so it's levelled alone.
+ */
+export const libraryLevelledProcessing = (track: string) => (track === 'system' ? 'loudnorm' : 'highpass80+rnnoise-sh-0.8+loudnorm');
 
 /** Where a levelled copy is brought to: above the mix's voice level, so the mix only ever lowers it. */
 export const LIBRARY_LEVELLED_LUFS = -16;

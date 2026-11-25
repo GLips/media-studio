@@ -63,7 +63,7 @@ const addCommand = defineCommand({
 const finishCommand = defineCommand({
   meta: {
     name: 'finish',
-    description: 'Make what an item lacks from its media: its transcript, its speech levelled for the mix, then its editing proxies.',
+    description: 'Make what an item lacks from its media: its transcript, its speech cleaned and levelled, then its editing proxies.',
     about: 'An add ends with this; run it after an add that failed or was stopped part way, or one run with --no-proxies. Needs the media online.',
   },
   args: { item: libraryItemArg, proxies: { type: 'boolean', default: true, description: 'Make proxies too' } },

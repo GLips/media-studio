@@ -4,12 +4,14 @@
 //
 // The copy keeps its track's media time, sample for sample, so the track's sync numbers and its transcript's times
 // apply to it unchanged. PCM, not AAC: AAC's encoder delay would shift it. Mono, as the mix places a voice line: the
-// system track is stereo.
+// system track is stereo. A mic is denoised first (libraryLevelledProcessing), by RNNoise inside ffmpeg, whose model
+// is fetched once into the studio's user cache.
 import { Effect, FileSystem, Path, Schema } from 'effect';
 import { StudioFfmpeg } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
 import { LibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
 import { LibrarySpeechUnmeasured } from '../models/library-errors.ts';
-import { LIBRARY_LEVELLED_LUFS, librarySpokenTracks } from '../models/library-item.ts';
+import { studioUserCacheDir } from '#lib/platform/temp/engine/studio-user-cache.ts';
+import { LIBRARY_LEVELLED_LUFS, libraryLevelledProcessing, librarySpokenTracks } from '../models/library-item.ts';
 import { LibraryStore } from './library-store.ts';
 
 // Speech's usual range and a ceiling under clipping once the mix brings it down to the voice's level.
@@ -34,7 +36,29 @@ const ebur128IntegratedLufs = (stderr: string) => {
   return Number.isFinite(integrated) && integrated > ABSOLUTE_GATE_LUFS ? integrated : undefined;
 };
 
-/** Levels each of `id`'s spoken tracks not levelled yet, recording each in item.json; returns the item. */
+// GregorR's somnolent-hogwash model: trained on speech against general noise, the one the vid-223 trial picked by ear.
+const RNNOISE_MODEL_URL = 'https://raw.githubusercontent.com/GregorR/rnnoise-models/master/somnolent-hogwash-2018-09-01/sh.rnnn';
+
+// The one request levelling makes; a plain fetch, as Effect's HTTP client is still unstable.
+const fetchRnnoiseModel = () => fetch(RNNOISE_MODEL_URL);
+
+/** The RNNoise model's path in the user cache, fetched there on first use. */
+const rnnoiseModel = Effect.fn('LibraryLevelled.rnnoiseModel')(function* (id: string, track: string) {
+  const fs = yield* FileSystem.FileSystem, path = yield* Path.Path;
+  const file = path.join(studioUserCacheDir('rnnoise-models'), 'sh.rnnn');
+  if (yield* fs.exists(file)) return file;
+  yield* Effect.log('fetching the RNNoise model for denoising speech');
+  const unfetched = (why: string) => new LibrarySpeechUnmeasured({ id, track, why: `couldn't fetch the RNNoise model: ${why}` });
+  const response = yield* Effect.tryPromise({ try: () => fetchRnnoiseModel(), catch: (error) => unfetched(String(error)) });
+  if (!response.ok) return yield* unfetched(`${RNNOISE_MODEL_URL} answered ${response.status}`);
+  const bytes = yield* Effect.tryPromise({ try: () => response.arrayBuffer(), catch: (error) => unfetched(String(error)) });
+  yield* fs.makeDirectory(path.dirname(file), { recursive: true });
+  yield* fs.writeFile(`${file}.part`, new Uint8Array(bytes));
+  yield* fs.rename(`${file}.part`, file);
+  return file;
+});
+
+/** Levels each of `id`'s spoken tracks not levelled yet, or levelled another way, recording each in item.json; returns the item. */
 export const levelLibrarySpokenTracks = Effect.fn('LibraryLevelled.levelSpokenTracks')(function* (id: string) {
   const store = yield* LibraryStore;
   for (const name of librarySpokenTracks(yield* store.readItem(id))) yield* levelLibraryTrack(id, name);
@@ -45,14 +69,16 @@ const levelLibraryTrack = Effect.fn('LibraryLevelled.levelTrack')(function* (id:
   const store = yield* LibraryStore, media = yield* LibraryMediaFolder, ffmpeg = yield* StudioFfmpeg;
   const fs = yield* FileSystem.FileSystem, path = yield* Path.Path;
   const item = yield* store.readItem(id);
-  const track = item.tracks[name];
-  if (track.levelled) return item;
-  yield* Effect.log(`levelling ${name} for the mix`);
+  const track = item.tracks[name], processing = libraryLevelledProcessing(name);
+  if (track.levelled?.processing === processing) return item;
+  yield* Effect.log(`levelling ${name} for the mix (${processing})`);
+  // Measured and levelled after the denoise, so the loudness is the cleaned speech's. A path inside a filter is quoted.
+  const denoise = processing === 'loudnorm' ? '' : `highpass=f=80:poles=2,arnndn=m='${yield* rnnoiseModel(id, name)}':mix=0.8,`;
   const source = yield* media.itemFile(id, track.file), file = `proxies/${name}-levelled.wav`;
   const out = path.join(yield* media.online(), id, file), temp = `${out}.part.wav`;
   const target = `I=${LIBRARY_LEVELLED_LUFS}:TP=${LEVELLED_TRUE_PEAK}:LRA=${LEVELLED_LRA}`;
   // loudnorm's two passes: measure, then apply the gain linearly where the peaks allow it.
-  const { stderr, exitCode } = yield* ffmpeg.report(['-hide_banner', '-nostats', '-i', source, '-vn', '-af', `loudnorm=${target}:print_format=json`, '-f', 'null', '-']);
+  const { stderr, exitCode } = yield* ffmpeg.report(['-hide_banner', '-nostats', '-i', source, '-vn', '-af', `${denoise}loudnorm=${target}:print_format=json`, '-f', 'null', '-']);
   if (exitCode !== 0) return yield* new LibrarySpeechUnmeasured({ id, track: name, why: lastLine(stderr) });
   const measured = yield* Schema.decodeUnknownEffect(LoudnormReport)(stderr.slice(stderr.lastIndexOf('{'), stderr.lastIndexOf('}') + 1)).pipe(
     Effect.mapError((error) => new LibrarySpeechUnmeasured({ id, track: name, why: `its loudness report isn't loudnorm's: ${error.message}` })),
@@ -62,7 +88,7 @@ const levelLibraryTrack = Effect.fn('LibraryLevelled.levelTrack')(function* (id:
     yield* Effect.log(`${name} is silent: nothing to level, so no line can be spoken from it`);
     return item;
   }
-  const second = `loudnorm=${target}:measured_I=${measured.input_i}:measured_TP=${measured.input_tp}:measured_LRA=${measured.input_lra}:measured_thresh=${measured.input_thresh}:offset=${measured.target_offset}:linear=true`;
+  const second = `${denoise}loudnorm=${target}:measured_I=${measured.input_i}:measured_TP=${measured.input_tp}:measured_LRA=${measured.input_lra}:measured_thresh=${measured.input_thresh}:offset=${measured.target_offset}:linear=true`;
   // loudnorm resamples to 192 kHz inside; the copy goes back to the track's rate.
   yield* fs.makeDirectory(path.dirname(out), { recursive: true });
   yield* ffmpeg.run(['-v', 'error', '-y', '-i', source, '-vn', '-af', second, '-ac', '1', '-ar', String(track.audio?.sampleRate ?? 48000), '-c:a', 'pcm_s16le', temp]);
@@ -71,5 +97,5 @@ const levelLibraryTrack = Effect.fn('LibraryLevelled.levelTrack')(function* (id:
   if (check.exitCode !== 0) return yield* new LibrarySpeechUnmeasured({ id, track: name, why: lastLine(check.stderr) });
   const lufs = ebur128IntegratedLufs(check.stderr);
   if (lufs === undefined) return yield* new LibrarySpeechUnmeasured({ id, track: name, why: `its levelled copy ${file} measures silent` });
-  return yield* store.updateItem(id, (now) => ({ ...now, tracks: { ...now.tracks, [name]: { ...now.tracks[name], levelled: { file, lufs: Math.round(lufs * 10) / 10 } } } }));
+  return yield* store.updateItem(id, (now) => ({ ...now, tracks: { ...now.tracks, [name]: { ...now.tracks[name], levelled: { file, lufs: Math.round(lufs * 10) / 10, processing } } } }));
 });
