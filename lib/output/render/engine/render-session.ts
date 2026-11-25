@@ -8,7 +8,7 @@
 //
 // Every page opens in a watched browser (render-watch.ts); frames draw in chunks (render-chunks.ts), a video's streamed
 // into its encodes as they draw. A pass only measuring frames or gathering sound draws no picture.
-import { renderFrames, renderMedia, RenderInternals, selectComposition, type HeadlessBrowser, type OnArtifact } from '@remotion/renderer';
+import { renderFrames, RenderInternals, selectComposition, type HeadlessBrowser, type OnArtifact } from '@remotion/renderer';
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { getPriority, setPriority } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -33,8 +33,10 @@ import { traceClock } from '#lib/platform/trace/engine/trace-collector.ts';
 import type { TraceDetail } from '#lib/platform/trace/models/trace-detail.ts';
 import { traceLabel, traceQuantity, type TraceSpan } from '#lib/platform/trace/models/trace-model.ts';
 import { renderVoiceOf } from '#lib/timing/voice/engine/voice-project.ts';
+import { mixSoundClips } from '#lib/timing/sound/engine/sound-mix.ts';
+import { REMOTION_SOUND_UNHEARD, renderSoundFileOf, soundClipReportSink } from './render-sound.ts';
 import { RENDER_PAGE_OPTIONS } from '#lib/platform/browser/engine/render-browser.ts';
-import { inWatchedRenderBrowser, watchedRenderFrames, watchedRenderMedia, type RenderWatch } from '#lib/platform/browser/engine/render-watch.ts';
+import { inWatchedRenderBrowser, watchedRenderFrames, type RenderWatch } from '#lib/platform/browser/engine/render-watch.ts';
 import { releaseStudioGpuLease } from '#lib/platform/gpu/engine/gpu-lease.ts';
 import type { MotionTracks } from '#lib/picture/measurement/models/motion-tracks.ts';
 import type { BlockoutSoloProps, CompositionRenderSettings, PaintingValuesProp, ReplayProps, VideoProps } from '#lib/picture/video/models/composition-props.ts';
@@ -186,7 +188,7 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
   // the process alive, decoders included, and a session is never closed.
   const libraryMediaRuntime = ManagedRuntime.make(libraryMediaServerLayer);
   const placements = await placing, paintCache = await caching, frameSink = await serveRenderFrameSink(), libraryMedia = await libraryMediaRuntime.runPromise(LibraryMediaServer.useSync(({ url }) => url));
-  const serveUrl = await trace.run('bundle', () => bundleStudioProject(project));
+  const serveUrl = await trace.run('bundle', () => bundleStudioProject(project)), soundFileOf = renderSoundFileOf({ bundle: serveUrl, libraryMedia });
   const props = (p: Partial<VideoProps> = {}): VideoProps => ({
     captions: false, probe: false, blockouts: false, lens, libraryMedia, ...(paintingValues && { paintingValues }), ...(traceDetail && { traceDetail }), ...(placements && { stampPlacements: placements.url }), ...(paintCache && { paintCache: paintCache.url }), ...p,
   });
@@ -392,9 +394,9 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
     const name = basename(out), count = span.end - span.from;
     mkdirSync(dirname(out), { recursive: true });
     return withStudioTemp('video', async (tmp) => {
-      const soundOf = () => renderAudio({ out: join(tmp, 'sound.wav'), inputProps, frames: span });
+      const soundOf = { out: join(tmp, 'sound.wav'), inputProps, frames: span };
       // Sound apart from the picture is gathered as the frames draw; caught now, so a failure meanwhile isn't unhandled.
-      const apart = sound === 'apart' ? soundOf() : null;
+      const apart = sound === 'apart' ? renderAudio(soundOf) : null;
       apart?.catch(() => {});
       const drawn = await drawPacked(`${name} frames`, span, {
         inputProps, dir: tmp, timeline, lossless: false, encoding, ...(onProgress && { onProgress }), ...(onArtifact && { onArtifact }),
@@ -404,7 +406,8 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
       await trace.run(`${name} join`, () => joinEncodedList(drawn.encoded!, picture));
       const encoded = countVideoFrames(picture);
       if (encoded !== count) throw new Error(`${name} encoded ${encoded} frames of the ${count} drawn`);
-      const wav = (await apart) ?? (sound === 'own' && drawn.heard ? await soundOf() : undefined);
+      if (drawn.heard) throw new Error(REMOTION_SOUND_UNHEARD);
+      const wav = (await apart) ?? (sound === 'own' ? await gatherSound(soundOf) : null) ?? undefined;
       const { soundtrack, motion } = (await approve?.({ ...(sound === 'apart' && { sound: wav }) })) ?? {};
       const track = soundtrack ?? (sound === 'own' ? wav : undefined);
       const staged = renderStagingPathOf(out);
@@ -467,18 +470,28 @@ export async function openRenderSession(project: string, { workers, lens = 'fast
     return [webm, mov];
   }
 
-  /** The video's sound alone, or `frames` of it, as an uncompressed wav at `out`, gathered with no picture drawn. */
-  async function renderAudio({ out, inputProps = props(), frames }: { out: string; inputProps?: VideoProps; frames?: RenderSnapshot['frames'] }): Promise<string> {
-    const heard = { ...inputProps, picture: false };
+  /**
+   * The video's sound alone, or `frames` of it, as a float wav at `out`, or null when it plays none. The whole video's
+   * frames are walked for the clips they declare, so a sound declared before `frames` and ringing into them is heard;
+   * then the clips are mixed at the sample rate (sound-mix.ts).
+   */
+  async function gatherSound({ out, inputProps = props(), frames }: { out: string; inputProps?: VideoProps; frames?: RenderSnapshot['frames'] }): Promise<string | null> {
+    const timeline = await readTimeline(), sink = soundClipReportSink();
     await inBrowser('sound', async (browser, watch) => {
-      const composition = await selectVideo(heard, browser), concurrency = workersFor(composition, heard);
-      await renderMedia({
-        ...RENDER_PAGE_OPTIONS, ...watchedRenderMedia(watch), composition, serveUrl, puppeteerInstance: browser, concurrency, inputProps: heard, codec: 'wav', outputLocation: out,
-        ...(frames && { frameRange: [frames.from, frames.end - 1] }),
-      });
+      const { concurrency, heard } = await drawFrames(browser, watch, [...Array(timeline.durationInFrames).keys()], { inputProps: { ...inputProps, picture: false, soundClips: true }, onArtifact: sink.onArtifact });
+      if (heard) throw new Error(REMOTION_SOUND_UNHEARD);
       return { result: undefined, workers: concurrency };
     });
+    const clips = sink.placed(timeline.fps, timeline.durationInFrames), { from, end } = frames ?? { from: 0, end: timeline.durationInFrames };
+    if (!clips.length) return null;
+    await trace.run('sound mix', () => mixSoundClips(clips, { from: from / timeline.fps, seconds: (end - from) / timeline.fps, out, fileOf: soundFileOf }));
     return out;
+  }
+
+  /** The video's sound, as gatherSound, or a silent wav for one that plays none, which mastering refuses. */
+  async function renderAudio(sound: { out: string; inputProps?: VideoProps; frames?: RenderSnapshot['frames'] }): Promise<string> {
+    if (!(await gatherSound(sound))) await mixSoundClips([], { from: 0, seconds: 1, out: sound.out, fileOf: soundFileOf });
+    return sound.out;
   }
 
   /**

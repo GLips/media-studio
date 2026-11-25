@@ -26,6 +26,8 @@ export type VideoProps = {
   paintingValues?: PaintingValuesProp;
   /** Draw the picture (the default); off for a pass that only measures frames or gathers sound (video-format.ts). */
   picture?: boolean;
+  /** Report each frame's sound clips, for a render's sound walk (sound-clip.tsx's SoundClipProbe). */
+  soundClips?: boolean;
   /** Where the render serves the placements it made once in Node, for each page to adopt (render-placements.ts). */
   stampPlacements?: string;
   /** Where the render serves its solved-paint cache, for each page's sheet solves (render-paint-cache.ts). */

@@ -189,7 +189,7 @@ export function checkVideoSoundsAgainstMusic(video: VideoDef): VideoSoundCheck |
   const musicFile = fileURLToPath(bed.track.src);
   const musicAttacks = musicAttackTimes(decodeAttackBands(musicFile));
   const musicLoudness = momentaryLoudness(musicFile, 0);
-  const gainAt = musicBedGainAt(bed, tl.cues, fps, videoSeconds), gainDbAt = (t: number) => 20 * Math.log10(gainAt(t));
+  const gainAt = musicBedGainAt(bed, tl.cues, videoSeconds), gainDbAt = (t: number) => 20 * Math.log10(gainAt(t));
   const measured = new Map<string, { bands: AttackBands; loudness: MomentaryLoudness }>();
   const measure = (file: string) => {
     if (!measured.has(file)) measured.set(file, { bands: decodeAttackBands(file), loudness: momentaryLoudness(file, 0.5) });

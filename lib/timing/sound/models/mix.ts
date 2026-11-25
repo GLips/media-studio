@@ -1,9 +1,9 @@
 // mix.ts: the levels of the voice and the music bed. Pure.
 //
 // Levels are loudness, not gain: every voice line is brought to VOICE_LUFS, and music is set in LU relative to the
-// voice, so a quiet track and a hot one sit the same under the same words. The composition can boost a source, but
-// Remotion clips each one at full scale, so sources must be at least as loud as their targets; lib/output/render/engine/render-pipeline.ts
-// then lifts the finished mix to delivery loudness in one pass.
+// voice, so a quiet track and a hot one sit the same under the same words. Sources are only ever turned down, never
+// boosted, so a source must be at least as loud as its target; lib/output/render/engine/render-pipeline.ts then lifts
+// the finished mix to delivery loudness in one pass.
 
 /** Where every voice line sits in the mix, before mastering. Below every TTS line we've had (−11 to −16 LUFS). */
 export const VOICE_LUFS = -20;
@@ -104,18 +104,15 @@ export function musicGainAt(t: number, spans: readonly { start: number; end: num
 }
 
 /**
- * The bed's gain at video time `t`, as the video plays it: ducked around the voice lines (each starting on the frame
- * it's rounded to), faded in and out where the track asks for it.
+ * The bed's gain at video time `t`, as the video plays it: ducked around the voice lines, faded in and out where the
+ * track asks for it.
  */
-export function musicBedGainAt(bed: MusicBed, cues: readonly { start: number; end: number }[], fps: number, videoSeconds: number): (t: number) => number {
-  const spans = duckSpans(cues.map((c) => {
-    const start = Math.round(c.start * fps) / fps;
-    return { start, end: start + (c.end - c.start) };
-  }));
+export function musicBedGainAt(bed: MusicBed, cues: readonly { start: number; end: number }[], videoSeconds: number): (t: number) => number {
+  const spans = duckSpans(cues);
   // A track played from its own start opens as it was written to, so only one started partway through fades in. A
   // track fitted to this video's length ends on its own ending, so it isn't faded out; after a retime it no longer
   // fits, and fades like any other until `studio music fit` runs again.
-  const endsWithVideo = !!bed.track.fit && !bed.sourceStartSeconds && Math.abs(bed.track.duration - videoSeconds) < 0.5 / fps;
+  const endsWithVideo = !!bed.track.fit && !bed.sourceStartSeconds && Math.abs(bed.track.duration - videoSeconds) < 0.02;
   const fades = { in: !!bed.sourceStartSeconds, out: !endsWithVideo };
   const levels = musicLevels(bed);
   return (t) => musicGainAt(t, spans, levels, videoSeconds, fades);

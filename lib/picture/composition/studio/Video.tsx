@@ -4,12 +4,10 @@
 // Painting is decided from the composition's frame alone (scenesAtFrame), exactly as the timeline lays it out. The Sequences
 // around each scene and voice line are for the Studio's timeline, where they show up by name, and for mounting.
 
-import { Audio } from '@remotion/media';
 import { useMemo, useRef } from 'react';
 import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useRemotionEnvironment, useVideoConfig, type VideoConfig } from 'remotion';
 import { sfxSoundLabel } from '#lib/timing/sound/models/library.ts';
 import { edgeFadeGain, levelGain, musicBedGainAt, VOICE_LUFS } from '#lib/timing/sound/models/mix.ts';
-import type { LibraryVoiceSound } from '#lib/timing/voice/models/recorded-speech.ts';
 import { libraryMediaUrl } from '#lib/footage/library/studio/library-media.ts';
 import { previsRequestFor, previsSpan, type PrevisClip } from '#lib/footage/previs/studio/previs.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
@@ -24,6 +22,7 @@ import { logToRenderHost } from '#lib/platform/browser/studio/render-page-log.ts
 import { SceneContext } from '#lib/picture/video/studio/scene.tsx';
 import { randomSeedFromKey } from '#lib/picture/motion/models/random.ts';
 import { SFX, Sfx, SfxCueListAudio, SfxCueListPlaying, type SfxCueSound } from '#lib/timing/sound/studio/sfx.tsx';
+import { SoundClip, SoundClipProbe } from '#lib/timing/sound/studio/sound-clip.tsx';
 import { sceneClockAt, sceneTimes, scenesAtFrame } from '#lib/timing/timeline/models/video-layout.ts';
 import { laidVideoOf, videoFormatOf, type LaidScene, type LaidVideo, type VideoDef } from '#lib/picture/video/studio/video.ts';
 import { BurnedCaptions, burnedCaptionPages, CaptionBandContext, sidecarCaptionPages } from '#lib/picture/captions/studio/caption-style.tsx';
@@ -100,7 +99,7 @@ export type VideoProjectModules = {
 
 // `reportTimeline` is off in the replay composition: its Freeze can land on frame 0 more than once, and Remotion
 // refuses a second artifact with the same name.
-export function Video({ video, previsClips, sfxCues, captions, probe, blockouts, auditionSfxCueList = false, traceDetail, lens = 'fast', picture = true, reportTimeline = true }: VideoProps & VideoProjectModules & { video: VideoDef; reportTimeline?: boolean }) {
+export function Video({ video, previsClips, sfxCues, captions, probe, blockouts, auditionSfxCueList = false, traceDetail, lens = 'fast', picture = true, soundClips = false, reportTimeline = true }: VideoProps & VideoProjectModules & { video: VideoDef; reportTimeline?: boolean }) {
   const frame = useCurrentFrame();
   const config = useVideoConfig(), { fps } = config;
   const tl = useMemo(() => laidVideoOf(video), [video]);
@@ -141,46 +140,36 @@ export function Video({ video, previsClips, sfxCues, captions, probe, blockouts,
       </PageTraceContext>
       {playsCueList && sfxCues && <SfxCueListAudio cues={sfxCues} />}
       {video.sounds?.map((s, i) => <Sfx key={i} sound={s.sound} at={s.at} t={t} id={s.id ?? i} volume={s.volume} />)}
-      {tl.cues.map((cue) =>
-        cue.src ? (
-          // One frame of slack past the line's end, so rounding the start to a frame never clips its last samples.
-          <Sequence key={cue.id} name={`voice: ${cue.id}`} from={Math.round(cue.start * fps)} durationInFrames={Math.ceil((cue.end - cue.start) * fps) + 1} layout="none">
-            {typeof cue.src === 'string'
-              ? <Audio src={cue.src} volume={levelGain(cue.lufs!, VOICE_LUFS, `line ${cue.id}`)} />
-              // A stretch of a recording plays from where it starts in the file, with no copy cut.
-              // …and stops at its out point: unlike a clip, the recording runs on past it.
-              // …and fades at its edges, longer where an edge cuts into sound (RecordedSpeech's edges).
-              : <RecordedLineAudio src={cue.src} duration={cue.end - cue.start} gain={levelGain(cue.lufs!, VOICE_LUFS, `line ${cue.id}`)} fps={fps} />}
-          </Sequence>
-        ) : null,
-      )}
-      {video.bed && <MusicBedAudio video={video} tl={tl} fps={fps} />}
+      {tl.cues.map((cue) => (cue.src ? <VoiceLineSound key={cue.id} cue={cue} t={t} /> : null))}
+      {video.bed && <MusicBedSound video={video} tl={tl} t={t} />}
       {playsBeatClicks(video) && <BeatClickAudio timeline={video.timeline} fps={fps} />}
       {captions && <BurnedCaptions style={captioned.style} pages={pages} t={t} />}
       {reportTimeline && frame === 0 && <Artifact filename={TIMELINE_ARTIFACT} content={timelineReport(video, tl, config, playsCueList, captioned)} />}
       {probe && <FrameProbe root={root} />}
+      {soundClips && <SoundClipProbe root={root} />}
     </AbsoluteFill>
   );
 }
 
 
-function RecordedLineAudio({ src, duration, gain, fps }: { src: LibraryVoiceSound; duration: number; gain: number; fps: number }) {
-  return (
-    <Audio src={libraryMediaUrl(src.item, src.file)} trimBefore={src.start * fps} trimAfter={(src.start + duration) * fps}
-      volume={(frame) => gain * edgeFadeGain(frame / fps, duration, src.fade)} />
-  );
+/**
+ * A voice line: a clip of its own, or a stretch of a recording played from where it starts in the file and stopping at
+ * its out point, faded at its edges (longer where an edge cuts into sound: RecordedSpeech's edges).
+ */
+function VoiceLineSound({ cue, t }: { cue: LaidVideo['cues'][number]; t: number }) {
+  const gain = levelGain(cue.lufs!, VOICE_LUFS, `line ${cue.id}`), duration = cue.end - cue.start, src = cue.src!;
+  const faded = useMemo(() => (typeof src === 'string' ? null : (s: number) => gain * edgeFadeGain(s, duration, src.fade)), [src, gain, duration]);
+  return typeof src === 'string'
+    ? <SoundClip src={src} t={t} at={cue.start} volume={gain} id={`line ${cue.id}`} />
+    : <SoundClip src={libraryMediaUrl(src.item, src.file)} t={t} at={cue.start} from={src.start} duration={duration} volume={faded!} id={`line ${cue.id}`} />;
 }
 
-function MusicBedAudio({ video, tl, fps }: { video: VideoDef; tl: LaidVideo; fps: number }) {
+/** The bed under the whole video, ducked around every line, estimated ones included, so the Studio previews the final mix. */
+function MusicBedSound({ video, tl, t }: { video: VideoDef; tl: LaidVideo; t: number }) {
   const bed = video.bed!;
-  const { durationInFrames } = useVideoConfig();
-  // Ducked around every line, estimated ones included, so the Studio previews the final mix.
-  const gainAt = useMemo(() => musicBedGainAt(bed, tl.cues, fps, durationInFrames / fps), [bed, tl, fps, durationInFrames]);
-  // Not in a Sequence, so the volume callback's frame is the video's frame.
-  return (
-    <Audio src={bed.track.src} name="music" loop loopVolumeCurveBehavior="extend" trimBefore={Math.round((bed.sourceStartSeconds ?? 0) * fps)}
-      volume={(f) => gainAt(f / fps)} />
-  );
+  const { durationInFrames, fps } = useVideoConfig(), seconds = durationInFrames / fps;
+  const gainAt = useMemo(() => musicBedGainAt(bed, tl.cues, seconds), [bed, tl, seconds]);
+  return <SoundClip src={bed.track.src} t={t} at={0} from={bed.sourceStartSeconds ?? 0} duration={seconds} loop volume={gainAt} id="music" />;
 }
 
 /**

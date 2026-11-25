@@ -98,6 +98,7 @@ export { sceneSecondsOf, type SceneClockSeconds, type SceneShownSpan } from '#li
 export type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
 export { blockingScene } from '#lib/footage/previs/studio/blocking-scene.tsx';
 export { SFX, Sfx, SfxCueListAudio, SfxCueListPlaying, type SfxCueSound, type SfxSound } from '#lib/timing/sound/studio/sfx.tsx';
+export { SoundClip, type SoundClipProps } from '#lib/timing/sound/studio/sound-clip.tsx';
 export { STILL_FEED_SIZES, STILL_PRESETS, type StillFitReport, type StillPreset } from '#lib/picture/stills/models/still-presets.ts';
 export { CoverImage, FitText, STILL_CARD_TILT, StillCard, StillHud, defineStills, stillDesign, useStillFrame, type StillAxes, type StillCardTilt, type StillDesign, type StillFocus, type StillImage, type StillsDef } from '#lib/picture/stills/studio/stills.tsx';
 export { checkSourcePins, fitTake, onTake, pinnedSourceTime, sceneTimeOf, takeFrameAt, takeMouseAt, takeShot, takeTimeAt, type Take, type TakeFit, type TakeFrame, type TakeMark } from '#lib/footage/capture/studio/take.ts';

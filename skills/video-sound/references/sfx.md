@@ -36,9 +36,8 @@ To change how a sound sounds, or make a project's own, see `sound-design.md`.
 - **`at` is the event**, not the sound's start: a click starts there, a whoosh passes on it, a riser peaks on it, to
   the sample. Anchor it to a word (`s.line(id)`) or the camera key it belongs to, never a raw number.
 - **`id`** picks one of a kit sound's seeded takes, the same every render: give each event its own.
-- **It sounds only while mounted**, and stops when its scene stops painting. An accent that rings across a cut belongs
-  to the scene after it; a riser starting before its scene's first frame loses its start.
-- **`volume`** defaults to 1; over 1 boosts only as far as the sound's peak leaves room. Change it by ear (`mix.md`).
+- **It plays whole** once mounted, ringing on across a cut.
+- **`volume`** defaults to 1; over 1 boosts it, and mastering's limiter catches the peak. Change it by ear (`mix.md`).
 
 ```tsx
 import reveal from './sfx/reveal.ts';
@@ -54,6 +53,12 @@ Redraft after adding one, so the list's accents keep clear of it.
 A Studio Recorder take keeps the Mac's sound (a demo's chime, a clip it played) as its `system` track, apart from the
 mic. `<LibraryAudio footage track="system" from to t at volume>` plays item seconds `from`–`to` starting at scene
 second `at`; `volume` may be a function of seconds into the stretch, to fade it. Unplaced, it's never heard.
+
+## Any other sound
+
+`<SoundClip src at t from duration loop volume id>` (from `#studio`) plays a file from `from` seconds in, starting at
+scene second `at`; `volume` may be a function of seconds into it. A render refuses Remotion's `<Audio>` or an unmuted
+`<Video>`.
 
 ## Sounds on the music's beat
 

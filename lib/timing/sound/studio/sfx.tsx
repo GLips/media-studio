@@ -2,9 +2,9 @@
 // sounds are rendered from lib/timing/sound/models/recipes.ts: the kit's into ./sfx/kit.ts by `studio sfx kit`, a project's own by
 // `studio sfx render`, and a cue list's on every bundle (lib/output/sfx-cues/engine/cue-module.ts).
 
-import { Audio } from '@remotion/media';
 import { createContext, useContext } from 'react';
-import { Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
+import { useCurrentFrame, useVideoConfig } from 'remotion';
+import { SoundClip } from './sound-clip.tsx';
 import type { SfxMarkAttr, SfxMarkedEvent } from '../models/sfx-marks.ts';
 import { randomSeedFromKey } from '#lib/picture/motion/models/random.ts';
 import type { SfxSoundRequest } from '../models/library.ts';
@@ -24,17 +24,6 @@ export type SfxCueSound = { id: string; at: number; volume: number } & Omit<SfxS
 export const SfxCueListPlaying = createContext(false);
 
 /**
- * Where a sound whose file starts on (fractional) frame `start` plays from: the frame at or after it, with the fraction
- * between them trimmed off its front. Every rendered sound opens with over a frame of silence (SFX_PRE_ROLL_SECONDS),
- * so the trim only takes silence and the sound lands to the sample.
- */
-function sfxPlacement(start: number): { from: number; trimBefore: number } {
-  // Float noise must not tip a start that sits on a frame onto the next one.
-  const from = Math.ceil(start - 1e-6);
-  return { from, trimBefore: Math.max(0, from - start) };
-}
-
-/**
  * Plays `sound` so it lands when the scene clock `t` reaches `at`: a riser peaks there, a whoosh passes. `id`
  * picks one of several takes, the same every render. It needs no scene start: `frame − t·fps` is constant.
  *
@@ -43,35 +32,22 @@ function sfxPlacement(start: number): { from: number; trimBefore: number } {
 export function Sfx({ sound, at, t, id = 0, volume = 1, event = 'placed' }: {
   sound: SfxSound | readonly SfxSound[]; at: number; t: number; id?: string | number; volume?: number; event?: SfxMarkedEvent;
 }) {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
   const cueList = useContext(SfxCueListPlaying);
   const takes: readonly SfxSound[] = Array.isArray(sound) ? sound : [sound as SfxSound];
-  const { src, seconds, landsAt, request } = takes[randomSeedFromKey(id) % takes.length];
-  const { from, trimBefore } = sfxPlacement(frame + (at - landsAt - t) * fps);
-  // `useCurrentFrame` is the scene Sequence's frame, so the probe, which knows the video's, turns this into video time.
+  const { src, landsAt, request } = takes[randomSeedFromKey(id) % takes.length];
+  // The probe, which knows the video's frame, turns `fromNow` into video time.
   const mark: SfxMarkAttr = { event, fromNow: at - t, request, volume };
   return (
     <>
       <span hidden data-sfx-event={JSON.stringify(mark)} />
-      {!(cueList && event !== 'placed') && (
-        <Sequence from={from} durationInFrames={Math.ceil(seconds * fps) + 1} layout="none" name="sfx">
-          <Audio src={src} volume={volume} trimBefore={trimBefore} />
-        </Sequence>
-      )}
+      {!(cueList && event !== 'placed') && <SoundClip src={src} t={t} at={at - landsAt} volume={volume} id={`sfx ${event} ${id}`} />}
     </>
   );
 }
 
 /** A cue list over the whole video, each cue landing on its `at` in video seconds. */
 export function SfxCueListAudio({ cues }: { cues: readonly SfxCueSound[] }) {
+  const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  return cues.map((cue) => {
-    const { from, trimBefore } = sfxPlacement((cue.at - cue.landsAt) * fps);
-    return (
-      <Sequence key={cue.id} name={`sfx: ${cue.id}`} from={from} durationInFrames={Math.ceil(cue.seconds * fps) + 1} layout="none">
-        <Audio src={cue.src} volume={cue.volume} trimBefore={trimBefore} />
-      </Sequence>
-    );
-  });
+  return cues.map((cue) => <SoundClip key={cue.id} src={cue.src} t={frame / fps} at={cue.at - cue.landsAt} volume={cue.volume} id={`sfx ${cue.id}`} />);
 }

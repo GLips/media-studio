@@ -24,6 +24,14 @@ export function runFfprobe(args: readonly string[], options?: ExecFileSyncOption
   return execFileSync('ffprobe', args, options);
 }
 
+/**
+ * ffprobe's stdout without blocking the event loop: for a URL this process serves, which a blocking probe would wait
+ * on forever.
+ */
+export async function runFfprobeAsync(args: readonly string[]): Promise<string> {
+  return (await execFileAsync('ffprobe', args, { encoding: 'utf8' })).stdout;
+}
+
 /** ffmpeg without blocking the event loop, for encodes run side by side. */
 export async function runFfmpegAsync(args: readonly string[], options: ExecFileOptions = {}): Promise<void> {
   await execFileAsync('ffmpeg', args, options);

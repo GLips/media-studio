@@ -6,6 +6,7 @@ import type { PrevisClip } from './previs.ts';
 import { checkSourcePins, pinnedSourceTime } from '#lib/footage/capture/studio/take.ts';
 import type { LaidScene } from '#lib/picture/video/studio/video.ts';
 import type { SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
+import { SoundClip } from '#lib/timing/sound/studio/sound-clip.tsx';
 
 /** A previs scene's clip at the scene's clock, retimed by its `previs.retime` if it has one. */
 export function PrevisClipPlayer({ scene, clip, clock }: { scene: LaidScene; clip: PrevisClip; clock: SceneClock }) {
@@ -13,12 +14,15 @@ export function PrevisClipPlayer({ scene, clip, clock }: { scene: LaidScene; cli
   const previs = scene.previs!;
   const style = { width: '100%', height: '100%' };
   if (previs.audio) {
-    // Unfrozen, so its sound plays. The scene's Sequence starts on its first visible frame now, which a changed
-    // crossfade may have moved from where the clip starts.
+    // Unfrozen, playing along with its sound. The scene's Sequence starts on its first visible frame now, which a
+    // changed crossfade may have moved from where the clip starts.
     return (
-      <Sequence from={Math.round(clip.from * fps) - (scene.visible.from - scene.from)} layout="none">
-        <AbsoluteFill><Video src={clip.src} objectFit="cover" style={style} /></AbsoluteFill>
-      </Sequence>
+      <>
+        <Sequence from={Math.round(clip.from * fps) - (scene.visible.from - scene.from)} layout="none">
+          <AbsoluteFill><Video src={clip.src} muted objectFit="cover" style={style} /></AbsoluteFill>
+        </Sequence>
+        <SoundClip src={clip.src} t={clock.t} at={clip.from} duration={clip.duration} id={`previs ${scene.id}`} />
+      </>
     );
   }
   const pins = previs.retime?.(clock).map(([sceneTime, blockout]) => [sceneTime, blockout - clip.from] as const);
