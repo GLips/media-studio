@@ -77,7 +77,8 @@ type LibraryItemJsonImport = { readonly format: string; readonly id: string };
 const EDGE_PAD_OUT = 0.1, EDGE_PAD_IN = 0.12;
 const EDGE_QUIET_MIN = 0.1;
 // Fades a recorded line plays with, by edge: a clean edge only needs the click taken off; a rough one cuts into sound.
-const EDGE_FADES = { clean: { in: 0.03, out: 0.06 }, rough: { in: 0.06, out: 0.12 } } as const;
+// A render steps a line's volume once a frame, so each fade spans several frames to keep every step small.
+const EDGE_FADES = { clean: { in: 0.1, out: 0.13 }, rough: { in: 0.13, out: 0.2 } } as const;
 const round = (seconds: number) => Math.round(seconds * 1000) / 1000;
 
 const wordMiddle = (w?: LibraryWord) => (w ? (w.start + w.end) / 2 : undefined);

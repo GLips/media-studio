@@ -39,7 +39,7 @@ test('a line spoken in a recording is timed, worded and sounded by its stretch, 
   assert.equal(line.duration.toFixed(3), '2.220');
   assert.equal(line.caption, 'Each *agent* has a definition');
   const src = line.src as { start: number };
-  assert.deepEqual({ ...src, start: Math.round(src.start * 1000) / 1000 }, { item: 'take', file: 'proxies/mic-levelled.wav', start: 0.83, fade: { in: 0.03, out: 0.06 } });
+  assert.deepEqual({ ...src, start: Math.round(src.start * 1000) / 1000 }, { item: 'take', file: 'proxies/mic-levelled.wav', start: 0.83, fade: { in: 0.1, out: 0.13 } });
   assert.equal(line.lufs, -13);
   assert.equal(timeline!.clock('agents').cues.named, 53);
   // The picture keeps to the line: 0.5 s into the scene is its start, and the lead runs up to it.
@@ -64,7 +64,7 @@ test('a spoken line with no text says what the transcript heard, and one not yet
 test('an edge with no quiet before the next word cuts into sound: the plan flags it unless the line means it, and it fades longer', () => {
   // "agent" runs into "has" with no quiet between, so the out-point falls midway and cuts into the room.
   const speech = footage.speech(1.5, 2.2);
-  assert.deepEqual([speech.to, speech.edges.out, speech.sound?.fade.out], [2.25, 'rough', 0.12]);
+  assert.deepEqual([speech.to, speech.edges.out, speech.sound?.fade.out], [2.25, 'rough', 0.2]);
   const plan = (hardEdge?: true) => defineStoryboard({
     title: 'Recorded', target: { seconds: 5 }, scenes: { agents: { onScreen: 'The editor', motion: 'None', lines: { definition: { speech, ...(hardEdge && { hardEdge }) } } } },
   });
