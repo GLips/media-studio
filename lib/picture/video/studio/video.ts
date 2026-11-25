@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 import { DEFAULT_VIDEO_FORMAT, type VideoFormat } from '#lib/picture/frame/models/frame.ts';
 import type { MusicBed } from '#lib/timing/sound/models/mix.ts';
 import { resolveStoryboard, storyboardDiagnosticsMessage, type StoryboardMusic } from '#lib/timing/storyboard/models/resolve-storyboard.ts';
-import type { Storyboard, StoryboardTimelineScenes, TimelineOfStoryboard } from '#lib/timing/storyboard/models/storyboard.ts';
+import type { Storyboard, StoryboardLineIdsOf, StoryboardTimelineScenes, TimelineOfStoryboard } from '#lib/timing/storyboard/models/storyboard.ts';
 import { bindTimeline, type TimelineBinding } from '#lib/timing/timeline/models/bind-timeline.ts';
 import type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
 import type { Timeline } from '#lib/timing/timeline/models/timeline.ts';
@@ -107,11 +107,15 @@ type VideoSettings = {
 /** What `defineVideo` takes: the storyboard, what it's timed against, and a binding per scene. */
 export type VideoSpec<S extends Storyboard> = VideoSettings & {
   /**
-   * How it's captioned: a `style` (`pillCaptions()` unless named, or `wordPopCaptions()`), and for a silent video a
-   * `table` of rows per scene, each from a moment of its scene, which defineVideo times on the resolved storyboard. A
-   * voiced video captions its lines. The .srt and .vtt page the same track by the style's sidecar rule.
+   * How it's captioned: a `style` (`pillCaptions()` unless named, or `wordPopCaptions()`); a silent video's `table`,
+   * rows per scene from moments of it (a voiced video captions its lines); and `shownInPicture`, lines whose words
+   * the picture already shows (a live transcript), which only the .srt and .vtt hold.
    */
-  captions?: { style?: CaptionStyle; table?: CaptionTableRows<StoryboardTimelineScenes<S['scenes']>> };
+  captions?: {
+    style?: CaptionStyle;
+    table?: CaptionTableRows<StoryboardTimelineScenes<S['scenes']>>;
+    shownInPicture?: readonly StoryboardLineIdsOf<S['scenes'][keyof S['scenes']]>[];
+  };
   /** The project's storyboard.ts `storyboard`: every scene, line and cue, and so where each falls. */
   storyboard: S;
   /** audio/manifest.ts's `voice`, the recorded lines; leave it out for a video with none yet. */
@@ -127,8 +131,8 @@ export type VideoSpec<S extends Storyboard> = VideoSettings & {
 
 /** A video resolved: its storyboard's timeline, every line it places (estimated ones with no `src`), its scenes bound. */
 export type VideoDef = VideoSettings & {
-  /** Its caption style, and a silent video's table timed to the frame. */
-  captions?: { style?: CaptionStyle; table?: CaptionTrack };
+  /** Its caption style, a silent video's table timed to the frame, and the lines its burned-in captions leave out. */
+  captions?: { style?: CaptionStyle; table?: CaptionTrack; shownInPicture?: readonly string[] };
   storyboard: Storyboard;
   timeline: Timeline;
   voice: Voice;
@@ -148,7 +152,7 @@ export function defineVideo<const S extends Storyboard>({ storyboard, voice, mus
   if (!timeline || diagnostics.length) throw new Error(storyboardDiagnosticsMessage(`the storyboard of ${settings.title}`, diagnostics));
   const table = captions?.table && captionTable(timeline, captions.table);
   return {
-    ...settings, ...(captions && { captions: { style: captions.style, table } }),
+    ...settings, ...(captions && { captions: { style: captions.style, table, shownInPicture: captions.shownInPicture } }),
     storyboard, timeline, voice: placed, scenes: bindTimeline(timeline, scenes),
   };
 }

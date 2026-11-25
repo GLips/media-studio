@@ -45,5 +45,7 @@ Each component's props: `studio api <name>`.
 - To follow the cursor: `useLibraryInputLog(recording)`, `recording.cursorOn('screen', log)`, `followPointAt(path,
   at, { seconds })`, and `<ZoomOnPoint picture focus zoom>` around the screen.
 - To keep tabs or a side panel out of frame: `<ZoomOnPoint>` on a fixed `focus` and `zoom`.
+- Where the screen already shows the words being said (a call's live transcript), list those lines in
+  `defineVideo`'s `captions.shownInPicture`: the burned-in captions leave them out, the .srt and .vtt keep them.
 
 A render needs the library's media online (`studio library config`).

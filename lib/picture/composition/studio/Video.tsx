@@ -40,10 +40,17 @@ export const TIMELINE_ARTIFACT = 'timeline.json';
 const HOUSE_CAPTIONS = pillCaptions();
 
 /** The video's caption style and what it captions: its table, or its voiced lines. */
-export function videoCaptionsOf(video: VideoDef): { style: CaptionStyle; track: CaptionTrack } {
-  const { style = HOUSE_CAPTIONS, table } = video.captions ?? {};
+/**
+ * The video's caption style and what it captions: its table, or its voiced lines. `burned` is the track less the
+ * lines the picture already shows; the .srt and .vtt page the whole `track`.
+ */
+export function videoCaptionsOf(video: VideoDef): { style: CaptionStyle; track: CaptionTrack; burned: CaptionTrack } {
+  const { style = HOUSE_CAPTIONS, table, shownInPicture = [] } = video.captions ?? {};
   if (table && Object.keys(video.voice).length) throw new Error('the video has a voice and a caption table: a voiced video captions its lines, so drop the table');
-  return { style, track: table ?? captionTrackOfVoice(video.timeline, video.voice) };
+  const track = table ?? captionTrackOfVoice(video.timeline, video.voice);
+  const unknown = shownInPicture.filter((id) => !track.some((phrase) => phrase.id === id));
+  if (unknown.length) throw new Error(`captions.shownInPicture names ${unknown.join(', ')}, which the video doesn't speak`);
+  return { style, track, burned: track.filter((phrase) => !shownInPicture.includes(phrase.id)) };
 }
 
 
@@ -105,7 +112,8 @@ export function Video({ video, previsClips, sfxCues, captions, probe, blockouts,
   const tl = useMemo(() => laidVideoOf(video), [video]);
   const { transparent } = useMemo(() => videoFormatOf(video), [video]);
   const captioned = useMemo(() => videoCaptionsOf(video), [video]);
-  const pages = useMemo(() => burnedCaptionPages(captioned.style, captioned.track, config), [captioned, config.width, config.height]);
+  const { width, height } = config;
+  const pages = useMemo(() => burnedCaptionPages(captioned.style, captioned.burned, { width, height }), [captioned, width, height]);
   const root = useRef<HTMLDivElement>(null);
   const t = frame / fps;
   const painted = scenesAtFrame(tl, frame);
