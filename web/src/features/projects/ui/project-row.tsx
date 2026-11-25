@@ -23,17 +23,15 @@ const styles = stylex.create({
   name: { fontWeight: 600 },
   // A title with no columns after it, free of the name column's cap.
   wide: { gridColumn: '2 / -1' },
-  // A name with no question beside it takes the question's column too, rather than truncating beside it.
-  alone: { gridColumn: 'span 2' },
   end: { justifySelf: 'end' },
 });
 
 export const projectListStyles = stylex.create({
-  // Every row's columns: picture, name (its longest, to a cap), what it asks taking the slack, then its state and its age
-  // pinned at the right edge at widths that hold as a group opens. The picture's column is `auto`: a subgrid row's
-  // padding is laid into it. Inset so a row's picture starts under the page title (StudioPageTitle).
+  // Every row's columns: picture, name (its longest, to a cap), its state straight after so the eye reads name then
+  // state, what it asks taking the slack, then its age at the right edge. The picture's column is `auto`: a subgrid
+  // row's padding is laid into it. Inset so a row's picture starts under the page title (StudioPageTitle).
   list: {
-    display: 'grid', gridTemplateColumns: 'auto fit-content(280px) minmax(0, 1fr) minmax(160px, auto) minmax(88px, auto)',
+    display: 'grid', gridTemplateColumns: 'auto fit-content(280px) minmax(112px, auto) minmax(0, 1fr) minmax(88px, auto)',
     columnGap: spacing.inset, alignContent: 'start', paddingInline: `calc(${spacing.row} - ${spacing.gap})`, paddingBlockStart: spacing.gap, paddingBlockEnd: spacing.row,
   },
   // Anything in the list that isn't a row (a header, a rule, a note) spans every column.
@@ -45,22 +43,22 @@ type ProjectRowProps = {
   /** The 64px picture, or a glyph in its box (ProjectThumbnail). */
   readonly thumbnail: ReactNode;
   readonly title: ReactNode;
-  /** After the name, in the same cream: what a decision asks. */
-  readonly detail?: ReactNode;
-  /** Its state in plain words: `1 open note`, `2 questions`, `0 of 6 signed`. */
+  /** Its one state in plain words, after the name (ProjectRowStatus): `not decided`, `1 to verify`, `0 of 6 signed`. */
   readonly status?: ReactNode;
+  /** After the state, in the same cream: what a decision asks. */
+  readonly detail?: ReactNode;
   /** Readouts, right-aligned: a file's age, where a row leads. */
   readonly end?: ReactNode;
 };
 
-/** A project page's and the awaiting list's one row: 44px, picture, name, what it asks, its state, and when. */
+/** A project page's and the awaiting list's one row: 44px, picture, name, its state, what it asks, and when. */
 export function ProjectRow({ target, thumbnail, title, detail, status, end }: ProjectRowProps) {
   return (
     <ProjectTargetLink target={target} xstyle={styles.row}>
       {thumbnail}
-      <Text component="span" size="md" {...stylex.props(styles.cell, styles.name, detail === undefined && styles.alone)}>{title}</Text>
-      {detail !== undefined && <Text component="span" size="md" {...stylex.props(styles.cell)}>{detail}</Text>}
+      <Text component="span" size="md" {...stylex.props(styles.cell, styles.name)}>{title}</Text>
       <Group component="span" gap="gap" wrap="nowrap">{status}</Group>
+      <Text component="span" size="md" {...stylex.props(styles.cell)}>{detail}</Text>
       <Group component="span" gap="gap" wrap="nowrap" {...stylex.props(styles.end)}>{end}</Group>
     </ProjectTargetLink>
   );

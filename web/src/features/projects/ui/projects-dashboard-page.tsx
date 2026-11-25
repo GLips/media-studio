@@ -4,11 +4,12 @@ import { useHotkeys } from '@tanstack/react-hotkeys';
 import { ChevronUp, Ellipsis } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { AnchorLink } from '#web/shared/ui/anchor-link.tsx';
+import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { StudioPageTitle } from '#web/shared/ui/studio-page-title.tsx';
 import { StudioShell } from '#web/shared/ui/studio-shell.tsx';
 import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
-import { ProjectName } from './project-name.tsx';
+import { projectDateSplitOf } from './project-name.tsx';
 import { ProjectPlace, projectPlaceKeyOf } from './project-place.tsx';
 import { projectListStyles, ProjectRowButton } from './project-row.tsx';
 import { ProjectRowGroupLabel } from './project-row-group-label.tsx';
@@ -38,7 +39,10 @@ function AwaitingProjectRows({ awaiting: { summary, rows, waiting }, now }: { re
   return (
     <>
       <ProjectRowGroupLabel count={waiting}>
-        <AnchorLink to="/projects/$project" params={{ project }} underline="hover" {...stylex.props(styles.project)}><ProjectName project={project} /></AnchorLink>
+        {/* The date prefix is left to the tooltip: the sidebar already groups projects by month. */}
+        <HotkeyTooltip name={project}>
+          <AnchorLink to="/projects/$project" params={{ project }} underline="hover" {...stylex.props(styles.project)}>{projectDateSplitOf(project).rest}</AnchorLink>
+        </HotkeyTooltip>
       </ProjectRowGroupLabel>
       {shown.map((row) => <ProjectPlace key={projectPlaceKeyOf(row)} summary={summary} row={row} now={now} />)}
       {folds && (

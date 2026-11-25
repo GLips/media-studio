@@ -9,15 +9,24 @@ import { ProjectTile } from './project-tile.tsx';
 /** The shape a grid takes before any of its pictures has loaded: most renders' frame. */
 export const PROJECT_TILE_GUESSED_ASPECT = 16 / 9;
 
-/** A cell about this tall at its column's narrowest, so a phone-portrait grid isn't a wall of towers. */
-const PROJECT_TILE_CELL_HEIGHT = 250;
+/** A picture's height at most, so a pair of portrait renders leaves the first stills row on the first screen. */
+const PROJECT_TILE_PICTURE_HEIGHT = 220;
+
+/** A column's width bounds: a phone-portrait tile still holds its name, a panorama doesn't take the page. */
+const PROJECT_TILE_COLUMN_WIDTH = { min: 80, max: 360 } as const;
+
+/** A picture of `aspect` at PROJECT_TILE_PICTURE_HEIGHT: its width, within PROJECT_TILE_COLUMN_WIDTH. */
+const projectTileColumnWidthOf = (aspect: number) =>
+  Math.round(Math.min(Math.max(PROJECT_TILE_PICTURE_HEIGHT * aspect, PROJECT_TILE_COLUMN_WIDTH.min), PROJECT_TILE_COLUMN_WIDTH.max));
 
 export const projectTileGridStyles = stylex.create({
-  // Inside the page's list, across every column, its tiles' edges under the rows' pictures. A narrow shape gets
-  // narrow columns, so a cell's height stays near PROJECT_TILE_CELL_HEIGHT whatever the pictures' shape.
+  // Inside the page's list, across every column, its tiles' edges under the rows' pictures. Columns are fixed at the
+  // capped picture's width and never stretch, so no picture grows past PROJECT_TILE_PICTURE_HEIGHT; the slack stays
+  // at the row's end.
   grid: (aspect: number) => ({
     gridColumn: '1 / -1', display: 'grid', alignItems: 'start', gap: spacing.gap, paddingBlockEnd: spacing.gap,
-    gridTemplateColumns: `repeat(auto-fill, minmax(${Math.round(Math.min(Math.max(PROJECT_TILE_CELL_HEIGHT * aspect, 140), 320))}px, 1fr))`,
+    // A tile's padding (ProjectTile) sits around its picture, so the column carries it on top of the picture's width.
+    gridTemplateColumns: `repeat(auto-fill, calc(${projectTileColumnWidthOf(aspect)}px + 2 * ${spacing.tight}))`,
   }),
 });
 

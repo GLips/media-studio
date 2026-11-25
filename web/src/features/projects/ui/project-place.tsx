@@ -9,22 +9,16 @@ import { colors } from '#web/shared/ui/theme.stylex.ts';
 import { ProjectAge } from './project-age.tsx';
 import { ProjectRow } from './project-row.tsx';
 import type { ProjectRowTarget } from './project-target-link.tsx';
-import { ProjectThreadCounts } from './project-thread-counts.tsx';
+import { ProjectRowStatus, type ProjectPlaceState } from './project-row-status.tsx';
 import { ProjectThumbnail, type ProjectThumbnailSource } from './project-thumbnail.tsx';
 
 const styles = stylex.create({
   dim: { color: colors.dim },
-  waiting: { color: colors.caution },
 });
 
 const GLYPH_SIZE = 14;
 
-/** A row's state in words after its thread counts: dim once settled, caution while it waits on the reviewer. */
-function PlaceState({ children, waiting }: { readonly children: ReactNode; readonly waiting: boolean }) {
-  return <Text component="span" size="sm" {...stylex.props(waiting ? styles.waiting : styles.dim)}>{children}</Text>;
-}
-
-type PlaceView = { target: ProjectRowTarget; thumbnail: ProjectThumbnailSource; title: ReactNode; detail?: ReactNode; state?: ReactNode; end?: ReactNode };
+type PlaceView = { target: ProjectRowTarget; thumbnail: ProjectThumbnailSource; title: ReactNode; detail?: ReactNode; state?: ProjectPlaceState; end?: ReactNode };
 
 type PlanRow = Extract<ReviewProjectRow, { on: 'plan' }>;
 
@@ -48,7 +42,7 @@ function planViewOf(project: string, row: PlanRow, signoffs: ProjectPlanSignoffs
     target: { project, on: 'plan' },
     thumbnail: { glyph: <ScrollText size={GLYPH_SIZE} /> },
     title: 'plan',
-    state: signoffs !== null && <PlaceState waiting={reviewPlanScenesAwaitYou(row, signoffs)}>{signed} of {signoffs.length} signed</PlaceState>,
+    state: signoffs === null ? undefined : { words: `${signed} of ${signoffs.length} signed`, waiting: reviewPlanScenesAwaitYou(row, signoffs) },
     end: <ProjectAge now={now} at={at} what={what} />,
   };
 }
@@ -74,7 +68,7 @@ function placeViewOf({ project, rows }: ReviewProjectSummary, row: Exclude<Revie
         thumbnail: { glyph: <Split size={GLYPH_SIZE} /> },
         title: row.topic,
         detail: row.question,
-        state: <PlaceState waiting={open}>{open ? 'not decided' : 'decided'}</PlaceState>,
+        state: { words: open ? 'not decided' : 'decided', waiting: open },
         end: <ProjectAge now={now} at={row.at} what={open ? 'posted' : 'decided'} />,
       };
     }
@@ -123,6 +117,6 @@ function ProjectPlanPlace({ project, row, now }: { readonly project: string; rea
 type ProjectPlaceViewProps = { readonly view: PlaceView; readonly row: ReviewProjectRow };
 
 function ProjectPlaceView({ view: { target, thumbnail, title, detail, state, end }, row }: ProjectPlaceViewProps) {
-  const status = <><ProjectThreadCounts threads={row.threads} />{state}</>;
+  const status = <ProjectRowStatus threads={row.threads} state={state} />;
   return <ProjectRow target={target} thumbnail={<ProjectThumbnail {...thumbnail} />} title={title} detail={detail} status={status} end={end} />;
 }
