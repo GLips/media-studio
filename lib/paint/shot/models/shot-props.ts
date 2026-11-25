@@ -17,6 +17,7 @@ import type { PaintRigCutDeclaration } from '#lib/paint/rig/models/paint-rig-cut
 import type { PaintRigPartMove } from '#lib/paint/rig/models/paint-rig-pose.ts';
 import type { PaintedThreeSource } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
+import type { ShotFigure } from './shot-figure.ts';
 import type { PaintingInTime } from './shot-painting-in-time.ts';
 import type { PaintedSource } from './shot-selection.ts';
 
@@ -102,7 +103,7 @@ export type PlaneProps = PlaneCommon & ShotNodeFields & {
    */
   readonly depth: PresentationValue<number>;
   readonly masks?: readonly PlaneMask[];
-  readonly source: PresentationValue<PaintedSource> | PaintingInTime | PictureSource | ThreeSource;
+  readonly source: PresentationValue<PaintedSource> | PaintingInTime | ShotFigure | PictureSource | ThreeSource;
   readonly sourceClock?: PaintNodeClock;
   /** Plays on the plane's own node, which its node fields (`pivot`, `pins`, `marks`, `glow`) write: it moves the whole plane. */
   readonly plays?: readonly ShotNodePlay[];

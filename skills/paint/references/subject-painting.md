@@ -34,7 +34,8 @@ export default function clapper(): PaintingDocument {
   meet: a seam inside one form is left to the washes). On in watercolour, off in gouache; a character designed with
   outlines wants it on. Each silhouette stretch is inked with its own part's `lineWeight`, `lineColor` and `edge`.
 - Line art holds every outline, thinning where it faces the key; `edge: 'soft'` or `'lost'` lets it break.
-- Over footage, wrap the painting in `subjectFigureCard`, so the figure keeps its whites and ends in a soft edge.
+- Over footage, wrap the painting in `subjectFigureCard`, so the figure keeps its whites and ends in a soft edge,
+  and place it with `shotFigure`.
 - `requireSubjectPainting` throws `paintSubject`'s problems; `studio paint check` names the parts behind each.
 - Make style, light and pose properties; check each pairing with `--set`.
 

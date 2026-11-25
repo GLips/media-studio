@@ -15,12 +15,14 @@ import { paintPlacementMoveProblem } from '#lib/paint/animation/models/paint-mot
 import { paintSecondsText, paintSpanFrames, paintSpanMoments, paintSpanProblem } from '#lib/paint/animation/models/paint-span-moments.ts';
 import { presentationValueAt, type PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import type { PaintingBrushOf } from '#lib/paint/document/models/painting-deposit-compile.ts';
+import type { GroupKey } from '#lib/paint/document/models/painting-document.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import { PAPER_KEY_LIGHT, paintLightProblem, type PaintLight } from '#lib/paint/painting/models/stamp-form.ts';
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { paintMoment, type PaintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
+import { shotFigureProblems } from './shot-figure.ts';
 import { shotPlaneMomentAt } from './shot-frame-plan.ts';
 import { shotPlaneEntries } from './shot-entries.ts';
 import { compileShotInstancedPlane, type CompiledShotInstancedPlane } from './shot-instances.ts';
@@ -63,6 +65,8 @@ export type CompiledShotPaintedPlane = ShotPlaneCommon & {
   readonly kind: 'painted'; readonly source: PresentationValue<PaintedSource>; readonly keyDrawings: ShotKeyDrawings | null; readonly sourceClock: readonly PaintSceneStep[];
   readonly lay: ShotPlaneLay; readonly ends: readonly PaintedSourceEnd[]; readonly paints: ShotPlanePaints; readonly occurrences: readonly ShotOccurrence[];
   readonly opaqueBack: boolean; readonly masks: readonly PlaneMask[];
+  /** The figure card group it places when its source is a figure (shot-figure.ts), its silhouette's; null for any other selection. */
+  readonly figure: GroupKey | null;
 };
 
 /** A picture or three plane compiled: its source, posed or pictured at `sourceClock`'s moment; a three plane at one depth. */
@@ -189,7 +193,7 @@ function movingLayProblems(plane: CompiledShotPaintedPlane, motion: CompiledShot
  */
 function compilePaintedPlane(
   props: PlaneProps, given: PresentationValue<PaintedSource> | ShotKeyDrawings, common: ShotPlaneCommon, farthest: boolean, page: ShotPage, fps: number,
-  problems: PaintingProblem[], field = 'source',
+  problems: PaintingProblem[], field = 'source', figure: GroupKey | null = null,
 ): CompiledShotPaintedPlane | null {
   const sourceClock = paintNodeClockSteps(props.sourceClock);
   const keyDrawings = typeof given !== 'function' && given.kind === 'key-drawings' ? given : null;
@@ -200,13 +204,14 @@ function compilePaintedPlane(
   if (sourceProblems.length) return null;
   const ends = keyDrawings?.ends ?? paintedSourceEnds(first, field), [{ selection: { painting: { document: { widthPx, heightPx } }, ground } }] = ends, paints = { widthPx, heightPx, ground };
   problems.push(...paintedPlaneBlendProblems(props.id, ends, paints));
+  if (figure !== null) problems.push(...shotFigureProblems(props.id, figure, ends));
   const clear = ground === 'transparent';
   if (farthest && clear && !page.htmlBehind) {
     problems.push(shotError(props.id, 'source.ground', 'is the back, laid on its paper wherever the frame shows: its ground is transparent only over HTML before the first canvas'));
   }
   return {
     ...common, kind: 'painted', source, keyDrawings, sourceClock, lay: compilePlaneLay(props), opaqueBack: farthest && !clear, ends, paints,
-    occurrences: shotPlaneOccurrences(props.id, first), masks: props.masks ?? [],
+    occurrences: shotPlaneOccurrences(props.id, first), masks: props.masks ?? [], figure,
   };
 }
 
@@ -290,7 +295,9 @@ export function compilePaintedShot(
   const planes = shotDrawableOrder(props.planes, new Map(), (plane) => shotPlaneDepthRange(plane, moments, fps).far).flatMap((drawable, index): CompiledShotPlane[] => {
     const plane = written.get(drawable.plane)!, canvas = canvasOf(plane.canvas);
     const common = { id: plane.id, depth: planeDepths.values.get(plane.id)!, canvas };
-    const { source } = plane, sourceClock = paintNodeClockSteps(plane.sourceClock);
+    // A figure places the selection it holds, as that selection on the plane would (shot-figure.ts).
+    const given = plane.source, figure = typeof given !== 'function' && given.kind === 'figure' ? given : null;
+    const source = typeof given !== 'function' && given.kind === 'figure' ? given.source : given, sourceClock = paintNodeClockSteps(plane.sourceClock);
     if (typeof source !== 'function' && source.kind === 'picture') return [{ ...common, sourceClock, kind: 'picture', source }];
     // planePropsProblems refuses a three plane's depth in time.
     if (typeof source !== 'function' && source.kind === 'three') return typeof common.depth === 'number' ? [{ ...common, depth: common.depth, sourceClock, kind: 'three', source }] : [];
@@ -298,10 +305,10 @@ export function compilePaintedShot(
       const planned = planShotKeyDrawings(plane.id, source, shotSourceMoments(props.span, sourceClock, fps));
       problems.push(...planned.problems.filter(({ severity }) => severity === 'error'));
       warnings.push(...planned.problems.filter(({ severity }) => severity === 'warning'));
-      const painted = planned.plan && compilePaintedPlane(plane, planned.plan, common, index === 0, page, fps, problems);
+      const painted = planned.plan && compilePaintedPlane(plane, planned.plan, common, index === 0, page, fps, problems, 'source', figure?.card ?? null);
       return painted ? [painted] : [];
     }
-    const painted = compilePaintedPlane(plane, source, common, index === 0, page, fps, problems);
+    const painted = compilePaintedPlane(plane, source, common, index === 0, page, fps, problems, 'source', figure?.card ?? null);
     return painted ? [painted] : [];
   });
   const [back] = planes, clearBack = !!back && (back.kind === 'painted' ? !back.opaqueBack : back.kind === 'three' || back.source.extent.kind !== 'everywhere');

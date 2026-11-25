@@ -253,6 +253,8 @@ export type { PaintingProblem } from '#lib/paint/document/models/painting-proble
 export { layersOf, type LayerSelection, type SelectionGround } from '#lib/paint/document/models/painting-selection.ts';
 export { dissolve, type Dissolve, type PaintedSource } from '#lib/paint/shot/models/shot-selection.ts';
 export { paintingInTime, type PaintingInTime, type PaintingInTimeOptions, type PaintingInTimeValues } from '#lib/paint/shot/models/shot-painting-in-time.ts';
+// A figure card's subtree as an image a plane places, its silhouette read beside it (the paint skill's shots).
+export { shotFigure, shotFigureInTime, shotFigureSilhouette, shotPlace, type ShotFigure } from '#lib/paint/shot/models/shot-figure.ts';
 export type {
   CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceProps, OccurrenceRig, PaintedShotProps, PaintedTexture, PictureSource, PinPoint, PlaneInstance,
   PlaneLay, PlaneMask, PlaneProps, RigPart, RigPartPose, RigPose, ScreenPin, ShotNodePlay, ThreeSource,
