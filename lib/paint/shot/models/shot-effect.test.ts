@@ -117,6 +117,11 @@ test('slices rerolling each drawing keys its output by the drawing its plane sho
   assert.notEqual(shotEffectKeyAt(reroll, first), shotEffectKeyAt(reroll, next));
   assert.deepEqual(shotEffectTimeAt(reroll, next), { drawing: 1, seconds: 0 });
   assert.equal(shotEffectKeyAt(fixed, first), shotEffectKeyAt(fixed, next));
+  const drift = defineShotEffect({ name: 'drift', inputs: ['source'], defaults: {}, problems: () => [], reads: () => [{ input: 'source' }], varies: () => ['moment'] });
+  const drifting = (compiled(shotPlace(drift(hero), { id: 'drift', depth: 1 })).shot!.planes.find(({ id }) => id === 'drift') as CompiledShotEffectPlane).image;
+  // Two exposures of one frame: a moment followed is read by its seconds, not its frame.
+  assert.deepEqual(shotEffectTimeAt(drifting, paintMoment(0.51, 0.5)), { drawing: 0, seconds: 0.51 });
+  assert.notEqual(shotEffectKeyAt(drifting, paintMoment(0.5)), shotEffectKeyAt(drifting, paintMoment(0.51, 0.5)));
   assert.match(messages(shotPlace(slices({ source: hero }, { reroll: 'drawing' }), { id: 'x', depth: 1 })), /sourceClock: slices varies with each drawing, and the plane declares no drawing clock/);
   const params = { cells: 'rects', size: 12, shift: 24, share: 0.5, seed: 1 } as const;
   const cells = (cut: 'never' | 'drawing', drawing: number) => Array.from({ length: 16 }, (_, k) => shotSlicesCell({ ...params, reroll: cut }, 2, [k, 0], drawing));

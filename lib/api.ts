@@ -262,7 +262,7 @@ export { shotFigure, shotFigureInTime, shotFigureSilhouette, shotPlace, type Sho
 // Effects: a definition's models half and its studio half, made alike by the built-ins and a project's own.
 export {
   defineShotEffect, SHOT_EFFECT_READS_MOST, type ShotEffect, type ShotEffectDefinition, type ShotEffectImage, type ShotEffectParams, type ShotEffectMoment, type ShotEffectProblem,
-  type ShotEffectRead, type ShotImageSource,
+  type ShotEffectRead, type ShotEffectVaries, type ShotImageSource,
 } from '#lib/paint/shot/models/shot-effect.ts';
 export { offsetCopies, type ShotOffsetCopiesParams } from '#lib/paint/shot/models/shot-offset-copies.ts';
 export { channelSplit, type ShotChannelSplitParams } from '#lib/paint/shot/models/shot-channel-split.ts';

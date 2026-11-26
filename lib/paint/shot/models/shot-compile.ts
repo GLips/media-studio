@@ -301,6 +301,7 @@ function compileEffectImage(image: Extract<ShotImageSource, { readonly kind: 'ef
   };
   const reads = checked.reads.map((read): CompiledShotEffectRead => ({ input: inputs.get(read.input)!, map: shotEffectReadMap(read), moment: momentOf(read.moment) }));
   const { fps } = at;
+  // A drawing followed has a drawing clock: refused above without one.
   const timeAt = followsDrawing || followsMoment
     ? (m: PaintMoment) => ({ drawing: followsDrawing ? paintNodeDrawingAt(steps, m, fps)! : 0, seconds: followsMoment ? m.at : 0 })
     : null;

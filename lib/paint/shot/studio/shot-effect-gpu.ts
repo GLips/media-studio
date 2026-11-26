@@ -28,7 +28,9 @@ export const SHOT_EFFECT_PARAMS_MOST = 64;
 
 /**
  * An effect's studio half: its definition, the WGSL defining `fn shotEffect(p: vec2f) -> ShotFilm` (it may define
- * helpers of its own beside it), and its parameters packed as at most SHOT_EFFECT_PARAMS_MOST floats, read by `shotParam`.
+ * helpers of its own beside it), and its parameters packed as at most SHOT_EFFECT_PARAMS_MOST floats. Its WGSL
+ * calls `shotRead(i, p)`, `shotOver(top, under)`, `shotFaded(film, k)`, `shotFilmClear()`, `shotParam(i)`, and
+ * `shotDrawing()` / `shotSeconds()` (0 unless its definition's `varies` follows them); SHOT_READS counts its reads.
  */
 export type ShotEffectGpu<P extends ShotEffectParams = ShotEffectParams> = {
   readonly definition: ShotEffectDefinition<P>;
