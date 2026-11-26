@@ -158,6 +158,13 @@ test('a pause mid-phrase plays shorter than one ending a sentence, the face keep
   assert.ok(Math.abs(sounded.reduce((sum, p) => sum + p.duration, 0) - spokenStretchSeconds(speech)) < 0.005);
   const inQuiet = (t: number) => pacedItem.tracks.mic.levelled.quiet.some(([start, end]) => start < t && t < end);
   assert.ok(sounded.slice(1).every((p, k) => inQuiet(p.start) && inQuiet(sounded[k].start + sounded[k].duration)), 'every cut is in quiet');
+  // However short `longest`, a sped pause ramps back to its own pace before the next word, and every word plays at it.
+  const squeezed = paced.speech(0.4, 10.4, { pauses: { longest: 0.3 } });
+  assert.ok(squeezed.pauses.every((p) => p.plays <= 0.3 + 1e-9), squeezed.pauses.map((p) => p.plays).join(', '));
+  for (const [text, start, end] of pacedSaid) {
+    const pieces = squeezed.pieces.filter((p) => p.to > Number(start) && p.from < Number(end));
+    assert.ok(pieces.every((p) => (p.speed ?? 1) === 1), `${String(text)} plays at its own pace`);
+  }
   // A project's own pacing and classifier: every pause a boundary, at most 1.8 s.
   const own = paced.speech(0.4, 10.4, { pauses: { classify: () => 'boundary', longest: 1.8 } });
   assert.deepEqual(own.pauses.map((p) => p.kind), ['boundary', 'boundary', 'boundary']);

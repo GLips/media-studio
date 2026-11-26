@@ -12,6 +12,8 @@ import { spokenItemTimeAt, spokenStretchSeconds, type RecordedSpeech } from '#li
 export type PauseRigPlayhead = { playing: boolean; line: number; item: number };
 
 // Seconds the camera may drift from the clock before it's put back; a seek costs a stall, so not every frame.
+// The fastest a browser plays a video.
+const MAX_VIDEO_RATE = 16;
 const PICTURE_DRIFT = 0.08;
 // The gain curve a clip is handed, sampled this often: a fade of 20 ms gets ten points.
 const GAIN_STEP = 0.002;
@@ -90,7 +92,8 @@ export function createPauseRigPlayer(): PauseRigPlayer {
       const at = Math.max(from, line), itemTime = spokenItemTimeAt(speech, at);
       if (camera) {
         const piece = speech.pieces.find((p, k) => k === speech.pieces.length - 1 || itemTime < p.to);
-        const rate = piece?.speed ?? 1;
+        // Chrome refuses a playback rate past 16, throwing out of this loop; a faster stretch is held by seeking.
+        const rate = Math.min(MAX_VIDEO_RATE, piece?.speed ?? 1);
         if (video.playbackRate !== rate) video.playbackRate = rate;
         const mediaTime = libraryMediaTimeOf(camera, itemTime);
         if (Math.abs(video.currentTime - mediaTime) > PICTURE_DRIFT) video.currentTime = mediaTime;
