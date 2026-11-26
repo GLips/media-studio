@@ -69,6 +69,8 @@ paintSubject(subject, gouacheSubject, { light: 'soft' }, [
   targets, for a transparent glaze; `'over'` lets the washes run under an opaque or darker one; `{ reserve: area }`
   keeps paper in a shape of its own, as a winking eye.
 - **Finish** with your own layers after: `[...layers, ...yours]`, placed by `findSubjectPart` and `subjectAreaBox`.
+- **One piece alone**: `subjectShowingOnly(subject, [selectPart('glove-left')])` hides the other parts, so an effect
+  can read a hand apart from its body; layers group by pass, not part.
 
 In gouache, reserve a dark's region from the light under it, or it greys; in watercolour, a light drawn by hand needs
 paper kept: a replacement's `ground`, or `reserves`.

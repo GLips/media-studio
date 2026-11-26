@@ -66,18 +66,16 @@ behind it inside the shot at every frame; over a dark page, put an opaque backgr
 or another effect. Its inputs need no plane of their own; each is laid through the effect's plane's lay. Built in:
 `offsetCopies`; `channelSplit(hero, {red: [x, y], green, blue})`, each channel moved whole, so its fringe tints
 coloured footage cleanly; and `slices({source, second?, third?, fourth?}, {cells: 'rows' | 'rects', size, shift,
-share, seed, reroll?})`, cells of the frame a seeded share moved, each showing one input: give two looks of one subject, neither
-placed, for a tiled mosh; and `trail(hero, {count, every: {drawings}, fade})`, whose ghosts step back whole drawings on
-the clock its plane's `sourceClock` declares (a plane with none is refused: declare one, never guess it), each laid where
-it lay then and seen through the camera now, none before the source's first drawing. Cells lie in plane px, not on the subject, and the same seed always cuts the same; `reroll: 'drawing'` cuts afresh
-each drawing its plane's `sourceClock` shows, the same through a hold. Define your own as the studio does, in two halves: `defineShotEffect({name, inputs, optional?, defaults,
+share, seed, reroll?})`, cells of the frame a seeded share moved, each showing one input (two looks of one subject,
+neither placed, make a tiled mosh); and `trail(hero, {count, every: {drawings}, fade})`, whose ghosts step back whole
+drawings on its plane's `sourceClock` (required), each laid where it lay then, seen through the camera now. Cells lie in plane px, the same seed cutting the same; `reroll: 'drawing'` cuts afresh each drawing,
+the same through a hold. Define your own as the studio does, in two halves: `defineShotEffect({name, inputs, optional?, defaults,
 problems, reads, grow?, varies?})` (plain data: `reads(params, given)` names, of the inputs given, each read's input, a map in plane px, and a moment: `{drawingsEarlier: n}`, or a map shifting `at` and `frame` alike, as `momentEarlier` does), and
 `defineShotEffectGpu(effect, {wgsl, uniforms})`, whose WGSL defines `fn shotEffect(p: vec2f) -> ShotFilm` over
 `shotRead(i, p)`, `shotOver`, `shotFaded` and `shotParam(i)` (`studio api defineShotEffectGpu`). An effect that
 changes over time says so in `varies(params)`: `['drawing']` gives its WGSL `shotDrawing()`, the drawing its plane's
-`sourceClock` shows (declare one), so it rerolls each drawing and a hold reuses its picture: seed with it, never with
-the frame; `['moment']` gives `shotSeconds()`, for change that runs on through holds, drawn anew each frame. Both read 0
-unless asked, and only what's asked keys its output. Pass your halves to
+`sourceClock` shows, so a hold reuses its picture: seed with it, never the frame; `['moment']` gives `shotSeconds()`,
+drawn anew each frame through holds. Each reads 0 unless asked. Pass your halves to
 `<PaintedShot effects={[...]}>`, a module constant. An effect plane can't be the back or take masks, and no mask reads it.
 An effect whose light is its own (a tube, a spark) says `emits: true`: its film's emission blooms through the lens.
 
@@ -92,7 +90,11 @@ source's lay. On a three receiver it's laid in frame px as if the plane were fla
 **Neon.** `const sign = neon({palette: ['#ff3fa4', '#3ff0ff'], spill: {reach: 48}, flicker: {seed: 3}})`, then
 `sign.place(shotFigure(painting, card), {id: 'sign', depth: 1.2})` and `sign.light(wall, 'sign')`. `tubes` (the
 `neonTubes` effect) bends each line into a tube of the palette colour nearest its paint's hue, white at its core;
-`flicker` is a value in time for its visibility. The tubes stand alone, on any plane or in another effect.
+`flicker` is a value in time for its visibility. The tubes stand alone, on any plane or in another effect. Feed it
+lines alone, an ink per gas, on a transparent ground.
+
+**Worked examples**: `$(studio home)/work/projects/2026-11-clapper-effects/`, a hand's `trail`, a two-look
+`slices` mosh, `neon` lighting a wall.
 
 ## The camera
 
