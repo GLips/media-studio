@@ -168,6 +168,6 @@ export function paintingStrokeVisibleWidthPx(application: AnyApplication & { rea
   const brush = brushOf(application.brush);
   let scale = 0;
   for (const path of application.subpaths) for (const point of path) scale = Math.max(scale, point.scale ?? 1);
-  const wobble = 2 * (application.hand?.wobble?.position ?? 0) * application.diameterPx;
+  const wobble = 2 * ((application.hand?.wobble?.position ?? 0) + (application.hand?.wobble?.wander ?? 0)) * application.diameterPx;
   return stampBrushVisibleWidth(stampBrushMeasuredProfile(brush), application.diameterPx * scale, brush.name) + wobble;
 }

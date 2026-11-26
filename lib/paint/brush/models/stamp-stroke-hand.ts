@@ -50,10 +50,10 @@ export type StampStrokeHand = {
   curvature?: number;
   /**
    * Seeded, smoothly varying unsteadiness: `pressure` (0..1), the share by which pressure rises or falls, so a light
-   * stretch trembles as little as it presses; and `position` (in diameters), moving the path sideways. No two strokes
-   * along one path are then machine-identical.
+   * stretch trembles as little as it presses; `position` (in diameters), moving the path sideways; and `wander` (in
+   * diameters), a slow sideways drift over a long run, as a sketching hand strays off the line and back.
    */
-  wobble?: { pressure?: number; position?: number };
+  wobble?: { pressure?: number; position?: number; wander?: number };
 };
 
 /** Points no further apart than this share of the diameter carry the pressure between them closely enough. */
@@ -67,6 +67,8 @@ const TIGHT_RADIUS = 2;
 /** Wobble's wavelength along the stroke, in diameters: pressure trembles faster than the path drifts. */
 const PRESSURE_WOBBLE_WAVE = 2.5;
 const POSITION_WOBBLE_WAVE = 5;
+/** A hand strays from the line over this many diameters: slow enough to read as the line moving, not its grain. */
+const WANDER_WAVE = 40;
 
 /**
  * `path` as `hand` paints it at `diameter`: resampled finely enough to carry its pressure, each point's pressure the
@@ -85,12 +87,13 @@ export function handStampStroke(path: readonly StampStrokePoint[], hand: StampSt
   const curvature = hand.curvature ?? 0;
   const pressureWobble = smoothNoise(`${seed}|pressure`, length, PRESSURE_WOBBLE_WAVE * diameter);
   const positionWobble = smoothNoise(`${seed}|position`, length, POSITION_WOBBLE_WAVE * diameter);
+  const wanderWobble = smoothNoise(`${seed}|wander`, length, WANDER_WAVE * diameter);
   return points.map((point, i) => {
     const along = length > 0 ? arcs[i] / length : 0;
     const shaped = profile ? 1 - depth * (1 - clamp(profile(along))) : 1;
     const tremble = 1 + (hand.wobble?.pressure ?? 0) * (2 * pressureWobble(arcs[i]) - 1);
     const pressure = clamp((point.pressure ?? 1) * shaped * (1 - curvature * (1 - tightness[i])) * tremble);
-    const reach = (hand.wobble?.position ?? 0) * diameter * (2 * positionWobble(arcs[i]) - 1);
+    const reach = (hand.wobble?.position ?? 0) * diameter * (2 * positionWobble(arcs[i]) - 1) + (hand.wobble?.wander ?? 0) * diameter * (2 * wanderWobble(arcs[i]) - 1);
     const [nx, ny] = normalAt(points, i);
     return { ...point, x: point.x + nx * reach, y: point.y + ny * reach, pressure };
   });

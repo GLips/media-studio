@@ -176,9 +176,9 @@ function lineSpotBlack(context: LineContext, area: SubjectArea, owner: PartId, s
  * How each tool moves: ink in long strokes a fifth of the subject long, tapering hard at each lift; pencil in shorter,
  * more overlapped strokes that taper less and wander more, as a hand sketches. Lengths are shares of the subject's size.
  */
-const TOOL_HANDS: Record<LineTool, { strokeShare: number; strokePx: readonly [number, number]; overlapWidths: number; taperFloor: number; wobble: { pressure: number; position: number } }> = {
+const TOOL_HANDS: Record<LineTool, { strokeShare: number; strokePx: readonly [number, number]; overlapWidths: number; taperFloor: number; wobble: { pressure: number; position: number; wander?: number } }> = {
   ink: { strokeShare: 0.18, strokePx: [30, 360], overlapWidths: 3, taperFloor: 0.28, wobble: { pressure: 0.08, position: 0.05 } },
-  pencil: { strokeShare: 0.09, strokePx: [20, 200], overlapWidths: 5, taperFloor: 0.5, wobble: { pressure: 0.2, position: 0.18 } },
+  pencil: { strokeShare: 0.09, strokePx: [20, 200], overlapWidths: 5, taperFloor: 0.5, wobble: { pressure: 0.2, position: 0.18, wander: 0.5 } },
 };
 
 /**
