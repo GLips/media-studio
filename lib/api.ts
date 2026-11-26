@@ -261,6 +261,7 @@ export {
   type ShotEffectRead, type ShotImageSource,
 } from '#lib/paint/shot/models/shot-effect.ts';
 export { offsetCopies, type ShotOffsetCopiesParams } from '#lib/paint/shot/models/shot-offset-copies.ts';
+export { trail, type ShotTrailParams } from '#lib/paint/shot/models/shot-trail.ts';
 export { defineShotEffectGpu, SHOT_EFFECT_PARAMS_MOST, type ShotEffectGpu } from '#lib/paint/shot/studio/shot-effect-gpu.ts';
 export type {
   CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceProps, OccurrenceRig, PaintedShotProps, PaintedTexture, PictureSource, PinPoint, PlaneInstance,

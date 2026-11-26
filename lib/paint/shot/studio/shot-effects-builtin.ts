@@ -3,8 +3,9 @@
 
 import { shotEffectTable, type ShotEffectGpu } from './shot-effect-gpu.ts';
 import { offsetCopiesGpu } from './shot-offset-copies-gpu.ts';
+import { trailGpu } from './shot-trail-gpu.ts';
 
-const SHOT_EFFECTS_BUILTIN: readonly ShotEffectGpu[] = [offsetCopiesGpu];
+const SHOT_EFFECTS_BUILTIN: readonly ShotEffectGpu[] = [offsetCopiesGpu, trailGpu];
 
 /** The effect table a shot drawn with `effects` holds: the built-ins, then those. */
 export const shotEffectTableWithBuiltins = (effects: readonly ShotEffectGpu[]) => shotEffectTable([...SHOT_EFFECTS_BUILTIN, ...effects]);
