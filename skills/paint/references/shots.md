@@ -63,7 +63,7 @@ mode, `isolation`, a z-index on a positioned element, a clip path or mask): it's
 behind it inside the shot at every frame; over a dark page, put an opaque background behind it inside the shot.
 
 **Effects.** Place an effect with `shotPlace(image, plane)`. Its inputs share that lay and need no planes.
-Use a figure, transparent selection, painting in time or another effect. Effect planes can't be the back or use masks.
+Use a figure, transparent selection, painting in time or another effect. A stage effect can be the back.
 
 - `offsetCopies(hero, {count, dx, dy, fade})` stacks today's pose. `channelSplit(hero, {red: [5,0], blue: [-5,0]})`
   separates colour, coverage and emission together.
@@ -72,10 +72,11 @@ Use a figure, transparent selection, painting in time or another effect. Effect 
   Space the poses with `every.drawings`. Use `visibility: trailStrobe(2, 0.75)` for two pulses/sec at 75% duty.
 - `slices({source, second?, third?, fourth?}, {cells: 'rows' | 'rects', size, shift, share, seed})` cuts between inputs
   in plane px. Add `reroll: 'drawing'` and a source clock to reseed each drawing.
-- `mosh({source: hero, second: gouache, ground: paper}, {block: 80, throwPx: 120, age: 2, recolor: 0.65})` displaces
+- `mosh({source: hero, second: gouache}, {block: 80, throwPx: 120, age: 2, recolor: 0.65})` displaces
   older macroblocks, stretches pixels across tear bands and swaps block palettes. Supply a held source clock.
-  Omit `second` to sample hero's past. Give `ground` a frame-covering card selected on transparent ground for dark checker and pixel noise,
-  or omit it for clear gaps.
+  Omit `second` to sample hero's past. Place `signalGround()` behind and pass its `shotPlaneImage` as `under` to shear the checker and pixel noise with the subject.
+- `signalBreak({source: shotPlaneImage('actor'), under: shotPlaneImage('room')}, {hits: [0.5, 1.5]})` tears their
+  composite on cue (scene seconds). Dropouts expose the back. Mark both members `imageOnly` and provide a drawing clock.
 
 **Your own effect.** `defineShotEffect({name, inputs, defaults})` reads supplied inputs once in order.
 `reads(params,given)` can request 24 mapped reads, including earlier drawings. `grow(params)` pads the crop.
