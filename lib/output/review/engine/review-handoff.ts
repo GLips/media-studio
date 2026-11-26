@@ -78,11 +78,11 @@ export async function placeReviewHandoff(handoff: ReviewHandoff, threads: readon
 }
 
 // A thread not shown on the hand-off's render is still placed when it stands on its own: one about the whole project,
-// a note on another still, or a note on a file that isn't a render (footage, a track), each read on its own file. Only a
-// video note on another render (or none) is unplaced.
+// or a note on another still. A video note on another render (or none) is unplaced; one on footage or a track says
+// it's about that file, which no render shows.
 function placeAway({ anchor }: ReviewThread, target: ReviewPlacementTarget | null): ReviewPlacement {
   if (anchor.on === 'project' || anchor.on === 'still') return { shifted: false };
-  if (anchor.on === 'video' && !reviewPathIsRender(anchor.writtenOn.path)) return { frame: anchor.frame, ...(anchor.end !== undefined && { end: anchor.end }), shifted: false };
+  if (anchor.on === 'video' && !reviewPathIsRender(anchor.writtenOn.path)) return { unplaced: `about ${anchor.writtenOn.path} itself, not a render: look there` };
   return { unplaced: target ? `not on ${target.path}` : 'nothing is rendered yet' };
 }
 
