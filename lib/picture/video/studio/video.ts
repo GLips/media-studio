@@ -114,7 +114,7 @@ export type VideoSpec<S extends Storyboard> = VideoSettings & {
   captions?: {
     style?: CaptionStyle;
     table?: CaptionTableRows<StoryboardTimelineScenes<S['scenes']>>;
-    shownInPicture?: readonly StoryboardLineIdsOf<S['scenes'][keyof S['scenes']]>[];
+    shownInPicture?: readonly { [K in keyof S['scenes']]: StoryboardLineIdsOf<S['scenes'][K]> }[keyof S['scenes']][];
   };
   /** The project's storyboard.ts `storyboard`: every scene, line and cue, and so where each falls. */
   storyboard: S;
