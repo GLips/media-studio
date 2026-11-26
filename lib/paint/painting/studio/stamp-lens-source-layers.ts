@@ -31,7 +31,7 @@ export type StampSourceLaying = { readonly look: StampPlaneLook; readonly focus:
 
 export type StampLensSourceLayers = {
   /** Renders each source for frame time `t` (or `exposure`), one after another. */
-  render: (t: number, exposure: StampLensSourceExposure | null) => Promise<StampSourceRenders>;
+  render: (t: number, exposure: StampLensSourceExposure | null, only?: ReadonlySet<string>) => Promise<StampSourceRenders>;
   /** Source plane `plane`'s layer, as `renders` holds its render, laid as `laying` says; none for a picture with nothing. */
   layer: (encoder: GPUCommandEncoder, plane: StampLaidSourcePlane, renders: StampSourceRenders, laying: StampSourceLaying) => LensLayer[];
 };
@@ -172,10 +172,11 @@ export function createStampLensSourceLayers(owner: StampPaintGpuOwner, { stage, 
 
   return {
     // One after another: each may render on the device the next does.
-    render: async (t, exposure) => {
+    render: async (t, exposure, only) => {
       const moved = new Set<string>(), pictures = new Map<string, StampLensPicture | null>();
       const glowing = new Set([...threes].flatMap(([id, { picture }]) => (picture.emission ? [id] : [])));
       await gpuEachInTurn(sources, async ([id, source]) => {
+        if (only && !only.has(id)) return;
         if (source.kind === 'three') {
           if ((await source.render(t, exposure)).moved) moved.add(id);
         } else pictures.set(id, await source.render(t, exposure));

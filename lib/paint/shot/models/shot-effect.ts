@@ -55,6 +55,9 @@ export type ShotEffectVaries = 'drawing' | 'moment';
 /** A problem an effect finds in its parameters: the parameter's field (`count`, `step.x`) and what's wrong. */
 export type ShotEffectProblem = { readonly field: string; readonly message: string };
 
+type ShotEffectExtent = 'inputs' | 'stage';
+type ExtentOf<P> = { choose(params: P): ShotEffectExtent }['choose'];
+
 /**
  * An effect's models half. `name` keys its output, unique among a shot's effects. `inputs` names what it reads,
  * `optional` those it may skip. `problems` checks its parameters, defaults filled in; `reads` lists at
@@ -65,7 +68,7 @@ export type ShotEffectDefinition<P extends ShotEffectParams = ShotEffectParams, 
   readonly name: string;
   readonly inputs: readonly I[];
   /** Shade every stage texel, including the camera margin and where every input is clear. */
-  readonly extent?: 'stage';
+  readonly extent?: ShotEffectExtent | ExtentOf<P>;
   readonly optional?: readonly O[];
   readonly defaults: P;
   /** Its film's emission is light of its own: it blooms, and throws spill on a plane `illuminate`s. */
@@ -83,7 +86,7 @@ export const SHOT_EFFECT_READS_MOST = 24;
 /** What an effect reads: a painted source, a painting in time, a figure, or another effect's image. */
 export type ShotImageSource = PresentationValue<PaintedSource> | PaintingInTime | ShotFigure | ShotEffectImage | ShotPlaneImage;
 
-/** The sharp image of a placed painted or effect plane, with its masks, pose and visibility, at this exposure. */
+/** The sharp image of a placed painted or effect plane, with its masks, pose and visibility, at the read's moment. */
 export type ShotPlaneImage = { readonly kind: 'plane-image'; readonly plane: string };
 
 /** Read a placed painted or effect plane where the camera shows it, in the coordinate system of the effect. */
@@ -151,6 +154,7 @@ export type CompiledShotEffectImage = {
   readonly params: ShotEffectParams;
   readonly reads: readonly CompiledShotEffectRead[];
   readonly grow: number;
+  readonly extent: ShotEffectExtent;
   readonly key: string;
   readonly timeAt: ((moment: PaintMoment) => ShotEffectTime) | null;
 };
@@ -174,7 +178,7 @@ const finiteMap = ({ ma, mb, kx, ky }: PaintSimilarity) => [ma, mb, kx, ky].ever
  */
 export function shotEffectChecked(plane: string, field: string, image: ShotEffectImage): {
   readonly params: ShotEffectParams; readonly reads: readonly ShotEffectRead[]; readonly grow: number; readonly varies: readonly ShotEffectVaries[];
-  readonly problems: readonly PaintingProblem[];
+  readonly extent: ShotEffectExtent; readonly problems: readonly PaintingProblem[];
 } {
   const { definition } = image, { name } = definition, problems: PaintingProblem[] = [];
   const error = (at: string, message: string) => problems.push(paintingProblem('error', plane, paintingField(field, at), `${name}: ${message}`));
@@ -185,14 +189,15 @@ export function shotEffectChecked(plane: string, field: string, image: ShotEffec
   for (const input of Object.keys(image.inputs)) if (!definition.inputs.includes(input)) error(`inputs.${input}`, `has no input ${input}; it reads ${definition.inputs.join(', ')}`);
   // SAFETY: every key given is one of the defaults' (checked above, refusing the rest), each its own check's to judge.
   const params = { ...definition.defaults, ...image.params } as ShotEffectParams;
-  if (problems.length) return { params, reads: [], grow: 0, varies: [], problems };
+  if (problems.length) return { params, reads: [], grow: 0, extent: 'inputs', varies: [], problems };
   for (const { field: at, message } of (definition.problems?.(params) ?? [])) error(`params.${at}`, message);
-  if (problems.length) return { params, reads: [], grow: 0, varies: [], problems };
+  if (problems.length) return { params, reads: [], grow: 0, extent: 'inputs', varies: [], problems };
   const varies = definition.varies?.(params) ?? [];
   const given = definition.inputs.filter((input) => image.inputs[input] !== undefined);
   const reads = definition.reads?.(params, given) ?? given.map((input): ShotEffectRead => ({ input }));
   const grow = definition.grow?.(params) ?? 0;
-  if (!reads.length && definition.extent !== 'stage') error('params', 'reads nothing: an effect reads one of its inputs at least');
+  const extent = typeof definition.extent === 'function' ? definition.extent(params) : definition.extent ?? 'inputs';
+  if (!reads.length && extent !== 'stage') error('params', 'reads nothing: an effect reads one of its inputs at least');
   if (reads.length > SHOT_EFFECT_READS_MOST) error('params', `makes ${reads.length} reads, past the ${SHOT_EFFECT_READS_MOST} one effect makes: read the output of one in another`);
   reads.forEach(({ input, map, moment }, i) => {
     if (!given.includes(input)) error('params', `its read ${i} names ${input}, which isn't one of the inputs given (${given.join(', ')})`);
@@ -202,13 +207,13 @@ export function shotEffectChecked(plane: string, field: string, image: ShotEffec
     }
   });
   if (!(grow >= 0 && Number.isFinite(grow))) error('params', `grows its output by ${grow} px; it grows by 0 or more`);
-  return { params, reads, grow, varies, problems };
+  return { params, reads, grow, extent, varies, problems };
 }
 
 /** A compiled effect image from its checked parts, compiled reads and time: its parameters keyed with its definition's name. */
 export const compiledShotEffect = (
-  definition: ShotEffectDefinition, params: ShotEffectParams, reads: readonly CompiledShotEffectRead[], grow: number, timeAt: CompiledShotEffectImage['timeAt'],
-): CompiledShotEffectImage => ({ kind: 'effect', definition, params, reads, grow, key: JSON.stringify([definition.name, params]), timeAt });
+  definition: ShotEffectDefinition, params: ShotEffectParams, reads: readonly CompiledShotEffectRead[], grow: number, extent: ShotEffectExtent, timeAt: CompiledShotEffectImage['timeAt'],
+): CompiledShotEffectImage => ({ kind: 'effect', definition, params, reads, grow, extent, key: JSON.stringify([definition.name, params]), timeAt });
 
 /** A read's map, its identity when the read gives none. */
 export const shotEffectReadMap = (read: ShotEffectRead) => read.map ?? PAINT_SIMILARITY_IDENTITY;
@@ -289,9 +294,9 @@ export function shotDrawingStarted(
   return drawn(mapped) >= drawn(paintMoment(first / shot.span.fps));
 }
 
-/** Placed planes read by an effect graph, including whether an enclosing read requests another exposure. */
-export function shotPlacedReads(image: CompiledShotImage, earlier = false): { plane: string; earlier: boolean }[] {
+/** Each placed input and the enclosing read maps in evaluation order. */
+export function shotPlacedReads(image: CompiledShotImage, moments: ShotImageLeafRead['moments'] = []): { plane: string; moments: ShotImageLeafRead['moments'] }[] {
   if (image.kind === 'painted') return [];
-  if (image.kind === 'plane-image') return [{ plane: image.plane, earlier }];
-  return image.reads.flatMap((read) => shotPlacedReads(read.input, earlier || read.moment !== null));
+  if (image.kind === 'plane-image') return [{ plane: image.plane, moments }];
+  return image.reads.flatMap((read) => shotPlacedReads(read.input, read.moment ? [...moments, read.moment] : moments));
 }

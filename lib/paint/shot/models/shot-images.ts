@@ -7,9 +7,10 @@
 
 import { textSha256Hex } from '#lib/platform/hash/models/sha256.ts';
 import type { PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
-import type { CompiledShotPlane } from './shot-compile.ts';
+import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { CompiledPaintedShot, CompiledShotPlane } from './shot-compile.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
-import { shotPlacedReads } from './shot-effect.ts';
+import { shotDrawingStarted, shotMomentMapped, shotPlacedReads } from './shot-effect.ts';
 import { shotOccurrencePlane } from './shot-occurrences.ts';
 
 /**
@@ -52,7 +53,14 @@ export function shotPlacedImageProblems(planes: readonly CompiledShotPlane[]): P
     for (const read of shotPlacedReads(plane.image)) {
       const source = byId.get(read.plane);
       const error = (message: string) => problems.push(paintingProblem('error', plane.id, 'source', message));
-      if (read.earlier) error(`shotPlaneImage(${read.plane}) reads this exposure. For earlier drawings pass the source directly`);
+      if (read.moments.length && source) {
+        for (const id of shotImageReach(planes, source.id)) {
+          const dependency = byId.get(id);
+          if (dependency?.kind === 'painted' && dependency.lay.kind === 'screen' && dependency.lay.screen.kind === 'pin') {
+            error(`the earlier image of ${source.id} depends on DOM pin ${id}, whose element positions are measured only for the displayed frame. Use a timed lay`);
+          }
+        }
+      }
       if (source?.kind !== 'painted' && source?.kind !== 'effect') error(`shotPlaneImage needs a placed painted or effect plane, got ${read.plane}`);
       else if (here.includes(source.id)) error(`shotPlaneImage reads in a cycle: ${[...here, source.id].join(' -> ')}`);
       else visit(source, here);
@@ -66,15 +74,48 @@ export function shotPlacedImageProblems(planes: readonly CompiledShotPlane[]): P
  * The planes plane `id`'s image needs at a moment: it, and each plane its masks read, theirs, and on. What evaluating
  * it alone solves. An instanced plane's variants share its id.
  */
-export function shotImageReach(planes: readonly CompiledShotPlane[], id: string): ReadonlySet<string> {
+export function shotImageReach(planes: readonly CompiledShotPlane[], id: string, moment?: PaintMoment): ReadonlySet<string> {
   const planeOf = new Map(planes.map((plane) => [plane.id, plane])), reach = new Set<string>();
   const visit = (at: string) => {
     if (reach.has(at)) return;
     reach.add(at);
     const plane = planeOf.get(at);
-    if (plane?.kind === 'effect') for (const read of shotPlacedReads(plane.image)) visit(read.plane);
+    if (plane?.kind === 'effect') for (const read of shotPlacedReads(plane.image)) {
+      const mapped = moment && shotMomentMapped(read.moments, moment);
+      if (!moment || (mapped?.at === moment.at && mapped.frame === moment.frame)) visit(read.plane);
+    }
     if (plane?.kind === 'painted') for (const { drawable } of plane.masks) visit(shotOccurrencePlane(drawable));
   };
   visit(id);
   return reach;
+}
+
+/** A frame-local address. Across frames, retained pictures are identified by the content key of the evaluated image. */
+export const shotPlacedReadKey = (id: string, m: PaintMoment) => JSON.stringify([id, m.frame, m.at]);
+
+/** The off-exposure images needed by roots, dependencies first. Each request keeps the reference exposure's aperture. */
+export function shotHistoryPlanner(shot: CompiledPaintedShot) {
+  const dependencies = new Map(shot.planes.flatMap((plane) => plane.kind === 'effect'
+    ? [[plane.id, { clock: plane.sourceClock, reads: shotPlacedReads(plane.image) }] as const] : []));
+  const temporal = [...dependencies.values()].some(({ reads }) => reads.some(({ moments }) => moments.length));
+  return (roots: Iterable<string>, exposure: PaintMoment) => {
+    const plan = new Map<string, { id: string; at: PaintMoment }>(), visited = new Set<string>();
+    const visit = (id: string, at: PaintMoment) => {
+      const own = dependencies.get(id), key = shotPlacedReadKey(id, at);
+      if (!own || visited.has(key)) return;
+      visited.add(key);
+      for (const read of own.reads) {
+        let mapped = at;
+        const started = read.moments.every((map) => {
+          mapped = map(mapped);
+          return shotDrawingStarted(shot, own.clock, mapped);
+        });
+        if (!started) continue;
+        visit(read.plane, mapped);
+        if (mapped.at !== at.at || mapped.frame !== at.frame) plan.set(shotPlacedReadKey(read.plane, mapped), { id: read.plane, at: mapped });
+      }
+    };
+    if (temporal) for (const id of roots) visit(id, exposure);
+    return [...plan.values()];
+  };
 }
