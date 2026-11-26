@@ -18,7 +18,8 @@ import { reviewStoryboardOf, reviewTimingMarksOf } from '../models/review-storyb
 import { reviewSpeechCleanupOf } from '../models/review-speech.ts';
 import { REVIEW_FALLBACK_FPS, reviewFrameAt, type ReviewMediaKind, type ReviewStillCellsFile } from '../models/review-context.ts';
 import type { ReviewPlacementTarget } from '../models/review-placement.ts';
-import type { ReviewArtifact } from '../models/review-artifact.ts';
+import { reviewPathIsRender, type ReviewArtifact } from '../models/review-artifact.ts';
+import { projectReferenceLabelOf, readProjectMade } from './project-artifacts.ts';
 import { listReviewRenderVersions } from './review-history.ts';
 import { projectFolderNamed, projectMediaTypeOf, ProjectMediaNotFound, resolveProjectMedia } from './project-media.ts';
 
@@ -27,7 +28,7 @@ const readJson = <T,>(file: string): T | undefined => (existsSync(file) ? JSON.p
 
 function reviewedKindOf(file: string): ReviewMediaKind {
   const kind = projectMediaTypeOf(file)?.kind;
-  if (kind !== 'video' && kind !== 'still') throw new ProjectMediaNotFound(`${file} isn't a video or a still`);
+  if (kind !== 'video' && kind !== 'still' && kind !== 'audio') throw new ProjectMediaNotFound(`${file} isn't a video, a still or audio`);
   return kind;
 }
 
@@ -51,7 +52,7 @@ export function reviewedVersionOf(project: string, path: string, render: string 
 /** What threads are placed on when `media` (the file at `path` in its project) is open. */
 export function reviewPlacementTargetOf(media: string, path: string): ReviewPlacementTarget {
   const kind = reviewedKindOf(media), { hash } = renderFileStamp(media);
-  const loaded = kind === 'video' ? loadRenderSnapshot(media) : undefined;
+  const loaded = kind === 'video' && reviewPathIsRender(path) ? loadRenderSnapshot(media) : undefined;
   // Without a snapshot there's no timing, so only notes written on these very bytes place, at their own frames, and
   // the length is never consulted.
   if (loaded?.kind !== 'snapshot') return { kind, hash, path, durationInFrames: Infinity };
@@ -75,6 +76,12 @@ export function readReviewArtifact(project: string, path: string, render?: strin
     fps: null, durationInFrames: null, startsAt: null, frameSize: null, transparent: false, voice: null, missing: [],
     ...(kind === 'video' && dirname(path) === 'out' && existsSync(srt) && { srt: 'out/video.srt' }),
   };
+  const made = readProjectMade(project, path);
+  if (made) artifact.made = made;
+  if (made?.as === 'footage' && made.blockout) {
+    artifact.reference = { path: made.blockout, hash: renderFileStamp(resolveProjectMedia(project, made.blockout)).hash, label: projectReferenceLabelOf(made.blockout) };
+  }
+  if (made?.as === 'music') artifact.title = made.name;
   if (kind === 'still') {
     artifact.frameSize = reviewStillSizeOf(media);
     const cells = readJson<ReviewStillCellsFile>(media.slice(0, -extname(media).length) + '.cells.json');
@@ -82,6 +89,8 @@ export function readReviewArtifact(project: string, path: string, render?: strin
     return artifact;
   }
 
+  // Footage and audio weren't rendered from the composition: no timeline, sounds or cue list to read off them.
+  if (!reviewPathIsRender(path)) return artifact;
   const loaded = loadRenderSnapshot(media);
   const snapshot = loaded.kind === 'snapshot' ? loaded.snapshot : undefined;
   const cueList = readSfxCueList(dir);

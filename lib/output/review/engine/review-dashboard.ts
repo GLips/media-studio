@@ -21,7 +21,7 @@ const THUMBNAIL_FALLBACK = { frame: 30, fps: 30 };
 
 /** A video's middle frame, by its snapshot. Its hash pins the cut to these bytes; it's hashed once per mtime. */
 function thumbnailOf(project: string, artifact: ProjectArtifact): ReviewProjectThumbnail {
-  if (artifact.kind === 'still') return { kind: 'still', path: artifact.path };
+  if (artifact.kind === 'still' || artifact.kind === 'audio') return { kind: artifact.kind, path: artifact.path };
   const media = resolveProjectMedia(project, artifact.path);
   const loaded = loadRenderSnapshot(media);
   const at = loaded.kind === 'snapshot'

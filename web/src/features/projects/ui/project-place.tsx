@@ -1,12 +1,14 @@
 import { Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
-import { MessageSquare, ScrollText, Split } from 'lucide-react';
+import { AudioLines, MessageSquare, ScrollText, Split } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { reviewPlanScenesAwaitYou, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
+import type { ProjectMade } from '#lib/output/review/models/review-artifact.ts';
+import { reviewNewestRenderRow, reviewPlanScenesAwaitYou, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
 import { useProjectPlanSignoffs, type ProjectPlanSignoffs } from '#web/features/storyboard/index.ts';
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { colors } from '#web/shared/ui/theme.stylex.ts';
 import { ProjectAge } from './project-age.tsx';
+import { projectFileAgeWordOf, projectMadeDetailOf, projectMadeTitleOf } from '#lib/output/review/models/project-made.ts';
 import { ProjectRow } from './project-row.tsx';
 import type { ProjectRowTarget } from './project-target-link.tsx';
 import { ProjectRowStatus, type ProjectPlaceState } from './project-row-status.tsx';
@@ -47,18 +49,23 @@ function planViewOf(project: string, row: PlanRow, signoffs: ProjectPlanSignoffs
   };
 }
 
+/** Footage's settled state: whether its scene plays this take. */
+const madeStateOf = (made: ProjectMade): ProjectPlaceState | undefined =>
+  (made.as === 'footage' ? { words: made.plays ? 'plays in the cut' : 'not used', waiting: false } : undefined);
+
 /** A file's folder with its trailing slash (`out/stills/`), or `''` at the project's root. */
 export const projectFileFolderOf = (path: string) => path.slice(0, path.lastIndexOf('/') + 1);
 
 function placeViewOf({ project, rows }: ReviewProjectSummary, row: Exclude<ReviewProjectRow, PlanRow>, now: number, folderLabelled: boolean): PlaceView {
   switch (row.on) {
     case 'file': {
-      const { path, modified } = row.artifact, folder = projectFileFolderOf(path);
+      const { path, modified, made } = row.artifact, folder = projectFileFolderOf(path);
+      const end = <ProjectAge now={now} at={modified} what={projectFileAgeWordOf(row.artifact)} />;
+      const thumbnail: ProjectThumbnailSource = row.thumbnail.kind === 'audio' ? { glyph: <AudioLines size={GLYPH_SIZE} /> } : { project, thumbnail: row.thumbnail };
+      if (made) return { target: { project, on: 'file', path }, thumbnail, title: projectMadeTitleOf(made, path), detail: projectMadeDetailOf(made), state: madeStateOf(made), end };
       return {
-        target: { project, on: 'file', path },
-        thumbnail: { project, thumbnail: row.thumbnail },
+        target: { project, on: 'file', path }, thumbnail, end,
         title: <>{!folderLabelled && <Text component="span" inherit {...stylex.props(styles.dim)}>{folder}</Text>}{path.slice(folder.length)}</>,
-        end: <ProjectAge now={now} at={modified} what={row.artifact.kind === 'video' ? 'rendered' : 'made'} />,
       };
     }
     case 'decision': {
@@ -73,8 +80,8 @@ function placeViewOf({ project, rows }: ReviewProjectSummary, row: Exclude<Revie
       };
     }
     default: {
-      // 'project': notes on the whole project, or whose place is gone; they're read beside the newest video (not a still).
-      const newest = rows.find((r) => r.on === 'file' && r.artifact.kind === 'video');
+      // 'project': notes on the whole project, or whose place is gone; they're read beside the newest render.
+      const newest = reviewNewestRenderRow(rows);
       return {
         target: newest?.on === 'file' ? { project, on: 'file', path: newest.artifact.path } : { project, on: 'project' },
         thumbnail: { glyph: <MessageSquare size={GLYPH_SIZE} /> },

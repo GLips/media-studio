@@ -16,7 +16,8 @@ import { detectMusicBeats } from '../models/music-beats.ts';
 import { planMusicArrangement, planMusicFit, spliceMusicSpans } from '../models/music-fit.ts';
 import type { MusicTrack } from '#lib/timing/sound/models/mix.ts';
 
-type Entry = Omit<MusicTrack, 'src'> & { file: string };
+/** A track as music/manifest.json keeps it: the track's measurements, and its file in music/. */
+export type MusicManifestEntry = Omit<MusicTrack, 'src'> & { file: string };
 
 // Beats are tracked, and fits planned, on mono at this rate; the fitted file keeps the source's own rate and channels.
 const ANALYSIS_RATE = 22050;
@@ -59,7 +60,7 @@ export function addProjectMusicTrack(project: string, source: string, name: stri
   return index;
 }
 
-export type MusicFitResult = { file: string; index: string; track: Entry & { fit: NonNullable<MusicTrack['fit']> }; seamDb: number[]; worstSeamDb: number };
+export type MusicFitResult = { file: string; index: string; track: MusicManifestEntry & { fit: NonNullable<MusicTrack['fit']> }; seamDb: number[]; worstSeamDb: number };
 
 /**
  * How a fit gets its length: cut to exactly `seconds`, the seams wherever the bars sound most alike; or played as the
@@ -104,19 +105,20 @@ export function fitProjectMusicTrack(project: string, { name, as, shape }: { nam
   return { file: path, index: writeMusicManifest(dir, { ...readMusicManifest(dir), [as]: track }), track, seamDb: plan.seamDb, worstSeamDb: plan.worstSeamDb };
 }
 
-function readMusicManifest(dir: string): Record<string, Entry> {
+/** The tracks in a project's music/ folder (`dir`), by name; none when it has no music yet. */
+export function readMusicManifest(dir: string): Record<string, MusicManifestEntry> {
   const path = join(dir, 'manifest.json');
   return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
 }
 
-function writeMusicManifest(dir: string, manifest: Record<string, Entry>): string {
+function writeMusicManifest(dir: string, manifest: Record<string, MusicManifestEntry>): string {
   writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
   const index = join(dir, 'index.ts');
   writeFileSync(index, musicModule(manifest));
   return index;
 }
 
-function musicModule(tracks: Record<string, Entry>) {
+function musicModule(tracks: Record<string, MusicManifestEntry>) {
   const names = Object.keys(tracks);
   const imports = names.map((n, i) => `import track${i} from './${tracks[n].file}';`).join('\n');
   const entries = names.map((n, i) => {

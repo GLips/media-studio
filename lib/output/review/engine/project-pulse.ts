@@ -3,7 +3,7 @@
 // other query is fetched once per part of it that moved (models/project-pulse.ts), so the screens never disagree.
 // Each part costs a stat while nothing changes: hashes are cached by mtime (renderFileStamp), the review file by inode.
 //
-// Negative space: a file outside listProjectArtifacts' folders (a slice in out/wip/slices/, a decision's audio
+// Negative space: a file listProjectArtifacts doesn't list (a frames slice in out/wip/slices/, a decision's audio
 // candidate) isn't in `files`. A slice reaches the page through a reply, which moves `revision`.
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';

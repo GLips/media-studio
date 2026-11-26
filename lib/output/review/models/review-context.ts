@@ -9,7 +9,11 @@ import { formatReviewClock } from './review-timeline-geometry.ts';
 /** How close, in frames, a sound must land to a note for the note to name it. */
 export const REVIEW_SOUND_REACH_FRAMES = 3;
 
-export type ReviewMediaKind = 'video' | 'still';
+/** Audio reviews as a video does, on a clock, with no picture: a note on it is a video note at a frame. */
+export type ReviewMediaKind = 'video' | 'still' | 'audio';
+
+/** True for media reviewed on a clock (video, audio): it plays, and its notes sit at frames. */
+export const reviewMediaIsTimed = (kind: ReviewMediaKind) => kind !== 'still';
 
 /** A sound the render plays, as a marker under the scrubber: from `defineVideo({ sounds })` or the cue list. */
 export type ReviewSoundMarker = { id: string; at: number; frame: number; sound: string; source: 'video' | 'cue-list' };
