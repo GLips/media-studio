@@ -33,14 +33,20 @@ const dipGain = (dips: LibraryVoiceSound['dips'], t: number) =>
 export type RecordedPieceClip = { start: number; at: number; duration: number; gain: (seconds: number) => number };
 
 /**
- * A recorded line's pieces as clips, each reaching half its `join` past each inner cut so neighbours cross-fade on a
- * quarter sine (equal power, as the room on either side is unrelated sound), all under the line's edge fades and dips.
+ * A recorded line's pieces as clips. Each overlap straddles its cut, with equal-power quarter-sine gains.
+ * A shallow outgoing dip also tapers the vowel over the tail of that clip.
  */
 export function recordedPieceClips(sound: LibraryVoiceSound, duration: number): RecordedPieceClip[] {
-  const half = sound.join / 2, last = sound.pieces.length - 1;
   return sound.pieces.map((piece, k) => {
-    const before = k ? half : 0, after = k < last ? half : 0, length = piece.duration + before + after, at = piece.at - before;
-    const cross = (s: number) => (before ? quarterSine(s / sound.join) : 1) * (after ? quarterSine((length - s) / sound.join) : 1);
+    const incoming = sound.joins[k - 1], outgoing = sound.joins[k];
+    const before = (incoming?.crossfade ?? 0) / 2, after = (outgoing?.crossfade ?? 0) / 2;
+    const length = piece.duration + before + after, at = piece.at - before;
+    const cross = (s: number) => {
+      const rise = before ? quarterSine(s / incoming.crossfade) : 1;
+      const fall = after ? quarterSine((length - s) / outgoing.crossfade) : 1;
+      const taper = outgoing?.fadeOut ? quarterSine((length - s) / Math.min(length, outgoing.fadeOut)) : 1;
+      return rise * fall * taper;
+    };
     return { start: piece.start - before, at, duration: length, gain: (s) => cross(s) * edgeFadeGain(at + s, duration, sound.fade) * dipGain(sound.dips, at + s) };
   });
 }

@@ -15,7 +15,8 @@ import type { TimedPoint } from '#lib/picture/camera/models/follow-point.ts';
 import type { SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
 import type { RecordedSpeech, SpokenEdge, SpokenStretch } from '#lib/timing/voice/models/recorded-speech.ts';
 import { LibraryFileUnreadable } from './library-errors.ts';
-import { cutLibraryLine, type LibraryLineCleanup, type LibraryLineEdits, type LibraryLineSound } from './library-line-cut.ts';
+import { cutLibraryLine, type LibraryLineCleanup, type LibraryLineEdits, type LibraryLineSound, type LibraryLineVoice } from './library-line-cut.ts';
+import { LIBRARY_QUIET_WINDOW } from './library-quiet.ts';
 import { LIBRARY_ITEM_FORMAT, LibraryItem, type LibraryTrack, libraryItemTimeOf, libraryMediaTimeOf, libraryScreenPointOf } from './library-item.ts';
 
 /**
@@ -83,9 +84,6 @@ type LibraryItemJsonImport = { readonly format: string; readonly id: string };
 
 // Fades a recorded line plays with, by edge: a clean edge only needs the click taken off; a rough one cuts into sound.
 const EDGE_FADES = { clean: { in: 0.03, out: 0.06 }, rough: { in: 0.06, out: 0.12 } } as const;
-// Two pieces of a line cross-fade over this long, inside dialogue editing's 10–30 ms: the quiet each was cut in runs
-// under the join, so the room carries on through it.
-const JOIN_CROSSFADE = 0.02;
 
 /** `spans` of `track`'s levelled copy (media seconds) on item time; none before it's levelled. */
 const onItemTime = (track: LibraryTrack, spans: readonly (readonly [number, number])[] = []): Span[] =>
@@ -98,10 +96,14 @@ type Span = { start: number; end: number };
  * wasn't given.
  */
 type LibraryVoice = {
-  track: LibraryTrack; words: LibraryWord[]; pauses: Span[]; unheard: Span[]; quiet: Span[]; soft: Span[]; clicks: Span[]; untranscribed?: true;
-};
+  track: LibraryTrack; words: LibraryWord[]; pauses: Span[]; unheard: Span[]; untranscribed?: true;
+} & Omit<LibraryLineVoice, 'sounds'>;
 
 const levelledSpans = (track: LibraryTrack) => ({
+  envelope: track.levelled?.rms ? {
+    levels: Uint8Array.from(atob(track.levelled.rms), (byte) => byte.charCodeAt(0)),
+    start: libraryItemTimeOf(track, 0), step: libraryItemTimeOf(track, LIBRARY_QUIET_WINDOW) - libraryItemTimeOf(track, 0),
+  } : undefined,
   quiet: onItemTime(track, track.levelled?.quiet), soft: onItemTime(track, track.levelled?.soft), clicks: onItemTime(track, track.levelled?.clicks),
 });
 
@@ -146,7 +148,7 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
   const cutOf = (voice: LibraryVoice, from: number, to: number, edits: LibraryLineEdits) => {
     if (voice.untranscribed) {
       const edgeAt = (t: number): SpokenEdge => (voice.quiet.some((q) => q.start <= t && t <= q.end) ? 'clean' : 'rough');
-      return { from, to, edges: { in: edgeAt(from), out: edgeAt(to) }, pieces: [{ from, to }], removals: [], unheard: [], heard: [], dips: [] };
+      return { from, to, edges: { in: edgeAt(from), out: edgeAt(to) }, pieces: [{ from, to }], joins: [], removals: [], unheard: [], heard: [], dips: [] };
     }
     const sounds: LibraryLineSound[] = [...voice.words, ...voice.unheard.map((u) => ({ text: '', ...u, unheard: true as const }))].toSorted((a, b) => a.start - b.start);
     return cutLibraryLine({ ...voice, sounds }, from, to, edits, item.id);
@@ -188,7 +190,7 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
       const { levelled } = track;
       let at = 0;
       const sound = levelled && {
-        item: item.id, file: levelled.file, lufs: levelled.lufs, fade, join: JOIN_CROSSFADE, dips: cut.dips,
+        item: item.id, file: levelled.file, lufs: levelled.lufs, fade, joins: cut.joins, dips: cut.dips,
         pieces: pieces.map((p) => {
           const piece = { start: libraryMediaTimeOf(track, p.from), at, duration: p.to - p.from };
           at += piece.duration;
