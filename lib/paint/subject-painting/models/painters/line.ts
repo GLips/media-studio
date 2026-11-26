@@ -6,7 +6,7 @@
 // outline hands over just the stretches a stated line covers. Every other edge two parts share is inked once, by the
 // part in front.
 //
-// Slots: `contours` (parts' outlines and spot blacks), then `features`, so a face replacement leaves the outlines.
+// Slots: `fill` (parts' blacks), `contour`, `features` (a pupil's black too), read from one edge reading.
 
 import type { BrushRef, DirectApplication, LayerNode, Subpath } from '#lib/paint/document/models/painting-document.ts';
 import { stampPolygonBox, type StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
@@ -91,7 +91,7 @@ const WEIGHT_HEADROOM = 1.8;
 /** Luminance under which a design colour reads as black, and an inker would spot it. */
 const SPOT_BLACK_LUMINANCE = 0.2;
 
-type LineSlot = 'contours' | 'features';
+type LineSlot = 'fill' | 'contour' | 'features';
 type LineContext = SubjectPainterContext<SubjectWithEvidence<never>, LineSubjectOptions, LineSlot>;
 
 /** What every line reads: the subject's scale, the evidence it carries, its edges and the lines it states for them. */
@@ -206,7 +206,7 @@ function toolHand(scene: LineScene, options: LineSubjectOptions, intent: Resolve
  * runs are ordered round, and the rings it spots solid when its colour reads black.
  */
 type LineMarks = {
-  readonly operation: 'contour' | 'line';
+  readonly operation: 'fill' | 'contour' | 'line';
   readonly target: PaintableRef;
   readonly runs: readonly LineRun[];
   readonly roleOf: (run: LineRun) => LineCategory;
@@ -270,7 +270,15 @@ function paintLineSubject(context: LineContext, brushes: LineSubjectBrushes): Su
   const painted = (slot: LineSlot, marks: LineMarks, options: LineSubjectOptions, intent: ResolvedSubjectIntent) =>
     lineContribution(slot, marks, lineApplications(scene, brushes, options, intent, marks, paintKey), paintKey);
 
-  const contours = context.paintedParts('contours').flatMap((part) => {
+  const fill = context.paintedParts('fill').flatMap((part) => {
+    const intent = context.intent(part.ref), options = context.optionsFor(part.ref);
+    if (!isSpotBlack(intent, options)) return [];
+    const spot = lineSpotBlack(context, part.visibility.geometry, part.id, part.ref);
+    const centre = boxCentre(subjectAreaBox(part.visibility.geometry));
+    return painted('fill', { operation: 'fill', target: part.ref, runs: [], roleOf: () => 'contour', centre, spot }, options, intent);
+  });
+
+  const contours = context.paintedParts('contour').flatMap((part) => {
     const intent = context.intent(part.ref), options = context.optionsFor(part.ref);
     const share = sideWeight(part.id) * intentWeight(intent);
     const runs = intent.edge === 'lost' ? [] : scene.outlines.get(part.id)!.flatMap((outline) => lineRunsWhere(outline, true, minLength, (point) => {
@@ -279,9 +287,8 @@ function paintLineSubject(context: LineContext, brushes: LineSubjectBrushes): Su
     }, { at: (point) => contourHandedOver(scene, point), reachPx: handoverReach }));
     // A contour run's role is the edge its middle inks: the silhouette, or another part's.
     const roleOf = ({ points }: LineRun): LineCategory => (scene.edges.onSilhouette(points[Math.floor(points.length / 2)]) ? 'silhouette' : 'contour');
-    const spot = isSpotBlack(intent, options) ? lineSpotBlack(context, part.visibility.geometry, part.id, part.ref) : undefined;
     const centre = boxCentre(subjectAreaBox(part.visibility.geometry));
-    return painted('contours', { operation: 'contour', target: part.ref, runs, roleOf, centre, ...(spot && { spot }) }, options, intent);
+    return painted('contour', { operation: 'contour', target: part.ref, runs, roleOf, centre }, options, intent);
   });
 
   const features = context.paintedFeatures('features').flatMap((feature) => {
@@ -308,7 +315,7 @@ function paintLineSubject(context: LineContext, brushes: LineSubjectBrushes): Su
     return painted('features', { operation: 'line', target: feature.ref, runs, roleOf: () => category, centre, ...(spot && { spot }) }, options, intent);
   });
 
-  return [...contours, ...features];
+  return [...fill, ...contours, ...features];
 }
 
 const lineOptionProblems = ({ lineWeight, detail, lineColor, overshoot }: LineSubjectOptions): SubjectPainterReport[] => [
@@ -327,8 +334,8 @@ export const lineSubjectPainter = (brushes: LineSubjectBrushes) => defineSubject
   id: 'line',
   evidence: [],
   defaults: LINE_SUBJECT_DEFAULTS,
-  slots: ['contours', 'features'],
-  replaceAllAt: 'contours',
+  slots: ['fill', 'contour', 'features'],
+  replaceAllAt: 'fill',
   controls: ['tool', 'lineWeight', 'detail', 'lineColor', 'spotBlacks', 'overshoot'],
   intents: ['localColor', 'emphasis', 'edge'],
   checkOptions: lineOptionProblems,

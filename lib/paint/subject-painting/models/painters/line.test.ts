@@ -63,7 +63,7 @@ test('it draws lines alone, inks a shared edge once, and spots only the dark mou
   // Without depth the smaller part is taken to sit on the larger, so the lid inks the edge they share.
   assert.deepEqual(inkingTheSeam(result), ['lantern.contour.part:lid']);
   assert.deepEqual(result.report.contributions.map(({ slot, key }) => `${slot} ${key}`), [
-    'contours lantern.contour.part:lid', 'contours lantern.contour.part:base',
+    'contour lantern.contour.part:lid', 'contour lantern.contour.part:base',
     'features lantern.line.feature:eye-left', 'features lantern.line.feature:eye-right', 'features lantern.line.feature:mouth', 'features lantern.line.feature:seam',
   ]);
 });
@@ -135,4 +135,13 @@ test('a silhouette facing the key thins but holds; a soft edge intent lets it br
     .filter(({ x, y }) => Math.abs(y - 400) < 3 && x > 60 && x < 340);
   assert.ok(Math.max(...plain.map(({ scale }) => scale ?? 1)) < Math.max(...shadowSide.map(({ scale }) => scale ?? 1)), 'the lit edge is the thinner');
   assert.equal(topEdge(requireSubjectPainting(paintSubject(lit, painter, {}, [subjectIntent(selectPart('lid'), { edge: 'soft' })]))).length, 0);
+});
+
+test('a dark part\'s spot black is its own fill, under the outlines, and a pupil\'s stays with its feature', () => {
+  const dark = requireSubjectPainting(paintSubject(lantern(), painter, {}, [subjectIntent(selectPart('lid'), { localColor: '#101010' })]));
+  assert.deepEqual(dark.report.contributions.map(({ slot, key }) => `${slot} ${key}`).slice(0, 3), [
+    'fill lantern.fill.part:lid', 'contour lantern.contour.part:lid', 'contour lantern.contour.part:base',
+  ]);
+  assert.deepEqual(applicationsOf(dark.layers.filter(({ key }) => key === 'lantern.fill.part:lid')).map(({ kind }) => kind), ['fill']);
+  assert.ok(applicationsOf(dark.layers.filter(({ key }) => key === 'lantern.contour.part:lid')).every(({ kind }) => kind === 'stroke'));
 });
