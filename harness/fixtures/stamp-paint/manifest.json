@@ -225,6 +225,15 @@
       "acceptedOver": "4247cd66",
       "adapter": "apple metal-3"
     },
+    "shot/channel-split": {
+      "file": "shot/channel-split.png",
+      "output": "18d05b9c97314f1ee383dba4bb9fb92bb3437bb6f4a4b9b6cca8f0ae0e71b465",
+      "inputs": "93b923742c8db65e9449e405e255e6b4a18b4ded8aaca2de070c9634dbe43e7e",
+      "reason": "vid-218: channelSplit over coloured footage, and two looks tiled by slices with neither placed",
+      "accepted": "2026-11-26",
+      "acceptedOver": "9d19c97d",
+      "adapter": "apple metal-3"
+    },
     "shot/dissolve": {
       "file": "shot/dissolve.png",
       "output": "40d2b63edc0a03ad979b963b040660a6273bb6d9c800d557828b4453389d8092",
@@ -376,6 +385,15 @@
       "reason": "vid-187: folded sheets, nested flip order, tilt-aware defocus",
       "accepted": "2026-11-23",
       "acceptedOver": "3b2ce5d2",
+      "adapter": "apple metal-3"
+    },
+    "shot/two-looks": {
+      "file": "shot/two-looks.png",
+      "output": "956a16889e9adbd832a787cde608409479eb84c041491439fba1c4561219c2b4",
+      "inputs": "7d99a91a6726990f5555018f2f9531249696714a7118e8559933759add71cc0a",
+      "reason": "vid-218: channelSplit over coloured footage, and two looks tiled by slices with neither placed",
+      "accepted": "2026-11-26",
+      "acceptedOver": "9d19c97d",
       "adapter": "apple metal-3"
     },
     "shot/wet-contact": {

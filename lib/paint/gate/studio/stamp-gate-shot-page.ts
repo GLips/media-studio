@@ -10,6 +10,8 @@
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { checkStampGateFigureCard, checkStampGateFigureImage, stampGateFigureCardShot, stampGateFigureImageShot, type StampGateFigurePlacing } from '../models/stamp-gate-figure-card.ts';
 import { checkStampGateOffsetCopies, stampGateOffsetCopiesPlacedShot, stampGateOffsetCopiesShot } from '../models/stamp-gate-offset-copies.ts';
+import { checkStampGateChannelSplit, STAMP_GATE_CHANNEL_SPLIT_FOOTAGES, stampGateChannelSplitShot } from '../models/stamp-gate-channel-split.ts';
+import { checkStampGateTwoLooks, stampGateTwoLooksShot } from '../models/stamp-gate-two-looks.ts';
 import { checkStampGateCardShutter, STAMP_GATE_CARD_SHUTTER, stampGateCardShutterShot } from '../models/stamp-gate-card-shutter.ts';
 import { STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_POSED_AT, stampGateCardsPosedShot, stampGateCardsShot } from '../models/stamp-gate-cards.ts';
 import { STAMP_GATE_FRAME_TOLERANCE, stampGateFrameDifference, stampGateFrameDifferenceText, stampGateFramePasses } from '../models/stamp-gate-frames.ts';
@@ -414,6 +416,23 @@ async function checkOffsetCopies(): Promise<StampGateWashCheck[]> {
   return checkStampGateOffsetCopies({ copies: await frameAtRest(stampGateOffsetCopiesShot()), placed: await frameAtRest(stampGateOffsetCopiesPlacedShot()) });
 }
 
+/** shot/channel-split: channelSplit over the figure read in no plane, beside the figure placed alone, over each footage. */
+async function checkChannelSplit(): Promise<StampGateWashCheck[]> {
+  const [green, blue] = STAMP_GATE_CHANNEL_SPLIT_FOOTAGES;
+  return checkStampGateChannelSplit([
+    { footage: green, split: await frameAtRest(stampGateChannelSplitShot(green)), placed: await frameAtRest(stampGateChannelSplitShot(green, false)) },
+    { footage: blue, split: await frameAtRest(stampGateChannelSplitShot(blue)), placed: await frameAtRest(stampGateChannelSplitShot(blue, false)) },
+  ]);
+}
+
+/** shot/two-looks: the looks tiled in cells and in rows, neither placed, beside each look placed alone. */
+async function checkTwoLooks(): Promise<StampGateWashCheck[]> {
+  return checkStampGateTwoLooks({
+    rects: await frameAtRest(stampGateTwoLooksShot({ cells: 'rects' })), rows: await frameAtRest(stampGateTwoLooksShot({ cells: 'rows' })),
+    looks: [await frameAtRest(stampGateTwoLooksShot({ look: 'wash' })), await frameAtRest(stampGateTwoLooksShot({ look: 'gouache' }))],
+  });
+}
+
 /** Shot case `id`'s checks. */
 export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGateWashCheck[]> {
   if (id === 'shot/rain') return checkStampGateRain();
@@ -432,6 +451,8 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/figure-card') return checkFigureCard();
   if (id === 'shot/figure-image') return checkFigureImage();
   if (id === 'shot/offset-copies') return checkOffsetCopies();
+  if (id === 'shot/channel-split') return checkChannelSplit();
+  if (id === 'shot/two-looks') return checkTwoLooks();
   return checkStampGateShotMasksCase(id);
 }
 
