@@ -41,6 +41,8 @@ export type LibraryScreenWindow = typeof LibraryScreenWindow.Type;
 export const LibraryTrackProxy = Schema.Struct({ file: Schema.String, width: Schema.Finite, height: Schema.Finite, fps: Schema.Finite });
 export type LibraryTrackProxy = typeof LibraryTrackProxy.Type;
 
+const LibrarySpanSchema = Schema.Tuple([Schema.Finite, Schema.Finite]);
+
 /**
  * A speech track's sound levelled for the mix: a copy on the track's own media time, brought up (or down) to about
  * LIBRARY_LEVELLED_LUFS, and its loudness as measured. A raw mic can sit 20 dB under a voice line; the mix only lowers.
@@ -50,8 +52,13 @@ export const LibraryTrackLevelled = Schema.Struct({
   lufs: Schema.Finite,
   /** The chain it was made with, libraryLevelledProcessing's; a copy made with another (or none recorded) is stale. */
   processing: Schema.optionalKey(Schema.String),
-  /** Where the copy is quiet ([start, end] media seconds, libraryQuietSpans), which a line's edges land in. */
-  quiet: Schema.optionalKey(Schema.Array(Schema.Tuple([Schema.Finite, Schema.Finite]))),
+  /**
+   * What the copy holds between words ([start, end] media seconds, librarySoundSpans): where it's quiet, which a
+   * line's edges and inner cuts land in; its breaths, which a line turns down; its clicks, which a line takes out.
+   */
+  quiet: Schema.optionalKey(Schema.Array(LibrarySpanSchema)),
+  soft: Schema.optionalKey(Schema.Array(LibrarySpanSchema)),
+  clicks: Schema.optionalKey(Schema.Array(LibrarySpanSchema)),
 });
 export type LibraryTrackLevelled = typeof LibraryTrackLevelled.Type;
 

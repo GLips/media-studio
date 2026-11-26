@@ -113,9 +113,10 @@ type ShotPaintedImage = ShotImage & { readonly moment: ShotPlaneMoment; readonly
 
 /**
  * An effect plane as one exposure lays it: the plane; each painted image its effect reads as that read lies
- * (shotImageLeafReads' order); and the visibility its output is laid at.
+ * (shotImageLeafReads' order), null for a read before its source begins, which lays nothing; and the visibility its
+ * output is laid at.
  */
-export type ShotEffectLaid = { readonly plane: CompiledShotEffectPlane; readonly leaves: readonly ShotPlaneMoment[]; readonly visibility: number };
+export type ShotEffectLaid = { readonly plane: CompiledShotEffectPlane; readonly leaves: readonly (ShotPlaneMoment | null)[]; readonly visibility: number };
 
 /**
  * What an image reads where an alphaOf mask names a drawable, whatever lays it: another plane's image, a source's
@@ -141,6 +142,9 @@ export type ShotImagesAt = {
 
 /** A painted plane hidden this frame, as a mask reads it: it lays nothing, so it covers nothing. */
 const SHOT_HIDDEN_READ: ShotImageRead = { key: 'hidden', coverage: () => null };
+
+/** An image laying nothing: an effect's read before its source begins. */
+const SHOT_IMAGE_NOTHING: ShotImage = { key: 'nothing', opaqueBack: false, sharp: () => null, defocused: () => null };
 
 /** A variant's mask reads: it takes no mask, so it reads nothing. */
 const SHOT_READS_NOTHING = (): ShotMaskCoverage | null => null;
@@ -374,8 +378,9 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effec
           defocused: (lens, defocus) => summed(encoder, moment, defocused(encoder, lens, shares, defocus)),
         };
       };
-      /** An effect's input as `moment` lays it: kept by its moment, which every read of it at that moment shares. */
-      const leafImage = (moment: ShotPlaneMoment): ShotImage => {
+      /** An effect's input as `moment` lays it: kept by its moment, which every read of it at that moment shares; nothing for none. */
+      const leafImage = (moment: ShotPlaneMoment | null): ShotImage => {
+        if (!moment) return SHOT_IMAGE_NOTHING;
         let known = leaves.get(moment);
         if (!known) leaves.set(moment, (known = painted(moment, new Map())));
         return known;

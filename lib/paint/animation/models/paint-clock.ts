@@ -96,6 +96,15 @@ export const paintNodeClockStep = (clock: PaintNodeClock): PaintSceneStep =>
 /** A node's `clock` as steps: none for no clock, or one paintNodeClockProblem refuses (it's reported apart). */
 export const paintNodeClockSteps = (clock: PaintNodeClock | undefined): PaintSceneStep[] => (clock && !paintNodeClockProblem(clock) ? [paintNodeClockStep(clock)] : []);
 
+/**
+ * How long one drawing holds on `steps` (a node's clock), scene seconds: a hold's frames on the animation grid. Null
+ * for no hold, which reads every moment afresh, or a freeze, which draws once: neither declares a drawing clock.
+ */
+export function paintNodeDrawingSeconds(steps: readonly PaintSceneStep[], animationFps: number): number | null {
+  if (steps.length !== 1 || steps[0].kind !== 'hold') return null;
+  return steps[0].frames / animationFps;
+}
+
 /** `clock` compiled under its node's steps (ancestors' outermost); check it first with paintPlayClockProblem. */
 export function compilePaintPlayClock(clock: PaintPlayClock, node: readonly PaintSceneStep[]): CompiledPaintPlayClock {
   const scene: readonly PaintSceneStep[] = clock.hold === undefined ? node : [...node, { kind: 'hold', frames: clock.hold }];

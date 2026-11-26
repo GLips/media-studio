@@ -8,10 +8,12 @@ import { AudioSpan } from './transcript-audio.ts';
 import { SpokenWord } from './spoken-word.ts';
 
 /**
- * What's said in a file and when: its `duration` and its `words` in seconds from its start, and its `pauses`, every
- * quiet stretch of at least 40 ms, so a cut can be placed without the audio.
+ * What's said in a file and when, in seconds from its start: its `words`; its `pauses`, every quiet stretch of at
+ * least 40 ms, so a cut is placed without the audio; its `unheard` speech (unheardSpeech), which a cut keeps clear of.
  */
-export const FootageTranscript = Schema.Struct({ duration: Schema.Number, words: Schema.Array(SpokenWord), pauses: Schema.Array(AudioSpan) });
+export const FootageTranscript = Schema.Struct({
+  duration: Schema.Number, words: Schema.Array(SpokenWord), pauses: Schema.Array(AudioSpan), unheard: Schema.Array(AudioSpan),
+});
 // A type alias for the reason SpokenWord is one.
 export type FootageTranscript = typeof FootageTranscript.Type;
 

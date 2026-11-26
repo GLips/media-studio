@@ -36,8 +36,8 @@ export type ShotEffectGpu<P extends ShotEffectParams = ShotEffectParams> = {
 };
 
 /** `effect`'s studio half: `wgsl` shading its reads, and `uniforms` packing its parameters. */
-export function defineShotEffectGpu<P extends ShotEffectParams, I extends string>(
-  effect: ShotEffect<P, I>, gpu: { readonly wgsl: string; readonly uniforms: (params: P) => readonly number[] },
+export function defineShotEffectGpu<P extends ShotEffectParams, I extends string, O extends I>(
+  effect: ShotEffect<P, I, O>, gpu: { readonly wgsl: string; readonly uniforms: (params: P) => readonly number[] },
 ): ShotEffectGpu<P> {
   return { definition: effect.definition, wgsl: gpu.wgsl, uniforms: gpu.uniforms };
 }

@@ -4,6 +4,7 @@
 // voice, so a quiet track and a hot one sit the same under the same words. Sources are only ever turned down, never
 // boosted, so a source must be at least as loud as its target; lib/output/render/engine/render-pipeline.ts then lifts
 // the finished mix to delivery loudness in one pass.
+import type { LibraryVoiceSound } from '#lib/timing/voice/models/recorded-speech.ts';
 
 /** Where every voice line sits in the mix, before mastering. Below every TTS line we've had (−11 to −16 LUFS). */
 export const VOICE_LUFS = -20;
@@ -19,6 +20,29 @@ const quarterSine = (x: number) => Math.sin((Math.PI / 2) * Math.min(1, Math.max
  */
 export function edgeFadeGain(t: number, duration: number, fade: { in: number; out: number }): number {
   return Math.min(fade.in > 0 ? quarterSine(t / fade.in) : 1, fade.out > 0 ? quarterSine((duration - t) / fade.out) : 1);
+}
+
+// A dip ramps in and out over this long, so a breath turned down or a click taken out doesn't click itself.
+const DIP_RAMP = 0.005;
+
+/** The gain `dips` leave at line second `t`: each holds its gain inside it and ramps back to 1 just outside. */
+const dipGain = (dips: LibraryVoiceSound['dips'], t: number) =>
+  dips.reduce((gain, { start, end, gain: low }) => Math.min(gain, low + (1 - low) * Math.min(1, Math.max(0, start - t, t - end) / DIP_RAMP)), 1);
+
+/** One piece of a recorded line as a clip: from `start` media seconds, at line second `at`, for `duration`, at `gain`. */
+export type RecordedPieceClip = { start: number; at: number; duration: number; gain: (seconds: number) => number };
+
+/**
+ * A recorded line's pieces as clips, each reaching half its `join` past each inner cut so neighbours cross-fade on a
+ * quarter sine (equal power, as the room on either side is unrelated sound), all under the line's edge fades and dips.
+ */
+export function recordedPieceClips(sound: LibraryVoiceSound, duration: number): RecordedPieceClip[] {
+  const half = sound.join / 2, last = sound.pieces.length - 1;
+  return sound.pieces.map((piece, k) => {
+    const before = k ? half : 0, after = k < last ? half : 0, length = piece.duration + before + after, at = piece.at - before;
+    const cross = (s: number) => (before ? quarterSine(s / sound.join) : 1) * (after ? quarterSine((length - s) / sound.join) : 1);
+    return { start: piece.start - before, at, duration: length, gain: (s) => cross(s) * edgeFadeGain(at + s, duration, sound.fade) * dipGain(sound.dips, at + s) };
+  });
 }
 
 /** The gain that brings a source measured at `lufs` to `targetLufs`; throws if that would need a boost. */

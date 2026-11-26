@@ -134,7 +134,9 @@ async function solveLeased(owner: StampPaintGpuOwner, planned: StampSheetProgram
   const span = trace.current();
   const fromDisk = !keyed.kept && stampSheetDiskCached();
   const { known, kept } = fromDisk ? await trace.within('reading the disk', () => solvedOnDisk(owner, keyed, { limit, at, dampWindows, films: planned.films.length }), SOLVE_PHASE) : keyed;
-  costs?.count(kept ? 'film hits' : 'film misses', planned.films.length);
+  // A film read from the disk is counted apart from one the device kept, as neither is solved afresh.
+  const found = fromDisk ? 'film disk hits' : 'film hits';
+  costs?.count(kept ? found : 'film misses', planned.films.length);
   if (fromDisk && kept) span?.add('films from disk', kept.length, 'films');
   span?.add('known prefix', known.decisions.length, 'entries');
   if (kept) return { key: keys[known.stop!], through: known.stop!, finished, films: kept, decisions: known.decisions };

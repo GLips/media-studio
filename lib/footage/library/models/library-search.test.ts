@@ -15,9 +15,9 @@ const item: LibraryItem = {
   },
 };
 // The far side of the call, on system, says it once too.
-const transcript = { tracks: {
-  mic: { duration: 10, pauses: [], words: [word('So,', 1.5), word('each', 2), word('Agent', 2.4), word('has', 2.8), word('each', 6), word('agent', 6.4)] },
-  system: { duration: 10, pauses: [], words: [word('Each', 4), word('agent?', 4.4)] },
+const transcript = { heardBy: 'test', tracks: {
+  mic: { duration: 10, pauses: [], unheard: [], words: [word('So,', 1.5), word('each', 2), word('Agent', 2.4), word('has', 2.8), word('each', 6), word('agent', 6.4)] },
+  system: { duration: 10, pauses: [], unheard: [], words: [word('Each', 4), word('agent?', 4.4)] },
 } };
 
 test('a phrase is found wherever it is said, on either side of a call, ignoring case and punctuation, at its range in item time', () => {

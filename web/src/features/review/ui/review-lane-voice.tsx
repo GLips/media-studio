@@ -7,6 +7,7 @@ import { shadows } from '#web/shared/ui/shadows.ts';
 import { colors, fonts, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
 import { useReviewPlaybackState } from './review-playback-store.ts';
 import { useReviewFrame, useReviewScreen } from './review-screen-context.tsx';
+import { ReviewLaneSpeechCleanup } from './review-lane-speech-cleanup.tsx';
 import type { ReviewTimelineLine } from './use-review-dock-lanes.ts';
 
 /** Zoomed in this far (px a frame), each word is written at the frame it starts on. */
@@ -60,9 +61,10 @@ function useReviewSpokenWord(lines: readonly ReviewTimelineLine[], watching: boo
 
 /**
  * Each voiced line over the frames it's spoken in, its words written out; up close, each word at the frame it starts
- * on, the one being spoken marked.
+ * on, the one being spoken marked. Over a recorded line, what its cleanup took out or left in.
  */
 export function ReviewLaneVoice({ view, lines }: { readonly view: ReviewTimelineView; readonly lines: readonly ReviewTimelineLine[] }) {
+  const { speechCleanup } = useReviewScreen().artifact;
   const framePx = reviewTimelineFramePx(view);
   const words = framePx >= REVIEW_WORD_FRAME_PX;
   const spoken = useReviewSpokenWord(lines, words);
@@ -94,6 +96,7 @@ export function ReviewLaneVoice({ view, lines }: { readonly view: ReviewTimeline
           </Box>
         );
       })}
+      {speechCleanup && <ReviewLaneSpeechCleanup view={view} cleanup={speechCleanup} />}
     </Box>
   );
 }

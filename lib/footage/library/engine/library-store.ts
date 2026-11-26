@@ -151,10 +151,10 @@ export const makeLibraryStoreLayer = ({ libraryDir, projectsDir, workspaceRequir
       return yield* (near.length ? new LibraryItemAmbiguous({ named, ids: near }) : new LibraryItemUnknown({ named, libraryEmpty: !ids.length }));
     }),
     readTranscript,
-    writeTranscript: (id, { tracks }) => {
-      const each = Object.entries(tracks).map(([track, { duration, words, pauses }]) =>
-        `    ${JSON.stringify(track)}: {\n      "duration": ${duration},\n      "words": ${jsonLines(words, '      ')},\n      "pauses": ${jsonLines(pauses, '      ')}\n    }`);
-      return replaceWhole(path.join(itemDir(id), 'transcript.json'), `{\n  "tracks": {${each.length ? `\n${each.join(',\n')}\n  ` : ''}}\n}\n`);
+    writeTranscript: (id, { heardBy, tracks }) => {
+      const each = Object.entries(tracks).map(([track, { duration, words, pauses, unheard }]) =>
+        `    ${JSON.stringify(track)}: {\n      "duration": ${duration},\n      "words": ${jsonLines(words, '      ')},\n      "pauses": ${jsonLines(pauses, '      ')},\n      "unheard": ${jsonLines(unheard, '      ')}\n    }`);
+      return replaceWhole(path.join(itemDir(id), 'transcript.json'), `{\n  "heardBy": ${JSON.stringify(heardBy)},\n  "tracks": {${each.length ? `\n${each.join(',\n')}\n  ` : ''}}\n}\n`);
     },
     readFlags,
     changeFlags: Effect.fn('LibraryStore.changeFlags')(function* (id, op, by) {
