@@ -4,18 +4,15 @@ import { SPOKEN_CLEANUP_RULES, type SpokenDisfluencyRule } from '#lib/footage/tr
 import { spokenPauseKindOf } from '#lib/footage/transcript/models/spoken-pauses.ts';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 import type { SpokenDip, SpokenEdge, SpokenJoin, SpokenPause, SpokenPiece, SpokenRemoval, SpokenUnheard } from '#lib/timing/voice/models/recorded-speech.ts';
-import {
-  LIBRARY_PAUSE_PACING, libraryPaceScale, libraryPauseIsBreak, libraryPauseSteps, libraryPauseStepsSeconds, libraryPauseTarget,
-  type LibraryPausePacing, type LibraryPauseStep,
-} from './library-pause-pacing.ts';
+import { LIBRARY_PAUSE_PACING, libraryPaceScale, libraryPauseIsBreak, libraryPauseTarget, type LibraryPausePacing } from './library-pause-pacing.ts';
 
 /** How a line from a recording is cleaned: project-wide (libraryFootage) or on one line (its `speech`). */
 export type LibraryLineCleanup = {
   /** The rules its words are cleaned by. Default SPOKEN_CLEANUP_RULES; `[]` takes no word out. */
   rules?: readonly SpokenDisfluencyRule[];
   /**
-   * How its pauses play: each sped up to its kind's target (library-pause-pacing.ts), over LIBRARY_PAUSE_PACING's
-   * values for any left out. `false` plays every pause as recorded.
+   * How long its pauses play: each cut in its quiet to its kind's target (library-pause-pacing.ts), over
+   * LIBRARY_PAUSE_PACING's values for any left out. `false` plays every pause as recorded.
    */
   pauses?: Partial<LibraryPausePacing> | false;
   /** Seconds a cut inside voicing fades the outgoing vowel over, before the overlap with the next sound. Default 0.06. */
@@ -40,8 +37,6 @@ export type LibraryLineCut = {
   heard: SpokenWord[];
   dips: SpokenDip[];
   pauses: SpokenPause[];
-  /** What the line's sound plays, on item time at its own pace (libraryLineSoundOf), and how each piece joins the next. */
-  sound: { pieces: SpokenPiece[]; joins: SpokenJoin[] };
 };
 
 type Span = { start: number; end: number };
@@ -117,7 +112,9 @@ const DIP_DEPTH_HALF_DB = 10, DEEP_DIP_HALF_DB = 20, DIP_REACH = 0.12;
 // A cut within voicing lets the outgoing vowel decay before the short overlap with the next sound.
 const VOICED_CUT_FADE = 0.06, VOICED_CROSSFADE = 0.01;
 const QUIET_JOIN: SpokenJoin = { fadeOut: 0, crossfade: 0.02 };
-// Pieces butted on item time, as a pause's speed steps are: the sound runs on unbroken, so nothing fades.
+// A pause is cut only when this many seconds or more would go: less isn't heard, and each cut is a join.
+const PAUSE_CUT_MIN = 0.02;
+// Pieces butted on item time: the sound runs on unbroken, so nothing fades.
 const BUTTED_JOIN: SpokenJoin = { fadeOut: 0, crossfade: 0 };
 
 /** The deepest RMS trough near the boundary, strictly between word middles. Each byte counts half-dB down. */
@@ -214,20 +211,20 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
   const keptSounds = [...Array(last - first + 1).keys()].map((k) => first + k).filter((i) => !taken.some((run) => run.first <= i && i <= run.last));
   if (!keptSounds.some((i) => !sounds[i].unheard)) throw new Error(`${where}'s line from ${asked} to ${askedTo} s says nothing once its ${taken.flatMap((r) => r.finds.map((f) => f.kind)).join(', ')} are cut: keep one`);
 
-  // Pieces: runs of kept sounds, split where a run was taken and where a pause plays faster.
+  // Pieces: runs of kept sounds, split where a run was taken and where a pause is cut.
   const pacing = edits.pauses === false ? undefined : { ...LIBRARY_PAUSE_PACING, ...edits.pauses };
   const scale = libraryPaceScale(voice.syllableRate), classify = pacing?.classify ?? spokenPauseKindOf;
   const voicedJoin: SpokenJoin = { fadeOut: edits.voicedCutFade ?? VOICED_CUT_FADE, crossfade: VOICED_CROSSFADE };
-  const pieces: (Span & { speed: number })[] = [], joins: SpokenJoin[] = [];
-  const gaps: { run: Taken; line: number }[] = [], keptPauses: Span[] = [], breaks: (Span & { line: number })[] = [];
+  const pieces: Span[] = [], joins: SpokenJoin[] = [];
+  const gaps: { run: Taken; line: number }[] = [], keptPauses: Span[] = [], cutPauses: (Span & { kind: string; line: number })[] = [];
   const pauses: Omit<SpokenPause, 'at'>[] = [];
   let start = head?.to?.time ?? leadEdge(voice, keptSounds[0]), line = 0, joinNext = BUTTED_JOIN;
-  /** Plays on from `start` to item second `to` at `speed`. */
-  const play = (to: number, speed = 1) => {
+  /** Plays on from `start` to item second `to`. */
+  const play = (to: number) => {
     if (to - start < 1e-6) return;
     if (pieces.length) joins.push(joinNext);
-    pieces.push({ start, end: to, speed });
-    line += (to - start) / speed;
+    pieces.push({ start, end: to });
+    line += to - start;
     start = to;
     joinNext = BUTTED_JOIN;
   };
@@ -238,7 +235,6 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
     joinNext = how;
     start = to;
   };
-  const playSteps = (steps: readonly LibraryPauseStep[]) => steps.forEach(({ length, speed }) => play(start + length, speed));
   keptSounds.forEach((i, k) => {
     const next = keptSounds[k + 1];
     if (next === undefined) return;
@@ -254,47 +250,35 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
     const isBreak = pacing && libraryPauseIsBreak(heard, wordsKept(k - 3, k + 1), wordsKept(k + 1, k + 4), pacing);
     const kind = isBreak ? 'break' : classify(sounds[i], sounds[next]);
     const quiet = pause.b - pause.a, margin = heard - quiet;
-    const plays = pacing && Math.max(0, libraryPauseTarget(kind, heard, pacing, scale) - margin);
-    let steps = pacing ? libraryPauseSteps(quiet, plays!, pacing) : [];
-    // Checked before whether the pause changes: a pause review kept stays kept once pacing no longer changes it.
+    // Quiet kept, half after the word (its decay into the room) and half before the next (the run into it).
+    const left = pacing ? Math.min(quiet, Math.max(0, libraryPauseTarget(kind, heard, pacing, scale) - margin)) : quiet;
+    const shortens = quiet - left > PAUSE_CUT_MIN;
+    // Checked before whether the pause changes: a pause review kept stays kept once pacing no longer cuts it.
     const held = keeps(Math.min(pause.from, sounds[i].end), Math.max(pause.to, sounds[next].start));
-    if (held && steps.length) keptPauses.push({ start: pause.from, end: pause.to });
-    if (held || !steps.length) {
-      pauses.push({ kind, from: round(pause.from), to: round(pause.to), plays: round(heard), speed: 1, keepAt, ...(held && { kept: true as const }) });
+    if (held && shortens) keptPauses.push({ start: pause.from, end: pause.to });
+    if (held || !shortens) {
+      pauses.push({ kind, from: round(pause.from), to: round(pause.to), plays: round(heard), keepAt, ...(held && { kept: true as const }) });
       return;
     }
-    if (kind === 'break') {
-      // An editor's cut: the quiet a boundary keeps, half after the word and half before the next, the face jumping
-      // across the rest as it would between two takes.
-      const half = Math.min(quiet, pacing!.boundary * scale) / 2;
-      play(pause.a + half);
-      breaks.push({ start: pause.a + half, end: pause.b - half, line });
-      joinNext = QUIET_JOIN;
-      start = pause.b - half;
-      pauses.push({ kind, from: round(pause.from), to: round(pause.to), keepAt, speed: 1, plays: round(margin + 2 * half) });
-      return;
-    }
-    play(pause.a);
-    // Too long even at top speed: it goes faster still. Its sound plays at its own pace whatever the speed, so only
-    // the face, still in a pause, moves quicker.
-    const fits = Math.max(0, pacing!.longest * scale - margin);
-    if (libraryPauseStepsSeconds(steps) > fits) steps = libraryPauseSteps(quiet, fits, { ...pacing!, topSpeed: Infinity });
-    playSteps(steps);
-    pauses.push({ kind, from: round(pause.from), to: round(pause.to), keepAt, speed: round(Math.max(...steps.map((s) => s.speed))), plays: round(margin + libraryPauseStepsSeconds(steps)) });
+    play(pause.a + left / 2);
+    cutPauses.push({ start: pause.a + left / 2, end: pause.b - left / 2, kind: kind === 'break' ? 'break' : 'pause', line });
+    joinNext = QUIET_JOIN;
+    start = pause.b - left / 2;
+    pauses.push({ kind, from: round(pause.from), to: round(pause.to), keepAt, plays: round(margin + left) });
   });
   play(tail?.from?.time ?? decayEdge(voice, keptSounds.at(-1)!));
   for (const t of keep) if (!kept.has(t)) throw new Error(`${where}'s line from ${asked} to ${askedTo} s takes nothing out at ${t} s to keep`);
 
   if (!pieces.length) throw new Error(`${where}'s line from ${asked} to ${askedTo} s holds no whole word to play`);
   const at = [0];
-  for (const p of pieces.slice(0, -1)) at.push(at.at(-1)! + (p.end - p.start) / p.speed);
+  for (const p of pieces.slice(0, -1)) at.push(at.at(-1)! + p.end - p.start);
   const lineTime = (t: number) => {
     const k = Math.max(0, pieces.findLastIndex((p) => p.start <= t));
-    return round(at[k] + (Math.min(Math.max(t, pieces[k].start), pieces[k].end) - pieces[k].start) / pieces[k].speed);
+    return round(at[k] + Math.min(Math.max(t, pieces[k].start), pieces[k].end) - pieces[k].start);
   };
   const removals = gaps.flatMap(({ run, line: jumpAt }) => removalsOf(run.finds, sounds, round(jumpAt), forced));
-  // A break's quiet cut between two takes, listed for review like any other cut.
-  for (const { start: from, end: to, line: jumpAt } of breaks) removals.push({ kind: 'break', text: '', from: round(from), to: round(to), at: round(jumpAt), keepAt: round((from + to) / 2) });
+  // A pause's quiet cut (a break's between two takes), listed for review like any other cut.
+  for (const { start: from, end: to, kind, line: jumpAt } of cutPauses) removals.push({ kind, text: '', from: round(from), to: round(to), at: round(jumpAt), keepAt: round((from + to) / 2) });
   // A run taken from either end of the line only moves its edge.
   if (head) removals.unshift(...removalsOf(head.finds, sounds, 0, forced));
   if (tail) removals.push(...removalsOf(tail.finds, sounds, lineTime(Infinity), forced));
@@ -308,7 +292,7 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
   removals.push(...left);
   removals.sort((a, b) => a.at - b.at);
 
-  // Inside the pieces butted end to end that cover it, as a pause's speed steps are.
+  // Inside the pieces butted end to end that cover it.
   const within = (span: Span) => {
     let k = pieces.findIndex((p) => p.start <= span.start && span.start <= p.end);
     if (k < 0) return false;
@@ -322,42 +306,11 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
   ].toSorted((a, b) => a.start - b.start);
   const heard = keptSounds.filter((i) => !sounds[i].unheard).map((i) => ({ text: sounds[i].text, start: lineTime(sounds[i].start), end: lineTime(sounds[i].end) }));
   const unheard = keptSounds.filter((i) => sounds[i].unheard).map((i) => ({ from: sounds[i].start, to: sounds[i].end, at: lineTime(sounds[i].start) }));
-  const rounded: SpokenPiece[] = pieces.map((p) => ({ from: round(p.start), to: round(p.end), ...(p.speed !== 1 && { speed: Math.round(p.speed * 1e4) / 1e4 }) }));
-  const sound = libraryLineSoundOf(pieces, joins);
+  const rounded: SpokenPiece[] = pieces.map((p) => ({ from: round(p.start), to: round(p.end) }));
   const edgeOf = (t: number): SpokenEdge => (inQuiet(t) ? 'clean' : 'rough');
-  return { from: rounded[0].from, to: rounded.at(-1)!.to, edges: { in: edgeOf(pieces[0].start), out: edgeOf(pieces.at(-1)!.end) }, pieces: rounded, joins, removals, unheard, heard, dips, pauses: pauses.map((p) => Object.assign(p, { at: lineTime(p.from) })), sound };
+  return { from: rounded[0].from, to: rounded.at(-1)!.to, edges: { in: edgeOf(pieces[0].start), out: edgeOf(pieces.at(-1)!.end) }, pieces: rounded, joins, removals, unheard, heard, dips, pauses: pauses.map((p) => Object.assign(p, { at: lineTime(p.from) })) };
 }
 
-/**
- * A line's sound, every piece at its own pace so a voice never changes pitch. A pause played faster keeps as much
- * quiet as it now lasts, half from each end (the room after one word, the run into the next), cut in its middle.
- */
-function libraryLineSoundOf(pieces: readonly (Span & { speed: number })[], joins: readonly SpokenJoin[]): LibraryLineCut['sound'] {
-  const out: Span[] = [], outJoins: SpokenJoin[] = [];
-  const add = (span: Span, join: SpokenJoin | undefined) => {
-    const last = out.at(-1);
-    if (last && join === BUTTED_JOIN && Math.abs(last.end - span.start) < 1e-9) last.end = span.end;
-    else {
-      if (last && join) outJoins.push(join);
-      out.push({ ...span });
-    }
-  };
-  for (let k = 0; k < pieces.length; k++) {
-    const first = pieces[k], join = k ? joins[k - 1] : undefined;
-    if (first.speed === 1) {
-      add(first, join);
-      continue;
-    }
-    let seconds = 0;
-    for (; ; k++) {
-      seconds += (pieces[k].end - pieces[k].start) / pieces[k].speed;
-      if (k + 1 === pieces.length || pieces[k + 1].speed === 1 || joins[k] !== BUTTED_JOIN) break;
-    }
-    add({ start: first.start, end: first.start + seconds / 2 }, join);
-    add({ start: pieces[k].end - seconds / 2, end: pieces[k].end }, QUIET_JOIN);
-  }
-  return { pieces: out.map((p) => ({ from: round(p.start), to: round(p.end) })), joins: outJoins };
-}
 
 /** The removals a taken run's finds make, all at line second `at`, each restored by a moment inside its first word. */
 function removalsOf(finds: readonly Find[], sounds: readonly LibraryLineSound[], at: number, cut: readonly Find[] = []): SpokenRemoval[] {
@@ -369,14 +322,14 @@ function removalsOf(finds: readonly Find[], sounds: readonly LibraryLineSound[],
 
 /**
  * The pause between sounds `i` and `next`, or none when either side has no quiet to change it in: the quiet it may
- * play faster (`a` to `b`, the decay after `i` and the quiet before `next`'s breath left at their pace) and the
- * silence heard (`from` to `to`, the breath included), all on item time.
+ * be cut in (`a` to `b`, after the decay after `i` and before the quiet before `next`'s breath) and the silence heard
+ * (`from` to `to`, the breath included), all on item time.
  */
 function pauseBetween(voice: LibraryLineVoice, i: number, next: number): { a: number; b: number; from: number; to: number } | undefined {
   const { sounds, quiet } = voice;
   const a = decayEdge(voice, i), b = leadEdge(voice, next);
   const qa = inside(quiet, a), qb = inside(quiet, b);
-  // One quiet span end to end: sound between two, speech the transcript missed or a breath, must play at its pace.
+  // One quiet span end to end: sound between two, speech the transcript missed or a breath, must play as recorded.
   if (!qa || qa !== qb || a >= b) return undefined;
   const breath = breathBefore(voice, next);
   return { a, b, from: Math.max(qa.start, middle(sounds[i])!), to: Math.min(Math.max(qb.end, breath?.end ?? -Infinity), middle(sounds[next])!) };

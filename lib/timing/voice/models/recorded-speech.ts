@@ -4,23 +4,19 @@
 //
 // A stretch keeps its source in and out: nothing is copied, so a picture laid against it stays in sync. Inside it,
 // the line plays its pieces back to back, leaving out what its cleanup took (fillers, stutters), each listed for
-// review to restore, and playing long pauses faster, so a face filmed with it never jumps.
+// review to restore, each long pause cut to what its kind keeps.
 
 import type { SpokenPauseKind } from '#lib/footage/transcript/models/spoken-pauses.ts';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 
-/** A stretch of a library item a line plays, in item seconds, at `speed` item seconds a line second (1 unless given). */
-export type SpokenPiece = { from: number; to: number; speed?: number };
-
-/** How long a piece plays, in line seconds. */
-export const spokenPieceSeconds = (p: SpokenPiece) => (p.to - p.from) / (p.speed ?? 1);
+/** A stretch of a library item a line plays, in item seconds. */
+export type SpokenPiece = { from: number; to: number };
 
 /**
  * A pause between two of a line's words: what it's for, its silence in item seconds (`from`–`to`), the line second it
- * starts at and how long it `plays` there, and the fastest `speed` it reaches (1 when left as recorded). A line's
- * `keep` naming `keepAt` plays it as recorded (`kept`).
+ * starts at and how long it `plays` there. A line's `keep` naming `keepAt` plays it as recorded (`kept`).
  */
-export type SpokenPause = { kind: SpokenPauseKind; from: number; to: number; at: number; plays: number; speed: number; keepAt: number; kept?: true };
+export type SpokenPause = { kind: SpokenPauseKind; from: number; to: number; at: number; plays: number; keepAt: number; kept?: true };
 
 /**
  * Something a line's cleanup took out: its `kind` (`filler`, `pause`, `cut`, a rule's), what was said, where in the
@@ -62,14 +58,14 @@ export type SpokenEdge = 'clean' | 'rough';
 export type SpokenStretch = { item: string; from: number; to: number; pieces: readonly SpokenPiece[]; removals: readonly SpokenRemoval[]; unheard: readonly SpokenUnheard[] };
 
 /** How long a stretch plays: its pieces back to back. */
-export const spokenStretchSeconds = ({ pieces }: Pick<SpokenStretch, 'pieces'>) => pieces.reduce((sum, p) => sum + spokenPieceSeconds(p), 0);
+export const spokenStretchSeconds = ({ pieces }: Pick<SpokenStretch, 'pieces'>) => pieces.reduce((sum, p) => sum + p.to - p.from, 0);
 
 /** The item second a stretch plays `t` line seconds in, running on from its last piece past its end. */
 export function spokenItemTimeAt({ pieces, to }: Pick<SpokenStretch, 'pieces' | 'to'>, t: number): number {
   let left = t;
   for (const p of pieces) {
-    const seconds = spokenPieceSeconds(p);
-    if (left <= seconds) return p.from + left * (p.speed ?? 1);
+    const seconds = p.to - p.from;
+    if (left <= seconds) return p.from + left;
     left -= seconds;
   }
   return to + left;

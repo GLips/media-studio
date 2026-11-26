@@ -150,7 +150,7 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
   const cutOf = (voice: LibraryVoice, from: number, to: number, edits: LibraryLineEdits) => {
     if (voice.untranscribed) {
       const edgeAt = (t: number): SpokenEdge => (voice.quiet.some((q) => q.start <= t && t <= q.end) ? 'clean' : 'rough');
-      return { from, to, edges: { in: edgeAt(from), out: edgeAt(to) }, pieces: [{ from, to }], joins: [], removals: [], unheard: [], heard: [], dips: [], pauses: [], sound: { pieces: [{ from, to }], joins: [] } };
+      return { from, to, edges: { in: edgeAt(from), out: edgeAt(to) }, pieces: [{ from, to }], joins: [], removals: [], unheard: [], heard: [], dips: [], pauses: [] };
     }
     const sounds: LibraryLineSound[] = [...voice.words, ...voice.unheard.map((u) => ({ text: '', ...u, unheard: true as const }))].toSorted((a, b) => a.start - b.start);
     return cutLibraryLine({ ...voice, sounds }, from, to, edits, item.id);
@@ -191,10 +191,9 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
       const fade = { in: EDGE_FADES[cut.edges.in].in, out: EDGE_FADES[cut.edges.out].out };
       const { levelled } = track;
       let at = 0;
-      const soundPieces = cut.sound.pieces.map((p, k) => ({ ...p, from: k ? p.from : Math.max(first, p.from), to: k < cut.sound.pieces.length - 1 ? p.to : Math.min(last, p.to) }));
       const sound = levelled && {
-        item: item.id, file: levelled.file, lufs: levelled.lufs, fade, joins: cut.sound.joins, dips: cut.dips,
-        pieces: soundPieces.map((p) => {
+        item: item.id, file: levelled.file, lufs: levelled.lufs, fade, joins: cut.joins, dips: cut.dips,
+        pieces: pieces.map((p) => {
           const piece = { start: libraryMediaTimeOf(track, p.from), at, duration: p.to - p.from };
           at += piece.duration;
           return piece;

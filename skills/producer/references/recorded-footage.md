@@ -32,7 +32,7 @@ word cuts into sound and is flagged: ask for a stretch ending at a pause, or mar
 ## What a line leaves out
 
 A line drops uh/um/er, stutters, false starts and retakes, turns breaths down and takes clicks out, each cut in
-quiet. A long pause plays faster, the face sped and the room tone trimmed in quiet: a hesitation shorter than a sentence's end.
+quiet. A long pause is cut short in its quiet: a hesitation shorter than a sentence's end.
 
 Review's voice lane marks each: ✂ taken out, ◌ left in, a dotted underline under speech the transcript has no
 words for. A click writes the line's choice into storyboard.ts. `speech`'s third argument takes `keep: [s]` (restore
