@@ -80,8 +80,12 @@ const edgeInQuiet = (q: Span, word: number, pad: number) => {
   return word > q.start ? Math.max(q.start, Math.min(q.end, word) + pad) : q.end - reach;
 };
 
-// An edge with no quiet: midway to the neighbouring sound, or with no neighbour, padded past the sound itself.
-const unquietEdge = (word: number, beside: number | undefined, pad: number) => (beside === undefined ? word + pad : (word + beside) / 2);
+// An edge with no quiet: at the deepest trough between the two sounds, where a transcript's touching timestamps can
+// sit a tenth of a second off the real join; else midway to the neighbouring sound, or with no neighbour, padded past it.
+function unquietEdge(voice: LibraryLineVoice, before: number, word: number, beside: number | undefined, pad: number) {
+  if (beside === undefined) return word + pad;
+  return dipBetween(voice, before, DIP_DEPTH_HALF_DB)?.time ?? (word + beside) / 2;
+}
 
 /** The breath before sound `i`: a soft span after the sound before it, reaching no further than just into it. */
 function breathBefore({ sounds, soft }: LibraryLineVoice, i: number): Span | undefined {
@@ -95,15 +99,16 @@ function leadEdge(voice: LibraryLineVoice, i: number): number {
   const start = breath?.start ?? sounds[i].start, before = middle(sounds[i - 1]) ?? -Infinity;
   const leads = quiet.filter((q) => q.start < (breath?.start ?? middle(sounds[i])!) && q.end > before);
   const lead = leads.findLast(long) ?? leads.at(-1);
-  return lead ? edgeInQuiet(lead, start, -EDGE_PAD_IN) : unquietEdge(start, sounds[i - 1]?.end, -EDGE_PAD_IN);
+  return lead ? edgeInQuiet(lead, start, -EDGE_PAD_IN) : unquietEdge(voice, i - 1, start, sounds[i - 1]?.end, -EDGE_PAD_IN);
 }
 
 /** Where a piece ending at sound `i` ends: in the quiet its sound decays into, before the sound after it. */
-function decayEdge({ sounds, quiet }: LibraryLineVoice, i: number): number {
+function decayEdge(voice: LibraryLineVoice, i: number): number {
+  const { sounds, quiet } = voice;
   const end = sounds[i].end, after = middle(sounds[i + 1]) ?? Infinity;
   const decays = quiet.filter((q) => q.end > middle(sounds[i])! && q.start < after);
   const decay = decays.find(long) ?? decays[0];
-  return decay ? edgeInQuiet(decay, end, EDGE_PAD_OUT) : unquietEdge(end, sounds[i + 1]?.start, EDGE_PAD_OUT);
+  return decay ? edgeInQuiet(decay, end, EDGE_PAD_OUT) : unquietEdge(voice, i, end, sounds[i + 1]?.start, EDGE_PAD_OUT);
 }
 
 // At 5 dB below both shoulders a trough can take a cut. Under 10 dB the outgoing vowel needs a decay of its own.

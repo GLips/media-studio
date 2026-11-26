@@ -43,3 +43,10 @@ test('a line whose edge falls inside a word names the word rather than dropping 
   assert.throws(() => cutLibraryLine(voice, 2, 2.84, {}, 'take'), /splits "voice"/);
   assert.equal(cutLibraryLine(voice, 2, 3, {}, 'take').heard.length, 3);
 });
+
+test('a line edge with no quiet before its first word starts at the trough, not the transcript boundary', () => {
+  const levels = new Uint8Array(100).fill(30);
+  levels[35] = 50;
+  const line = cutLibraryLine({ sounds, quiet: [], soft: [], clicks: [], envelope: { levels, start: 2, step: 0.01 } }, 2.4, 3, { rules: [] }, 'take');
+  assert.equal(line.pieces[0].from, 2.355);
+});
