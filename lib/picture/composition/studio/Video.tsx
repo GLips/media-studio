@@ -62,8 +62,14 @@ function timelineReport(video: VideoDef, tl: LaidVideo, { fps, width, height, du
     })),
     cues: tl.cues.map(({ id, start, end, text, src }) => {
       const scene = tl.scenes.find((sc) => id in sc.spans)!, span = scene.spans[id];
-      const words = span.words.map((w) => ({ text: w.text, start: scene.start + span.start + w.start, end: scene.start + span.start + w.end }));
-      return { id, start, end, text, voiced: src !== null, words };
+      const at = scene.start + span.start, line = video.voice[id], speech = line && 'speech' in line ? line.speech : undefined;
+      const words = span.words.map((w) => ({ text: w.text, start: at + w.start, end: at + w.end }));
+      if (!speech) return { id, start, end, text, voiced: src !== null, words };
+      return { id, start, end, text, voiced: src !== null, words, speech: {
+        scene: scene.id,
+        removals: speech.removals.map((r) => Object.assign({}, r, { at: at + r.at })),
+        unheard: speech.unheard.map((u) => ({ start: at + u.at, end: at + u.at + u.to - u.from })),
+      } };
     }),
     captions: sidecar && { srt: captionsToSrt(sidecar), vtt: captionsToVtt(sidecar) },
     crossfades: tl.scenes.flatMap((scene, i) => (scene.xfade ? [{

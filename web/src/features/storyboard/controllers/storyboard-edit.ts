@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start';
 import { setResponseStatus } from '@tanstack/react-start/server';
 import { Schema } from 'effect';
-import { editProjectStoryboardLines, editProjectStoryboardText, projectFolderNamed } from '#web/infrastructure/studio-engine.server.ts';
+import { editProjectStoryboardLines, editProjectStoryboardSpeech, editProjectStoryboardText, projectFolderNamed } from '#web/infrastructure/studio-engine.server.ts';
 
 const Index = Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)));
 const Texts = { was: Schema.String, text: Schema.String };
@@ -45,5 +45,25 @@ export const editStoryboardLinesFn = createServerFn({ method: 'POST' })
     const result = editProjectStoryboardLines(projectFolderNamed(data.project), data.edit);
     if ('edited' in result) return { ok: true as const, line: result.line };
     setResponseStatus('conflict' in result ? 409 : 422);
+    return result;
+  });
+
+// Spells out the engine's StoryboardSpeechEdit, as above.
+const Seconds = Schema.Finite;
+const StoryboardSpeechEditSchema = Schema.Union([
+  Schema.Struct({ scene: Schema.String, line: Schema.String, list: Schema.Literals(['keep', 'cut']), add: Seconds }),
+  Schema.Struct({ scene: Schema.String, line: Schema.String, list: Schema.Literals(['keep', 'cut']), within: Schema.Tuple([Seconds, Seconds]) }),
+]);
+
+/**
+ * Adds a moment to a recorded line's `keep` or `cut`, or takes those within a span out, in its speech call in
+ * storyboard.ts: review restoring a removal or taking one out. Answers `{ ok: true }`; 422 with `{ refused }`.
+ */
+export const editStoryboardSpeechFn = createServerFn({ method: 'POST' })
+  .validator(Schema.toStandardSchemaV1(Schema.Struct({ project: Schema.String, edit: StoryboardSpeechEditSchema })))
+  .handler(({ data }) => {
+    const result = editProjectStoryboardSpeech(projectFolderNamed(data.project), data.edit);
+    if ('edited' in result) return { ok: true as const };
+    setResponseStatus(422);
     return result;
   });

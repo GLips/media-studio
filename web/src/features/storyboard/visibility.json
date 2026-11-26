@@ -1,5 +1,6 @@
 {
   "web/src/features/plan": "The plan page draws the project's storyboard as the browser imports and resolves it, re-timed on each hot update of storyboard.ts.",
   "web/src/features/projects": "A project's plan row counts its signed scenes, which only a resolved storyboard can say, and only the browser resolves one: the app server never imports a project's TypeScript.",
+  "web/src/features/review": "Review restores what a recorded line's cleanup took out, and takes it out again, as a moment in the line's speech call in storyboard.ts, which only the storyboard's source edits write.",
   "web/src/features/decisions": "The decisions screen walks a project's decisions in story order and shows the line each is for, which only the storyboard the browser resolves can say."
 }
