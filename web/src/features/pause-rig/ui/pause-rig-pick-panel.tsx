@@ -26,7 +26,7 @@ const styles = stylex.create({
   muted: { color: colors.dim },
 });
 
-const FEEL_LABELS = { rushed: 'Rushed', draggy: 'Draggy', choppy: 'Choppy / robotic', fine: 'Fine' } as const;
+const FEEL_LABELS = { rushed: 'Rushed: pause too short', draggy: 'Draggy: pause too long', choppy: 'Choppy / robotic: sounds unnatural', fine: 'Fine' } as const;
 
 /** A version's tile: lit while it plays, brighter once heard; a click plays it alone. */
 function PauseRigVersionTile({ label, version, pick }: { label: string; version: PauseRigVersion; pick: ReturnType<typeof usePauseRigPick> }) {

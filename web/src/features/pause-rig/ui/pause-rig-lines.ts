@@ -29,9 +29,9 @@ export type PauseRigClip = { line: number; from: number; to: number; about: stri
 
 // Seconds of the take either side of what a clip is about, as recorded.
 const CLIP_CONTEXT = 1.5;
-// "1 or 2?" plays this many seconds of the line, as played, either side of its pause, so a clip starts on the words
-// before it however the pause before those played, and a pick judges that pause alone.
-const PICK_CONTEXT = 1;
+// "1 or 2?" leads into its pause with this many seconds of the line as played, back to the start of a word, so a few
+// whole words set up the pause, and plays a second on after it.
+const PICK_LEAD = 2.25, PICK_AFTER = 1;
 // Pauses shorter than this play as recorded under any pacing worth asking about.
 const PICK_PAUSE = 0.4;
 // Clip edges to the millisecond, so a logged clip reads cleanly.
@@ -57,19 +57,20 @@ export function pauseRigClipsOf(line: number, speech: RecordedSpeech): PauseRigC
 }
 
 /**
- * A clip around each pause in `speech` long enough for pacing to change, from a second of the line as played before
- * it to a second after. A pause beside a word lying wholly in `quiet` (item time) is left out: whisper wrote a word
+ * A clip around each pause in `speech` long enough for pacing to change, from a few whole words before it to a
+ * second after. A pause beside a word lying wholly in `quiet` (item time) is left out: whisper wrote a word
  * where nothing was said, leaving no speech to judge the pause by.
  */
 export function pauseRigPickClipsOf(line: number, speech: RecordedSpeech, quiet: readonly { start: number; end: number }[]): PauseRigClip[] {
   const words = speech.heard.map((w) => ({ start: spokenItemTimeAt(speech, w.start), end: spokenItemTimeAt(speech, w.end) }));
   const silent = (w: { start: number; end: number } | undefined) => !w || quiet.some((q) => q.start <= w.start && w.end <= q.end);
   const playedAt = (t: number) => spokenItemTimeAt(speech, Math.max(0, t));
+  const leadIn = (t: number) => speech.heard.findLast((w) => w.start <= t)?.start ?? 0;
   return speech.pauses.filter((p) => p.to - p.from >= PICK_PAUSE)
     .filter((p) => !silent(words.findLast((w) => w.start < p.from)) && !silent(words.find((w) => w.end > p.to)))
     .map((p) => ({
-      line, from: ms(Math.max(speech.from, playedAt(pauseRigLineTimeOf(speech, p.from) - PICK_CONTEXT))),
-      to: ms(Math.min(speech.to, playedAt(pauseRigLineTimeOf(speech, p.to) + PICK_CONTEXT))),
+      line, from: ms(Math.max(speech.from, playedAt(leadIn(pauseRigLineTimeOf(speech, p.from) - PICK_LEAD)))),
+      to: ms(Math.min(speech.to, playedAt(pauseRigLineTimeOf(speech, p.to) + PICK_AFTER))),
       about: `${p.kind} of ${(p.to - p.from).toFixed(2)} s`, pause: { kind: p.kind, heard: p.to - p.from },
     }));
 }
