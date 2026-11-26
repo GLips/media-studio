@@ -2,6 +2,7 @@
 // margin (stamp-stage.ts), and the films and planes' pictures it keeps between frames. A margin must leave every frame
 // as it was and show what a lay brings in from off the frame; a kept film or picture must draw the frame drawn fresh.
 
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import { compileStampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import { stampBloom } from '#lib/paint/painting/models/stamp-wet-techniques.ts';
@@ -145,7 +146,7 @@ const mixture = (pigment: (typeof W)[keyof typeof W]) => ({ kind: 'mixture' as c
 export function stampGateParallaxPainting(): StampGatePainting {
   const steady = stampGateBrush('Steady', { flow: 0.6 });
   const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: STAMP_GATE_WHITE, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W } }, (p) => {
-    p.group('far', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (g) => g.passage('sky', {}, (w) => {
+    p.group('far', { composite: 'glaze', opacity: 1, boil: drawingSchedule({ fps: 12 }) }, (g) => g.passage('sky', {}, (w) => {
       w.fill('sky', { brush: steady, size: 40, application: { kind: 'flood' }, region: stampGatePolygon(-20, 0, 260, 0, 260, 110, -20, 110), well: { paint: mixture(W.ultramarine) } });
       stampBloom(w, 'drop', { brush: steady, size: 30, at: [{ x: 120, y: 60 }] });
     }));
@@ -188,7 +189,7 @@ const PLANES_LEAF = { kind: 'ellipse' as const, x: 170, y: 110, radiusX: 44, rad
 export function stampGatePlanesPainting(): StampGatePainting {
   const steady = stampGateBrush('Steady', { flow: 0.6 });
   const painting = compileStampPaintRecipe(stampPaintRecipe({ paper: STAMP_GATE_WHITE, mixing: { kind: 'pigment', medium: PAINT_MEDIA.watercolour, pigments: W } }, (p) => {
-    p.group('far', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (g) => g.passage('sky', {}, (w) => {
+    p.group('far', { composite: 'glaze', opacity: 1, boil: drawingSchedule({ fps: 12 }) }, (g) => g.passage('sky', {}, (w) => {
       w.fill('sky', { brush: steady, size: 40, application: { kind: 'flood' }, region: stampGatePolygon(-40, -20, 280, -20, 280, 110, -40, 110), well: { paint: mixture(W.ultramarine) } });
       stampBloom(w, 'drop', { brush: steady, size: 30, at: [{ x: 120, y: 60 }] });
     }));

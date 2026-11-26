@@ -1,3 +1,4 @@
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -45,7 +46,7 @@ function materialShare(deposit: CompiledStampDeposit, x: number, y: number): num
 test('deposits naming one seed share a passage of noise; unseeded, each mottles by its own ID, whatever its boil epoch', () => {
   const passage = { kind: 'noise' as const, scale: 24, seed: 'sky', a: blue, b: rose };
   const own = { kind: 'noise' as const, scale: 24, a: blue, b: rose };
-  const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (group) => group.passage('p', { wetHistory: false }, (pass) => {
+  const painting = compileStampPaintRecipe(stampPaintRecipe(WET, (paint) => paint.group('g', { composite: 'glaze', opacity: 1, boil: drawingSchedule({ fps: 12 }) }, (group) => group.passage('p', { wetHistory: false }, (pass) => {
     pass.stroke('left', { brush, size: 30, well: { paint: passage }, path });
     pass.stroke('right', { brush, size: 30, well: { paint: passage }, path });
     pass.stroke('a', { brush, size: 30, well: { paint: own }, path });
@@ -58,7 +59,7 @@ test('deposits naming one seed share a passage of noise; unseeded, each mottles 
   assert.deepEqual(shares(left), shares(right));
   assert.notDeepEqual(shares(a), shares(b));
   // A boil's epoch reshapes marks, never where the colour mottles.
-  assert.deepEqual(shares(stampPassDeposits(group.boil!.reseeded(1).passes[0])[2]), shares(a));
+  assert.deepEqual(shares(stampPassDeposits(group.boil!.reseeded('next').passes[0])[2]), shares(a));
 });
 
 // A dry medium fills in strokes unless it says, each stamp's opacity its load.

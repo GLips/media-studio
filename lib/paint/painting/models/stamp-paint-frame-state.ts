@@ -6,7 +6,8 @@
 // Keys name what a function or a compiled group can't show by value: two frames giving one group equal keys must give
 // it equal maps or marks. A film's key is built from them, so a wrong key lays the wrong paint.
 
-import { stampBoilEpoch, stampGroupPlacementAt, type StampGroupPlacement } from './stamp-group-motion.ts';
+import type { RedrawToken } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import { stampGroupPlacementAt, type StampGroupPlacement } from './stamp-group-motion.ts';
 import type { StampWarpMap } from './stamp-group-warp.ts';
 import { stampPassDeposits, type CompiledStampGroup, type CompiledStampPaint } from './stamp-paint-recipe-compile.ts';
 import type { StampPoint } from './stamp-region.ts';
@@ -21,11 +22,10 @@ export type StampGroupLay = { placement: StampGroupPlacement; pivot: StampPoint 
 export type StampGroupWarp = { map: StampWarpMap; key: string; cell?: number };
 
 /**
- * The marks a group draws. `written`: as compiled, re-seeded at boil `epoch` (0 is as written; past 0 only for a
- * group compiled with a `boil`). `live`: its marks compiled for this frame from its posed geometry, drawn in place of
+ * The marks a group draws. `written`: as compiled or redrawn for the supplied token. `live`: its marks compiled for this frame from its posed geometry, drawn in place of
  * the written ones; they must be the written group re-placed (stampLiveGroupProblem), and `key` names them exactly.
  */
-export type StampGroupMarks = { kind: 'written'; epoch: number } | { kind: 'live'; marks: CompiledStampGroup; key: string };
+export type StampGroupMarks = { kind: 'written'; token?: RedrawToken } | { kind: 'live'; marks: CompiledStampGroup; key: string };
 
 /**
  * The light a group gives off, past `threshold` in luminance (0..1, linear light), `amount` times over, into its
@@ -67,20 +67,19 @@ export const paintMoment = (at: number, frame = at): PaintMoment => ({ at, frame
 export type StampPaintFrameAt = (moment: PaintMoment) => StampPaintFrameState;
 
 /**
- * What `group`'s own recipe gives it `t` seconds into its scene: its motion's lay, its boil's epoch (on the animation
- * clock, stampBoilEpoch) and, while it recolours, the time its paint reads, held to its keys' span.
+ * What `group`'s own recipe gives it `t` seconds into its scene: its motion's lay, its scheduled redraw token and, while it recolours, the time its paint reads, held to its keys' span.
  */
-function stampRecipeGroupState({ motion, boil, recolours }: CompiledStampGroup, t: number): StampGroupFrameState {
+function stampRecipeGroupState({ motion, boil, recolours }: CompiledStampGroup, t: number, marks?: StampGroupMarks): StampGroupFrameState {
   return {
     ...(motion && { lay: { placement: stampGroupPlacementAt(motion, t), pivot: motion.pivot ?? { x: 0, y: 0 } } }),
-    ...(boil && { marks: { kind: 'written', epoch: stampBoilEpoch(t, boil) } }),
+    ...(!marks && boil && { marks: { kind: 'written', token: boil.drawings.at(t).token } }),
     ...(recolours && { paintAt: Math.min(recolours.to, Math.max(recolours.from, t)) }),
   };
 }
 
 /**
  * `painting`'s frame state `t` seconds into its scene: each group's recipe's own with `given` over it. Given marks
- * replace a recipe's boil (a group its animation re-seeds counts no epochs of its own; epoch 0 draws as written). Any
+ * replace a recipe's scheduled marks. Any
  * other field written by both is an error, as is state for a group the painting doesn't have.
  */
 export function stampPaintFrameStateAt(painting: CompiledStampPaint, t: number, given: StampPaintFrameState = new Map()): StampPaintFrameState {
@@ -88,7 +87,7 @@ export function stampPaintFrameStateAt(painting: CompiledStampPaint, t: number, 
   if (unknown.length) throw new Error(`stamp paint: frame state for ${unknown.join(', ')}, which the painting has no group of`);
   const merged = new Map<string, StampGroupFrameState>();
   for (const group of painting.groups) {
-    const own = stampRecipeGroupState(group, t), written = given.get(group.id) ?? {};
+    const written = given.get(group.id) ?? {}, own = stampRecipeGroupState(group, t, written.marks);
     for (const field of ['lay', 'warp', 'paintAt', 'visibility', 'glow'] as const) {
       if (own[field] !== undefined && written[field] !== undefined) throw new Error(`stamp paint: ${group.id}'s frame state gives its ${field}, and so does its recipe; one writes it`);
     }

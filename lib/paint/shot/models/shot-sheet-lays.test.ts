@@ -12,6 +12,8 @@ import { PAPER_KEY_LIGHT } from '#lib/paint/painting/models/stamp-form.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampPointBox, stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampRoundTipStatedProfile } from '#lib/paint/painting/models/stamp-tip-support.ts';
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import { dissolve, paintedSourceShares } from './shot-selection.ts';
 import { compilePaintedShot } from './shot-compile.ts';
 import { shotPlanePosesAt, shotPlaneSharesAt, shotRigGroupPivot, shotRigReader } from './shot-frame-plan.ts';
 import type { PaintedShotProps, RigPart } from './shot-props.ts';
@@ -62,7 +64,7 @@ function planAt(props: PaintedShotProps, at: PaintMoment) {
   assert.deepEqual(problems, []);
   const [plane] = shot!.planes;
   assert.ok(plane.kind === 'painted');
-  const [{ selection }] = shotPlaneSharesAt(shot!, plane, at), compiled = compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers });
+  const [{ selection }] = shotPlaneSharesAt(shot!, plane, at), compiled = compilePaintingSelection(selection.painting, brushOf, selection);
   const films = compiled.sheets.map(({ layers }) => layers.map((_, f) => ({ box: stampPointBox({ x: 30, y: 90, w: 180, h: 40 }), key: `film ${f}` })));
   // Rigs found with unit axes: what the plan reads of them is their parts' poses, not the paint they were found over.
   const found: ShotRigFound[] = [...shot!.rigs.values()].map((rig) => ({ rig, axes: new Map(rig.parts.map(({ id }) => [id, { direction: 0, length: 1 }])), skin: null }));
@@ -77,12 +79,36 @@ const solvedText = (solved: PaintingPoses) => [...solved].map(([key, pose]) => `
 
 test("a boil's wobble moves finished paint: marks solve alike across epochs, while the lay and its picture's key move", () => {
   const props: PaintedShotProps = {
-    camera, span: SPAN, planes: [{ id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']), occurrences: { heron: { marks: { boil: { every: 1 } } } } }],
+    camera, span: SPAN, planes: [{ id: 'front', depth: 1, source: layersOf(pond(false), ['sky', 'heron']), occurrences: { heron: { clock: { hold: 1 }, marks: { wobble: {} } } } }],
   };
   const [first, again, next] = [1.5, 1.5, 2.5].map((frame) => planAt(props, paintMoment(frame / FPS)));
   assert.equal(solvedText(next.solved), solvedText(first.solved));
   assert.equal(again.plan.key, first.plan.key);
   assert.notEqual(next.plan.key, first.plan.key);
+});
+
+test('an open shutter moves wobbling ink while its drawing holds', () => {
+  const scene = pond(false), source = layersOf(scene, ['sky', 'heron'], { redraw: new Map([['heron', 'cel']]) });
+  const props: PaintedShotProps = { camera, span: SPAN, planes: [{ id: 'front', depth: 1, source, occurrences: { heron: { marks: { wobble: {} } } } }] };
+  const frame = 1 / FPS, start = planAt(props, paintMoment(frame)), end = planAt(props, paintMoment(frame + 0.01, frame));
+  assert.equal(start.compiled, end.compiled);
+  assert.notEqual(start.plan.key, end.plan.key);
+});
+
+test('source tokens survive a dissolve and select drawings independently on a shared sheet', () => {
+  const scene = pond(false), drawings = drawingSchedule({ fps: 12 }, [{ at: 0.05, cadence: 'held' }]);
+  const select = (t: number) => layersOf(scene, ['heron'], { redraw: new Map([['heron', drawings.at(t).token], ['neck', 'guide']]) });
+  const read = (t: number) => {
+    const selection = select(t);
+    return compilePaintingSelection(scene, brushOf, selection).sheets[0].program.entries.map(({ deposit }) => deposit);
+  };
+  const [first, next] = [0, 0.05].map(read);
+  assert.deepEqual(read(0.04), first);
+  assert.deepEqual(read(1), next);
+  assert.notDeepEqual(first[0], next[0]);
+  assert.deepEqual(first[1], next[1]);
+  assert.equal(paintedSourceShares(dissolve(select(0), select(0.04), 0.5)).length, 1);
+  assert.deepEqual(paintedSourceShares(dissolve(select(0), select(0.05), 0.5)).map(({ weight }) => weight), [0.5, 0.5]);
 });
 
 test("the shot's light is in its planes' lay key, PAPER_KEY_LIGHT when it names none: another light re-lays a still plane", () => {

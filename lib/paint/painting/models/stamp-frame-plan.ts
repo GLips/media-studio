@@ -39,9 +39,9 @@ function stampGroupGlowChecked(id: string, glow: StampGroupGlow | undefined): St
 
 /** `group`'s frame from its frame state, checked: throws on state it can't draw. */
 function stampGroupFrame(group: CompiledStampGroup, state: StampGroupFrameState): StampGroupFrame {
-  const { lay, warp, marks = { kind: 'written', epoch: 0 }, paintAt, visibility = 1 } = state;
-  if (marks.kind === 'written' && !(Number.isInteger(marks.epoch) && marks.epoch >= 0 && (marks.epoch === 0 || group.boil))) {
-    throw new Error(`stamp paint: ${group.id}'s frame state gives boil epoch ${marks.epoch}; an epoch is a whole number from 0, past 0 for a group compiled with a boil`);
+  const { lay, warp, marks = { kind: 'written' }, paintAt, visibility = 1 } = state;
+  if (marks.kind === 'written' && marks.token !== undefined && !group.boil) {
+    throw new Error(`stamp paint: ${group.id}'s redraw token needs a group compiled with a boil`);
   }
   const liveProblem = marks.kind === 'live' && stampLiveGroupProblem(group, marks.marks);
   if (liveProblem) throw new Error(`stamp paint: ${group.id} can't be drawn live: ${liveProblem}`);
@@ -56,7 +56,7 @@ function stampGroupFrame(group: CompiledStampGroup, state: StampGroupFrameState)
   // A lay at scale 0 shrinks the group onto its pivot, so it's hidden; its lay stays, for the shutter's travel.
   const shown = lay?.placement.scale === 0 ? 0 : visibility;
   // A hidden group draws nothing, whatever its marks or lay.
-  const paintKey = shown === 0 ? 'hidden' : `${marks.kind === 'live' ? `*${JSON.stringify(marks.key)}` : marks.epoch}${paintAt === undefined ? '' : `~${paintAt}`}`;
+  const paintKey = shown === 0 ? 'hidden' : `${marks.kind === 'live' ? `*${JSON.stringify(marks.key)}` : (JSON.stringify(marks.token) ?? '0')}${paintAt === undefined ? '' : `~${paintAt}`}`;
   return {
     paintKey, group, marks, lay: moved, warp: warp ? { map: warp.map, key: warp.key, cell: warp.cell ?? STAMP_WARP_CELL } : null, visibility: shown,
     paintAt: paintAt ?? null, glow: stampGroupGlowChecked(group.id, state.glow),

@@ -3,6 +3,7 @@
 //
 // Randomness comes from IDs, never order: each deposit is seeded by its ID, so adding a stroke changes no other.
 
+import { redrawSeed, type RedrawToken, type DrawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import type { StampBlend, StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { FrozenStampMarks } from '#lib/paint/brush/models/stamp-mark-rows.ts';
 import { compileDeposit } from './stamp-deposit-compile.ts';
@@ -11,7 +12,7 @@ import { stampPaintFieldEnds, stampPaintFieldProblem, stampSeededPaintField, typ
 import { compilePaintAction, compileWashAction, type CompiledStampAction, type CompiledStampPaintAction, type StampRecipeWashAction } from './stamp-paint-action.ts';
 import { compileStampArea, stampFluidHolder, stampStandsBeforeExclusions, type CompiledStampArea } from './stamp-area.ts';
 import { compileStampBrushedMask, stampResistHolder, type CompiledStampBrushedMask } from './stamp-brushed-mask.ts';
-import { compileStampGroupMotion, type CompiledStampGroupMotion, type StampGroupBoil, type StampGroupPaper } from './stamp-group-motion.ts';
+import { compileStampGroupMotion, type CompiledStampGroupMotion, type StampGroupPaper } from './stamp-group-motion.ts';
 import { stampKeysSpan } from './stamp-scene-keys.ts';
 import type { StampPaintMixing, StampPigmentMixing } from './stamp-pigment-paint.ts';
 import { checkedStampPolygon, type StampGrid } from './stamp-region.ts';
@@ -92,9 +93,6 @@ export type CompiledStampPass = {
 
 const washDeposits = new WeakMap<CompiledStampWash, readonly CompiledStampDeposit[]>();
 
-/** What seeds deposit `id`'s randomness at boil `epoch`: its ID as written at 0, and a seed of the epoch's own after. */
-export const stampBoilSeed = (id: string, epoch: number) => (epoch ? `${id}|boil${epoch}` : id);
-
 /** `pass`'s deposits in painting order: a wash's are its schedule's, worked out once per wash. */
 export function stampPassDeposits(pass: CompiledStampPass): readonly CompiledStampDeposit[] {
   if (pass.kind === 'dry') return pass.deposits;
@@ -115,11 +113,9 @@ export type CompiledStampGroup = {
   /** The scene seconds over which its paint changes (a keyed material's first key to its last); absent for paint that doesn't. */
   recolours?: { from: number; to: number };
   /**
-   * Absent for a group painted once. `epoch`: which of its boil's paintings this is (0, as written); `reseeded`
-   * compiles this group alone at another epoch, each deposit's randomness drawn afresh and its ID, fluid and colour
-   * kept, so an epoch reshapes marks but never repaints the palette.
+   * The source schedule owns mark changes. A redraw keeps the written IDs, fluid and palette.
    */
-  boil?: StampGroupBoil & { epoch: number; reseeded: (epoch: number) => CompiledStampGroup };
+  boil?: { drawings: DrawingSchedule; reseeded: (token: RedrawToken) => CompiledStampGroup };
 };
 
 /** Whether `group` takes out of the paint behind it: its first pass is a knockout, as only a first may be. */
@@ -209,11 +205,10 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
   const exclusions = stampStandsBeforeExclusions(resolved.map(({ group: { id, options } }) => ({ id, ...(options.standsBefore && { standsBefore: options.standsBefore }) })));
   const holders = new Map(resolved.map(({ group: { id } }) => [id, stampFluidHolder(exclusions.get(id) ?? [])]));
   /**
-   * `group` compiled with every deposit seeded for boil `epoch` (0: as written). IDs are claimed only as written:
-   * an epoch's are those same IDs, checked already.
+   * Claim IDs on the written group. Each token reuses those checked IDs.
    */
-  const compileGroup = ({ id, options, passes }: StampPaintRecipeGroup, epoch: number): CompiledStampGroup => {
-    const named = epoch ? (child: string, parent?: string) => (parent ? `${parent}/${child}` : child) : claim;
+  const compileGroup = ({ id, options, passes }: StampPaintRecipeGroup, token?: RedrawToken): CompiledStampGroup => {
+    const named = token !== undefined ? (child: string, parent?: string) => (parent ? `${parent}/${child}` : child) : claim;
     const groupId = named(id), held = holders.get(id)!;
     const compiledWithin = new Map<readonly StampDepositWithin[], readonly CompiledStampArea[]>();
     /** An application's areas, compiled once for every deposit written under it. */
@@ -234,12 +229,13 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
       /** `step` compiled, its action by `action` from the colour jitter drawn for it, placed from its mark's key or its own ID. */
       const deposit = <W extends StampRecipeWashAction, A extends CompiledStampAction>(step: StampPaintRecipeDeposit<W>, action: (full: string, draws: readonly number[]) => A) => {
         // Its name seeds it and its provenance never does: wrapping it in an application moves nothing.
-        if (!epoch) [...step.name.items, step.name.id, ...step.name.keys].forEach(checkedStampIdSegment);
+        if (token === undefined) [...step.name.items, step.name.id, ...step.name.keys].forEach(checkedStampIdSegment);
         const full = named(stampDepositNameText(step.name), passId), fluid = step.mask && masks.get(step.mask)!;
-        if (step.mark && !epoch) claimMark(step.mark);
+        if (step.mark && token === undefined) claimMark(step.mark);
         // A knockout acts on the paint behind the group, which neither a standing before nor the group's wax holds off.
         const reserved = pass.wash?.knockout ? fluid : held(waxed(fluid, step.resist));
-        return compileDeposit(full, step, (draws) => action(full, draws), reserved, stampBoilSeed(step.mark?.key ?? full, epoch), withinOf(step.within));
+        const address = step.mark?.key ?? full;
+        return compileDeposit(full, step, (draws) => action(full, draws), reserved, token === undefined ? address : redrawSeed(address, token), withinOf(step.within));
       };
       const common = { id: passId, ...(clipTo && { clipTo }), within: pass.within ? compileStampArea(pass.within, passId) : null };
       if (!pass.wash) {
@@ -264,16 +260,15 @@ export function compileStampPaintRecipe(recipe: StampPaintRecipe): CompiledStamp
     });
     const opacity = options.composite === 'glaze' ? options.opacity : 1;
     const { boil } = options, motion = options.motion && compileStampGroupMotion(options.motion, groupId);
-    if (boil && !(Number.isInteger(boil.every) && boil.every >= 1)) throw new Error(`stamp paint: ${groupId} boils every ${boil.every} frames, and a boil repaints every whole number of frames from 1`);
     const written = { id, options, passes };
     const recolours = stampGroupRecolours(compiledPasses);
     return {
       id: groupId, composite: options.composite, opacity, paper: options.paper ?? 'ground', passes: compiledPasses, ...(options.mixing && { mixing: options.mixing }),
       ...(motion && { motion }), ...(recolours && { recolours }),
-      ...(boil && { boil: { every: boil.every, epoch, reseeded: (next: number) => compileGroup(written, next) } }),
+      ...(boil && { boil: { drawings: boil, reseeded: (next: RedrawToken) => compileGroup(written, next) } }),
     };
   };
-  const groups = resolved.map(({ group }) => compileGroup(group, 0));
+  const groups = resolved.map(({ group }) => compileGroup(group));
   if (duplicates.size) throw new Error(`stamp paint: IDs used twice, which would seed two deposits alike: ${[...duplicates].join(', ')}`);
   const { paper, mixing } = recipe.environment;
   return { paper, mixing, groups };
@@ -305,11 +300,9 @@ function stampGroupRecolours(passes: readonly CompiledStampPass[]): CompiledStam
 }
 
 /**
- * Everything a render reads of `painting`, as text: each stamp and draw, fluid and wash schedule, and each
- * boiled group's next epoch. Two paintings printing alike paint alike, wetness too, which compileStampWetness works
- * out from nothing else: how a check proves that organising a recipe moved none of it.
+ * The written marks and a sample redraw for comparing how recipes place their deposits.
  */
 export function stampCompiledPaintPrint(painting: CompiledStampPaint): string {
-  const boils = painting.groups.flatMap(({ boil }) => (boil ? [boil.reseeded(boil.epoch + 1)] : []));
+  const boils = painting.groups.flatMap(({ boil }) => (boil ? [boil.reseeded('print')] : []));
   return JSON.stringify({ painting, boils });
 }

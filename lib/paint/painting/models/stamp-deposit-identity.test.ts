@@ -1,3 +1,4 @@
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -47,7 +48,7 @@ const sky = () => stampPaintRecipe(WET, (paint) => {
       wash.wait('set');
     });
   });
-  paint.group('grass', { composite: 'opaque', boil: { every: 2 } }, (group) => group.passage('blades', { wetHistory: false }, (pass) => {
+  paint.group('grass', { composite: 'opaque', boil: drawingSchedule({ fps: 12 }) }, (group) => group.passage('blades', { wetHistory: false }, (pass) => {
     pass.stroke('blade', { brush, size: 8, well: { paint: color('#446633') }, path: [{ x: 100, y: 380 }, { x: 120, y: 330 }], hand: { profile: 'swell', wobble: { pressure: 0.1, position: 0.2 } } });
   }));
 });

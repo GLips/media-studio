@@ -6,7 +6,7 @@
 
 import type { PaintShotCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintNodeClock } from '#lib/paint/animation/models/paint-clock.ts';
-import type { PaintBoilMarks, PaintMotionNode, PaintMotionPlay } from '#lib/paint/animation/models/paint-motion-compile.ts';
+import type { PaintWobbleMarks, PaintMotionNode, PaintMotionPlay } from '#lib/paint/animation/models/paint-motion-compile.ts';
 import type { PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import type { PaintMoment, StampGroupGlow, StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -169,7 +169,7 @@ export type OccurrenceRig = {
  * Marks stay put or boil; to lay them anew per pose, pose it on a sheet it doesn't own.
  */
 export type OccurrenceMotionNode = Omit<PaintMotionNode, 'parent' | 'marks' | 'glow'> & {
-  readonly marks?: 'stuck' | { readonly boil: PaintBoilMarks };
+  readonly marks?: 'stuck' | { readonly wobble: PaintWobbleMarks };
   /** Its light, read at its held moment, shared by what it holds that says none (`'none'`: no glow). */
   readonly glow?: PresentationValue<StampGroupGlow> | 'none';
 };

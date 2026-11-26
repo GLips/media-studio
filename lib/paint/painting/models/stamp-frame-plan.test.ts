@@ -1,3 +1,4 @@
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -54,16 +55,16 @@ const sacPainting = (sacY = 50, sacStroke = 'a', boil = false) => compileStampPa
   paint.group('sac', { composite: 'glaze', opacity: 1 }, (group) => group.passage('body', { wetHistory: false }, (pass) => {
     pass.stroke(sacStroke, { brush, well: { paint: ink }, size: 10, path: [{ x: 0, y: sacY }, { x: 50, y: sacY }] });
   }));
-  paint.group('sky', { composite: 'glaze', opacity: 1, ...(boil && { boil: { every: 2 } }) }, (group) => group.passage('wash', { wetHistory: false }, (pass) => pass.stroke('a', { brush, well: { paint: ink }, size: 10, path: [{ x: 0, y: 90 }, { x: 50, y: 90 }] })));
+  paint.group('sky', { composite: 'glaze', opacity: 1, ...(boil && { boil: drawingSchedule({ fps: 12 }) }) }, (group) => group.passage('wash', { wetHistory: false }, (pass) => pass.stroke('a', { brush, well: { paint: ink }, size: 10, path: [{ x: 0, y: 90 }, { x: 50, y: 90 }] })));
 }));
 
-test('a recipe boil counts animation frames, and marks given replace it, epoch 0 drawing as written', () => {
+test('a boiling group reads its drawing schedule and an explicit mark choice takes precedence', () => {
   const sac = sacPainting(50, 'a', true);
   const at = (t: number, state?: StampPaintFrameState) => stampFramePlan(sac, t, state)[2].marks;
   // On twos at 24 fps: 1/24 s is still epoch 0, 2/24 s epoch 1, whatever the render's rate.
-  assert.deepEqual([at(1 / 24), at(2 / 24), at(1)], [{ kind: 'written', epoch: 0 }, { kind: 'written', epoch: 1 }, { kind: 'written', epoch: 12 }]);
-  assert.deepEqual(at(1, new Map([['sky', { marks: { kind: 'written', epoch: 0 } }]])), { kind: 'written', epoch: 0 });
-  assert.throws(() => at(1, new Map([['sac', { marks: { kind: 'written', epoch: 2 } }]])), /past 0 for a group compiled with a boil/);
+  assert.deepEqual([at(1 / 24), at(2 / 24), at(1)], [{ kind: 'written', token: 'initial/0' }, { kind: 'written', token: 'initial/1' }, { kind: 'written', token: 'initial/12' }]);
+  assert.deepEqual(at(1, new Map([['sky', { marks: { kind: 'written' } }]])), { kind: 'written' });
+  assert.throws(() => at(1, new Map([['sac', { marks: { kind: 'written', token: 'cel' } }]])), /redraw token needs a group compiled with a boil/);
 });
 
 test("a live group's film is keyed by its marks' key, and marks that aren't the group re-placed are refused", () => {

@@ -2,6 +2,7 @@
 // reads them: the evaluation, the keys selected, and the prefix. A selection is a description;
 // nothing is compiled or solved until something draws or reads it. The shot builds its sources on it (shot-selection.ts).
 
+import type { RedrawToken } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import type { NodeKey } from './painting-document.ts';
 import type { PaintingEvaluation } from './painting-source.ts';
 
@@ -21,13 +22,14 @@ export type LayerSelection = {
   readonly painting: PaintingEvaluation;
   readonly layers: readonly NodeKey[];
   readonly ground?: SelectionGround;
+  /** Resolved mark tokens by layer or group key. The closest key to each layer wins. */
+  readonly redraw?: ReadonlyMap<NodeKey, RedrawToken>;
   readonly at?: number;
 };
 
 /** `layers` of `evaluation` as a plane's source or a readback's selection, with `ground` and `at`. */
 export function layersOf(
-  evaluation: PaintingEvaluation, layers: readonly NodeKey[], options: { readonly ground?: SelectionGround; readonly at?: number } = {},
+  evaluation: PaintingEvaluation, layers: readonly NodeKey[], options: Pick<LayerSelection, 'ground' | 'at' | 'redraw'> = {},
 ): LayerSelection {
-  const { ground, at } = options;
-  return { kind: 'layers', painting: evaluation, layers, ...(ground && { ground }), ...(at !== undefined && { at }) };
+  return { kind: 'layers', painting: evaluation, layers, ...options };
 }

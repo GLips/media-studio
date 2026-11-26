@@ -1,3 +1,4 @@
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -56,7 +57,7 @@ const problemsOf = (build: PaintMotionBuild) => (build.ok ? [] : build.problems)
 const close = (a: StampPoint, b: StampPoint, what: string, within = 1e-6) => assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < within, `${what}: (${a.x}, ${a.y}) is not (${b.x}, ${b.y})`);
 
 const body = { id: 'frog', clock: { hold: 2 }, pins: { chest: { at: { x: 200, y: 200 }, reach: 150 } } } satisfies PaintMotionNode<'chest'>;
-const outline = { id: 'frog-ink', parent: 'frog', marks: { boil: { every: 2 } } } satisfies PaintMotionNode;
+const outline = { id: 'frog-ink', parent: 'frog', marks: { wobble: {} } } satisfies PaintMotionNode;
 const puff: PaintPoseClip<'chest'> = {
   kind: 'poses', value: paintKeyed([{ at: 0, value: { chest: { scale: 1 } } }, { at: 0.4, value: { chest: { scale: 1.3 } }, curve: 'out' }, { at: 1, value: { chest: { scale: 1 } } }]),
 };
@@ -80,7 +81,7 @@ test('a frame is the same in any order, render frames inside one hold share keys
     maps.set(`${id} ${key}`, at);
   }
   const wobbled = paintMotionFrameAt(forwards, paintMoment(0.8)).get('frog-ink')!.warp!;
-  assert.match(wobbled.key, /^wobble\("frog-ink",9,2\.2,45\)>pins\[radial/, 'the ink wobbles in its rest space, then bends with the body');
+  assert.match(wobbled.key, /^wobble\("frog-ink",18,2\.2,45\)>pins\[radial/, 'the ink wobbles in its rest space, then bends with the body');
 });
 
 test('a point goes through its own bend and placement, then its parent\'s, as a rigger nests them', () => {
@@ -142,13 +143,13 @@ test('two flutters with crossed axes give different keys for different maps, eve
   assert.notEqual(a.key, b.key, 'so their keys do');
 });
 
-test('a re-seeding group always has its epoch; a stuck one over a boil is held at 0', () => {
-  const reseeded = { id: 'ink', marks: { boil: { every: 2, reseed: true } } } satisfies PaintMotionNode;
+test('a reseeding group takes its source token while a stuck group holds the first drawing', () => {
+  const reseeded = { id: 'ink', marks: 'reseed' } satisfies PaintMotionNode;
   const still = { id: 'rock' } satisfies PaintMotionNode;
-  const painting = paintingOf([square('ink', { options: { boil: { every: 2 } } }), square('rock', { options: { boil: { every: 2 } } })]);
+  const painting = paintingOf([square('ink', { options: { boil: drawingSchedule({ fps: 12 }) } }), square('rock', { options: { boil: drawingSchedule({ fps: 12 }) } })]);
   const motion = built(buildPaintMotion(painting, { nodes: [reseeded, still] }));
-  assert.deepEqual(paintMotionFrameAt(motion, paintMoment(1.5)).get('ink')?.marks, { kind: 'written', epoch: 18 });
-  assert.deepEqual(paintMotionFrameAt(motion, paintMoment(1.5)).get('rock')?.marks, { kind: 'written', epoch: 0 });
+  assert.deepEqual(paintMotionFrameAt(motion, paintMoment(1.5)).get('ink')?.marks, { kind: 'written', token: 'initial/18' });
+  assert.deepEqual(paintMotionFrameAt(motion, paintMoment(1.5)).get('rock')?.marks, { kind: 'written', token: 'initial/0' });
   const unboiled = buildPaintMotion(paintingOf([square('ink')]), { nodes: [reseeded] });
   assert.match(problemsOf(unboiled)[0], /^ink re-seeds its marks, but its group is compiled without a boil/);
 });
@@ -182,7 +183,7 @@ test('a live child is posed by its own pins alone, and its parent\'s breath reac
 test('the build names conflicts, missing pins and groups, a hold in seconds, a boil that folds and a pose that folds', () => {
   const painting = paintingOf([square('frog'), square('pond')]);
   const problems = problemsOf(buildPaintMotion(painting, {
-    nodes: [body, { id: 'tadpole' }, { id: 'frog' }, { id: 'pond', marks: { boil: { every: 2, amount: 100, scale: 10 } } }],
+    nodes: [body, { id: 'tadpole' }, { id: 'frog' }, { id: 'pond', clock: { hold: 2 }, marks: { wobble: { amount: 100, scale: 10 } } }],
     plays: [
       paintMotionPlay(body, puff, { clock: { at: 0, loop: { period: 1 } }, origin: 'puff' }),
       paintMotionPlay(body, { kind: 'breathe', pin: 'chest', amount: 0.02, period: 3 }, { clock: { at: 2 }, origin: 'breath' }),

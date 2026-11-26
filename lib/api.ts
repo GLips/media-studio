@@ -144,7 +144,7 @@ export type { StampBoundaries, StampBoundary, StampBoundaryTreatment } from '#li
 export type { StampNoiseField, StampPaintField } from '#lib/paint/painting/models/stamp-paint-field.ts';
 // StampGroupMotion is the recipe path's (StampPainting): keyed placements, linear between keys. A shot moves a group
 // by a node's place play, its value a PresentationValue.
-export type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from '#lib/paint/painting/models/stamp-group-motion.ts';
+export type { StampGroupMotion, StampGroupPaper } from '#lib/paint/painting/models/stamp-group-motion.ts';
 export type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 export { paintMoment, type PaintMoment, type StampGroupFrameState, type StampPaintFrameAt, type StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 export type { StampMaterialKeys } from '#lib/paint/painting/models/stamp-material-keys.ts';
@@ -208,7 +208,7 @@ export { hasSubjectTag, SUBJECT_WELL_KNOWN_TAGS, type SubjectWellKnownTag } from
 // Painted motion (plan 1): nodes over a compiled painting's groups, with pins and how their marks live (a live node
 // registers its poser), clips played through clocks written as parts, evaluated per frame into StampPainting's `frame`.
 export { buildPaintMotion, type PaintMotionBuild } from '#lib/paint/animation/models/paint-motion.ts';
-export { paintMotionPlay, type PaintBoilMarks, type PaintLivePose, type PaintLivePoser, type PaintMarks, type PaintMotion, type PaintMotionNode, type PaintMotionPlay } from '#lib/paint/animation/models/paint-motion-compile.ts';
+export { paintMotionPlay, type PaintWobbleMarks, type PaintLivePose, type PaintLivePoser, type PaintMarks, type PaintMotion, type PaintMotionNode, type PaintMotionPlay } from '#lib/paint/animation/models/paint-motion-compile.ts';
 export { paintMotionFrameAt } from '#lib/paint/animation/models/paint-motion-frame.ts';
 export { paintIdHash, paintIdPhase, type PaintMotionClip, type PaintPlaceClip, type PaintPose, type PaintPoseClip } from '#lib/paint/animation/models/paint-motion-clips.ts';
 export type { PaintPartPin, PaintPin, PaintPinRig, PaintPlacementMove, PaintRadialPin } from '#lib/paint/animation/models/paint-pins.ts';

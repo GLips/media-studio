@@ -6,6 +6,7 @@
 // water; its marks are its tip's seed's. Posing comes after (painting-pose.ts). Compiles are kept across evaluations
 // by bytes.
 
+import { redrawSeed, type RedrawToken } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import { PAINT_MEDIA, type PaintMedium } from '#lib/paint/materials/models/paint-medium.ts';
 import type { PaintMixturePigment } from '#lib/paint/materials/models/paint-pigment.ts';
 import { stampSheetStepsRimmed } from '#lib/paint/painting/models/stamp-card-relief.ts';
@@ -13,7 +14,7 @@ import { stampBrushedMasksUnder } from '#lib/paint/painting/models/stamp-brushed
 import { STAMP_KEPT_BYTES, stampPlacementsKept } from '#lib/paint/painting/models/stamp-deposit-placement.ts';
 import { createKeptByBytes } from '#lib/paint/painting/models/stamp-kept-memo.ts';
 import type { StampPaintCostTally, StampPaintKept } from '#lib/paint/painting/models/stamp-paint-costs.ts';
-import { stampBoilSeed, type CompiledStampDeposit } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
+import type { CompiledStampDeposit } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import { rememberedOnce } from '#lib/paint/painting/models/stamp-remembered.ts';
 import type { StampSheetCompositeStep, StampSheetEntry, StampSheetFilm, StampSheetPrewet, StampSheetProgram, StampSheetWash } from '#lib/paint/painting/models/stamp-sheet-program.ts';
 import { stampCanonicalDigest, stampCanonicalJson } from '#lib/paint/painting/models/stamp-canonical.ts';
@@ -64,11 +65,11 @@ const paintingEntryMarks = (deposit: CompiledStampDeposit, prewet: StampSheetPre
 
 /**
  * `order`, a sheet's order in `evaluation`, as its program at rest, brushes resolved by `brushOf`, each boiling layer
- * reseeded for its epoch in `epochs` (paintingLayerEpochs').
+ * reseeded for its token in `tokens` (paintingLayerTokens').
  */
-function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingSheetOrder, brushOf: PaintingBrushOf, epochs: ReadonlyMap<number, number>, costs: StampPaintCostTally | undefined): StampSheetProgram {
+function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingSheetOrder, brushOf: PaintingBrushOf, tokens: ReadonlyMap<number, RedrawToken>, costs: StampPaintCostTally | undefined): StampSheetProgram {
   const { document: paintingDocument, tree } = evaluation;
-  const epochOf = (sheetLayer: number) => epochs.get(order.layers[sheetLayer].layer) ?? 0;
+  const tokenOf = (sheetLayer: number) => tokens.get(order.layers[sheetLayer].layer);
   const reads = paintingEntryReads(tree, order);
   const sheetWashes = paintingSheetWashes(tree, order);
   const washIndex = new Map(sheetWashes.map(({ layer, wash }, w) => [`${layer}/${wash}`, w]));
@@ -83,22 +84,22 @@ function compilePaintingSheet(evaluation: PaintingEvaluation, order: PaintingShe
   const washes = sheetWashes.map(({ layer, place, node }): StampSheetWash => {
     // A checked document clips only to an earlier wash with applications, so it's on this sheet.
     const wet = node.wetHistory !== false, clipTo = node.clipTo === undefined ? null : washIndex.get(`${layer}/${place.node.washes.findIndex(({ key }) => key === node.clipTo)}`)!;
-    const epoch = epochOf(layer), id = stampBoilSeed(paintingPrewetId(place.node.key, node), epoch);
-    const prewet = wet && node.prewet ? compilePaintingPrewet(paintingReseeded(node.prewet, epoch), id, node.key, brushOf) : null;
+    const token = tokenOf(layer), address = paintingPrewetId(place.node.key, node), id = token === undefined ? address : redrawSeed(address, token);
+    const prewet = wet && node.prewet ? compilePaintingPrewet(paintingReseeded(node.prewet, token), id, node.key, brushOf) : null;
     const compiled: StampSheetWash = { film: layer, name: node.key, prewet, rim: wet ? node.rim ?? 1 : 0, clipTo, wetHistory: wet, origin: node.clock?.origin ?? null };
     if (paintingWashLifts(node)) compiled.lifts = true;
     return compiled;
   });
   const entries = order.entries.map((entry, k): StampSheetEntry => {
-    const { node } = tree.layers[order.layers[entry.layer].layer], wash: Wash = node.washes[entry.wash], epoch = epochOf(entry.layer);
-    const application: AnyApplication = paintingReseeded(wash.applications[entry.application], epoch);
+    const { node } = tree.layers[order.layers[entry.layer].layer], wash: Wash = node.washes[entry.wash], token = tokenOf(entry.layer);
+    const application: AnyApplication = paintingReseeded(wash.applications[entry.application], token);
     const w = washIndex.get(`${entry.layer}/${entry.wash}`)!, owner = paintingApplicationOwner(wash, application, entry.application);
-    const id = stampBoilSeed(paintingApplicationDepositId(node.key, wash, application, entry.application), epoch);
+    const address = paintingApplicationDepositId(node.key, wash, application, entry.application), id = token === undefined ? address : redrawSeed(address, token);
     const { deposit, anchors } = compilePaintingDeposit(application, owner, { id, wet: washes[w].wetHistory, brushOf });
     const { medium } = films[entry.layer], { charge } = application, firstOfWash = order.entries.findIndex((other) => other.layer === entry.layer && other.wash === entry.wash) === k;
     const capped = charge.kind === 'paint' && charge.maxSpreadPx !== undefined ? paintingCappedMedium(medium, charge.maxSpreadPx, application.diameterPx) : medium;
     const marks = paintingEntryMarks(deposit, firstOfWash ? washes[w].prewet : null);
-    const digesting = costs?.timing('digest'), digest = stampCanonicalDigest({ reads: reads[k].datum, marks, boil: epoch || undefined });
+    const digesting = costs?.timing('digest'), digest = stampCanonicalDigest({ reads: reads[k].datum, marks, boil: token });
     digesting?.();
     return {
       wash: w, name: owner, deposit, medium: capped, on: 'on' in application ? application.on ?? null : null, bloom: 'effect' in application && application.effect === 'bloom',
@@ -147,18 +148,19 @@ export function paintingNodeSteps(compiled: PaintingSelectionCompiled, key: Node
 }
 
 /**
- * What a selection's compile is told: `layers`, the layers and groups selected (all when left out); `reseed`, boil
- * epochs by the key of the layer or group boiling, the innermost naming a layer winning. A reseeded
- * layer's every seed is suffixed for its epoch and its entries keyed by it; one at 0 is as written. `costs` counts.
+ * What a selection's compile is told: `layers`, the layers and groups selected (all when left out); `redraw`, boil
+ * tokens by the key of the layer or group boiling, the innermost naming a layer winning. A reseeded
+ * layer keys its entries by the token, including wet effects seeded by the deposit ID.
  */
-export type PaintingSelectionCompileOptions = { readonly layers?: readonly NodeKey[]; readonly reseed?: ReadonlyMap<NodeKey, number>; readonly costs?: StampPaintCostTally };
+export type PaintingSelectionCompileOptions = { readonly layers?: readonly NodeKey[]; readonly redraw?: ReadonlyMap<NodeKey, RedrawToken>; readonly costs?: StampPaintCostTally };
 
-/** Each layer `reseed` boils, by its ordinal in `tree.layers`, at its epoch (PaintingSelectionCompileOptions'); none at 0. */
-export function paintingLayerEpochs(tree: PaintingTree, reseed?: ReadonlyMap<NodeKey, number>): ReadonlyMap<number, number> {
-  if (!reseed?.size) return new Map();
-  return new Map(tree.layers.flatMap(({ node, groups }, layer) => {
-    const epoch = [node.key, ...groups.toReversed()].map((key) => reseed.get(key)).find((each) => each !== undefined) ?? 0;
-    return epoch ? [[layer, epoch] as const] : [];
+/** Each layer `redraw` boils, by its ordinal in `tree.layers`, at its token (PaintingSelectionCompileOptions'). */
+function paintingLayerTokens(tree: PaintingTree, selected: ReadonlySet<number>, redraw?: ReadonlyMap<NodeKey, RedrawToken>): ReadonlyMap<number, RedrawToken> {
+  if (!redraw?.size) return new Map();
+  return new Map([...selected].toSorted((a, b) => a - b).flatMap((layer) => {
+    const { node, groups } = tree.layers[layer];
+    const token = [node.key, ...groups.toReversed()].map((key) => redraw.get(key)).find((each) => each !== undefined);
+    return token !== undefined ? [[layer, token] as const] : [];
   }));
 }
 
@@ -200,7 +202,7 @@ function paintingSelectionBytes({ sheets }: PaintingSelectionCompiled): number {
   return STAMP_KEPT_BYTES * marks + PAINTING_ENTRY_BYTES * entries;
 }
 
-/** Compiled selections by evaluation, brushes, and the layers selected with their boil epochs: one program a sheet while kept, so its poses are met again. */
+/** Compiled selections by evaluation, brushes, and the layers selected with their boil tokens: one program a sheet while kept, so its poses are met again. */
 const selectionsKept = createKeptByBytes<string, PaintingSelectionCompiled>(PAINTING_SELECTIONS_KEPT_BYTES);
 
 /** The ids naming evaluations and brushOfs in selectionsKept's keys: an object's for its life. */
@@ -216,13 +218,13 @@ export const paintingMemosKept = (): StampPaintKept => ({ compiled: selectionsKe
  * card where its owner does, before every node under it, so a nested sheet lies on its parent's card; a rim after its
  * sheet's last film. Kept as PAINTING_SELECTIONS_KEPT_BYTES holds.
  */
-export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, { layers, reseed, costs }: PaintingSelectionCompileOptions = {}): PaintingSelectionCompiled {
-  const selected = paintingSelectedLayers(evaluation.tree, layers), epochs = paintingLayerEpochs(evaluation.tree, reseed);
-  const key = `${idOf(evaluationIds, evaluation)}|${idOf(brushOfIds, brushOf)}|${[...selected].toSorted((a, b) => a - b).join(',')}|${[...epochs].map(([layer, epoch]) => `${layer}@${epoch}`).join(',')}`;
+export function compilePaintingSelection(evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, { layers, redraw, costs }: PaintingSelectionCompileOptions = {}): PaintingSelectionCompiled {
+  const selected = paintingSelectedLayers(evaluation.tree, layers), tokens = paintingLayerTokens(evaluation.tree, selected, redraw);
+  const key = `${idOf(evaluationIds, evaluation)}|${idOf(brushOfIds, brushOf)}|${[...selected].toSorted((a, b) => a - b).join(',')}|${JSON.stringify([...tokens])}`;
   const known = selectionsKept.get(key);
   costs?.count(known ? 'selection hits' : 'selections compiled');
   if (known) return known;
-  const compiled = compileSelectedLayers(evaluation, brushOf, selected, epochs, costs);
+  const compiled = compileSelectedLayers(evaluation, brushOf, selected, tokens, costs);
   selectionsKept.set(key, compiled, paintingSelectionBytes(compiled) + 2 * key.length);
   return compiled;
 }
@@ -240,7 +242,7 @@ function paintingFillBrushProblems(tree: PaintingTree, selected: ReadonlySet<num
 }
 
 function compileSelectedLayers(
-  evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, selected: ReadonlySet<number>, epochs: ReadonlyMap<number, number>, costs: StampPaintCostTally | undefined,
+  evaluation: PaintingEvaluation, brushOf: PaintingBrushOf, selected: ReadonlySet<number>, tokens: ReadonlyMap<number, RedrawToken>, costs: StampPaintCostTally | undefined,
 ): PaintingSelectionCompiled {
   const { tree } = evaluation;
   // Refused whole, by owner, before any deposit is planned: the planner refuses one alone, naming no application.
@@ -248,7 +250,7 @@ function compileSelectedLayers(
   if (unplannable.length) throw paintingProblemsError(evaluation.source, paintingProblemsWithOrigins(evaluation.document, unplannable));
   const sheets = paintingSheetOrders(tree, selected).flatMap((order, s): PaintingSheetCompiled[] => (s > 0 && order.layers.length === 0
     ? []
-    : [{ sheet: order.sheet, layers: order.layers.map(({ layer }) => layer), ownerChain: order.ownerChain, program: compilePaintingSheet(evaluation, order, brushOf, epochs, costs) }]));
+    : [{ sheet: order.sheet, layers: order.layers.map(({ layer }) => layer), ownerChain: order.ownerChain, program: compilePaintingSheet(evaluation, order, brushOf, tokens, costs) }]));
   const steps = tree.nodes.flatMap((place): StampSheetCompositeStep[] => {
     const sheet = sheets.findIndex((compiled) => compiled.sheet === place.sheet);
     if (sheet < 0) return [];

@@ -201,8 +201,10 @@ where a function of the share is wanted. Moment times come from the storyboard's
 
 ## Motion nodes, plays, glow
 
-- **Node fields**: `pivot` (document px), `marks`: `'stuck'` (default) or `{boil: {every, amount?, scale?, reseed?}}`
-  (lines wobbling every n frames; `reseed` repaints, a solve an epoch), `clock: {hold: n}` or `{freeze: s}`, `glow`.
+- **Node fields** include `pivot` (document px), `marks` ('stuck' or `{wobble: {amount?, scale?}}`), `clock` and `glow`.
+  A wobble moves finished paint at exposure time. Use a node hold for stepped motion.
+- To redraw a group, pass its resolved token with the selection, e.g.
+  `layersOf(painting, ['actor'], { redraw: new Map([['contour', score.drawings.at(t).token]]) })`.
 - **Plays**, each `{clip, clock, origin}`: clock `{at, rate?, loop?: {period, mode?: 'repeat' | 'pingpong', times?},
   hold?, until?}`, `at` in scene seconds, a cue's. Clips: `place` (rigid, about the pivot), `poses` (per pin),
   `breathe`, `sway {root, direction, length, amount, period}` (reeds, a hanging leaf), `flutter`, `strain {value}`

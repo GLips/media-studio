@@ -20,7 +20,7 @@ out wrong. The types are the contract, each field's unit and default in its JSDo
    glaze rather than mix. Separate sheets are separate paintings and never share water.
 5. A painting has no clock unless a wash declares one; unclocked work is always shown finished.
 6. Scenes own time: they choose property values and sample times, and show finished layers on planes under a camera.
-   Only a property change, a pose of a layer on a sheet it doesn't own, and boil `reseed` re-solve paint; everything
+   Only a property change, a pose of a layer on a sheet it doesn't own, and a fresh redraw token re-solve paint; everything
    else a scene does (lays, the camera, visibility, masks, reveals, dissolves) moves or cuts finished paint.
 7. The engine solves each sheet once per distinct input, resuming from the first application that changed.
 

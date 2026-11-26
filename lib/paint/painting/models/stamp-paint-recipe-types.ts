@@ -8,6 +8,7 @@
 // every scene time: painting time, advanced by waits and conditions, says only how wet the paper was as each deposit
 // landed (stamp-wetness.ts).
 
+import type { DrawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import type { PaintMaterial, StampPaintColor } from '#lib/paint/materials/models/paint-material.ts';
 import type { StampBlend, StampBrush, StampBrushAsset } from '#lib/paint/brush/models/stamp-brush.ts';
 import type { StampPlacement, StampStrokePoint } from '#lib/paint/brush/models/stamp-placement.ts';
@@ -17,7 +18,7 @@ import type { StampPaintField } from './stamp-paint-field.ts';
 import type { StampRecipePaint, StampRecipeWashAction } from './stamp-paint-action.ts';
 import type { StampRegion } from './stamp-region.ts';
 import type { StampArea, StampStandsBefore, StampWithin } from './stamp-area.ts';
-import type { StampGroupBoil, StampGroupMotion, StampGroupPaper } from './stamp-group-motion.ts';
+import type { StampGroupMotion, StampGroupPaper } from './stamp-group-motion.ts';
 import type { CompiledStampMaterialKeys, StampMaterialKeys } from './stamp-material-keys.ts';
 import type { StampMaterialSet } from './stamp-material-set.ts';
 import type { StampMark } from './stamp-marks.ts';
@@ -180,7 +181,7 @@ export type StampGroupOptions = ({ composite: 'opaque' } | { composite: 'glaze';
    */
   mixing?: StampPigmentMixing;
   motion?: StampGroupMotion;
-  boil?: StampGroupBoil;
+  boil?: DrawingSchedule;
   /** Groups painted earlier that this one's `shape` is reserved from, as a near hill from the far range (StampStandsBefore). */
   standsBefore?: StampStandsBefore;
 };

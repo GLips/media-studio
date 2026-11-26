@@ -38,7 +38,7 @@ export type PaintDeform = { readonly owner: string } & (
   | { readonly kind: 'sway'; readonly root: StampPoint; readonly direction: number; readonly length: number; readonly angleSteps: number }
   | { readonly kind: 'strain'; readonly pivot: StampPoint; readonly strainSteps: readonly [number, number] }
   | { readonly kind: 'fold'; readonly pivot: StampPoint; readonly crease: number; readonly foldSteps: number }
-  | { readonly kind: 'wobble'; readonly seed: string; readonly epoch: number; readonly wobble: PaintBoilWobble }
+  | { readonly kind: 'wobble'; readonly seed: string; readonly frame: number; readonly wobble: PaintBoilWobble }
   | { readonly kind: 'place'; readonly placement: StampGroupPlacement; readonly pivot: StampPoint }
 );
 
@@ -61,7 +61,7 @@ export function paintDeformKey(deform: PaintDeform): string {
     case 'sway': return `sway(${paintKeyNumbers(deform.root.x, deform.root.y, deform.direction, deform.length, deform.angleSteps)})`;
     case 'strain': return `strain(${paintKeyNumbers(deform.pivot.x, deform.pivot.y, ...deform.strainSteps)})`;
     case 'fold': return `fold(${paintKeyNumbers(deform.pivot.x, deform.pivot.y, deform.crease, deform.foldSteps)})`;
-    case 'wobble': return `wobble(${JSON.stringify(deform.seed)},${paintKeyNumbers(deform.epoch, deform.wobble.amount, deform.wobble.scale)})`;
+    case 'wobble': return `wobble(${JSON.stringify(deform.seed)},${paintKeyNumbers(deform.frame, deform.wobble.amount, deform.wobble.scale)})`;
     case 'place': return `place(${placementText(deform.placement)}@${paintKeyNumbers(deform.pivot.x, deform.pivot.y)})`;
     default: return deform satisfies never;
   }
@@ -104,7 +104,7 @@ export function paintDeformMap(deform: PaintDeform): StampWarpMap {
     case 'sway': return swayMap(deform.root, deform.direction, deform.length, deform.angleSteps * RATIO_STEP);
     case 'strain': return strainAbout({ x: deform.strainSteps[0] * RATIO_STEP, y: deform.strainSteps[1] * RATIO_STEP }, deform.pivot);
     case 'fold': return foldAbout(deform.foldSteps * RATIO_STEP, deform.crease, deform.pivot);
-    case 'wobble': return paintBoilDisplacementMap(deform.seed, deform.epoch, deform.wobble);
+    case 'wobble': return paintBoilDisplacementMap(deform.seed, deform.frame, deform.wobble);
     case 'place': return (rest) => stampGroupSceneFromLayer(deform.placement, rest, deform.pivot);
     default: return deform satisfies never;
   }

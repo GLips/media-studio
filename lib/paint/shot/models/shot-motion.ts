@@ -14,7 +14,7 @@ import {
 } from '#lib/paint/animation/models/paint-clock.ts';
 import { paintIdPhase, paintMotionClipProblem } from '#lib/paint/animation/models/paint-motion-clips.ts';
 import {
-  compilePaintBoil, filePaintLevelPlay, paintGlowProblem, paintLevelLanes, paintLevelLanesSorted, type CompiledPaintLevel, type PaintLevelLanes, type PaintMotionPlay,
+  compilePaintWobble, filePaintLevelPlay, paintGlowProblem, paintLevelLanes, paintLevelLanesSorted, type CompiledPaintLevel, type PaintLevelLanes, type PaintMotionPlay,
 } from '#lib/paint/animation/models/paint-motion-compile.ts';
 import { paintLevelValueProblems } from '#lib/paint/animation/models/paint-motion-reach.ts';
 import { presentationValueAt, type PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
@@ -36,11 +36,10 @@ export type ShotMotionPlane = {
 /** A shot's motion as its entries write it (shotPlaneEntries): its nodes, each a plane's or occurrence's, and the plays on them. */
 export type ShotMotionEntries = { readonly nodes: readonly OccurrenceMotionNode[]; readonly plays: readonly PaintMotionPlay[] };
 
-/** How a node's marks live: stuck, its rest space wobbled every `every` frames, or its marks re-rolled. */
+/** A node carries its finished film through the presentation clock. */
 export type CompiledShotMarks =
   | { readonly kind: 'stuck' }
-  | { readonly kind: 'wobble'; readonly every: number; readonly wobble: PaintBoilWobble }
-  | { readonly kind: 'reseed'; readonly every: number };
+  | { readonly kind: 'wobble'; readonly wobble: PaintBoilWobble };
 
 /**
  * The glow a node gives: `value` as node `from` states it (the node itself, or its nearest ancestor saying a glow),
@@ -100,8 +99,8 @@ function shotInheritedGlow(line: readonly string[], written: ReadonlyMap<string,
 
 function compileShotMarks(node: OccurrenceMotionNode, problems: PaintingProblem[]): CompiledShotMarks {
   const marks = node.marks ?? 'stuck';
-  if (marks === 'stuck') return { kind: 'stuck' };
-  const boil = compilePaintBoil(marks.boil);
+  if (marks === 'stuck') return { kind: marks };
+  const boil = compilePaintWobble(marks.wobble);
   problems.push(...boil.problems.map((problem) => nodeError(node.id, 'marks', problem)));
   return boil.marks;
 }

@@ -5,7 +5,7 @@
 // Scene seconds, clip seconds and animation frames are kept apart by type where interval arithmetic crosses them.
 //
 // Negative space: render fps never enters here. A 30 or 60 fps render samples the same held drawings. The clock's
-// rate and frame rule (PAINT_ANIMATION_FPS, paintAnimationFrameAt) are painting's, which a recipe's boil counts on too.
+// rate and frame rule (PAINT_ANIMATION_FPS, paintAnimationFrameAt) are painting's.
 
 import { paintAnimationFrameAt } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
@@ -204,13 +204,6 @@ function paintPlayHeldTime(clock: CompiledPaintPlayClock, t: PaintMoment, animat
   const until = (time: number) => Math.min(time, clock.until);
   return sceneSeconds(paintNodeTimeAt(clock.scene, { at: until(t.at), frame: until(t.frame) }, animationFps).at);
 }
-
-/**
- * A group's boil epoch at its node's time `time`: 0, its seed as written, then one more every `every` animation
- * frames, on the grid, so boiling groups change together.
- */
-export const paintBoilEpochAt = (time: SceneSeconds, every: number, animationFps: number) =>
-  Math.max(0, Math.floor(paintAnimationFrameOf(time, animationFps) / every));
 
 /** A play compiled: its clip, its clock under its node's, and the interval it writes over. */
 export type CompiledPaintPlay<C> = { readonly clip: C; readonly clock: CompiledPaintPlayClock; readonly interval: PaintPlayInterval; readonly origin: string };

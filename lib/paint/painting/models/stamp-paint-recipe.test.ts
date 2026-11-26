@@ -1,3 +1,4 @@
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { STAMP_BRUSH_UNMEASURED, stampLinearDynamics, type StampBrush } from '#lib/paint/brush/models/stamp-brush.ts';
@@ -206,17 +207,18 @@ test("a wash keeps its deposits and waits in painting order, a bloom waiting unt
     group.passage('w', {}, (wash) => wash.stroke('s', { brush, well: { paint: ochre, water: 2 }, size: 30, path }))))), /carries 2 water/);
 });
 
-test("a boil's epoch re-seeds only its own group's marks, keeping their IDs and colours", () => {
+test("a drawing's token re-seeds only its own group's marks, keeping their IDs and colours", () => {
   const jittery: StampBrush = { ...brush, color: { stamp: { hue: 0, saturation: 0, lightness: 0, darkness: 0 }, stroke: { hue: 0.2, saturation: 0.2, lightness: 0.2, darkness: 0 }, pressure: { hue: 0, saturation: 0, lightness: 0, secondary: 0 } } };
   const painting = compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => {
-    paint.group('cloud', { composite: 'glaze', opacity: 1, boil: { every: 2 } }, (group) => group.passage('p', {}, (pass) => pass.stroke('puff', { brush: jittery, well: { paint: ochre }, size: 30, path })));
+    paint.group('cloud', { composite: 'glaze', opacity: 1, boil: drawingSchedule({ fps: 12 }) }, (group) => group.passage('p', {}, (pass) => pass.stroke('puff', { brush: jittery, well: { paint: ochre }, size: 30, path })));
     paint.group('hill', { composite: 'opaque' }, (group) => group.passage('p', {}, (pass) => pass.stroke('line', { brush, well: { paint: ochre }, size: 30, path })));
   }));
   const [cloud, hill] = painting.groups;
   assert.equal(hill.boil, undefined);
-  assert.equal(stampPassDeposits(cloud.boil!.reseeded(0).passes[0])[0].stamps.length, stampPassDeposits(cloud.passes[0])[0].stamps.length);
-  assert.deepEqual(stampPassDeposits(cloud.boil!.reseeded(0).passes[0])[0].stamps, stampPassDeposits(cloud.passes[0])[0].stamps);
-  const [puff0, puff1] = [0, 1].map((epoch) => stampPassDeposits(cloud.boil!.reseeded(epoch).passes[0])[0]);
+  const read = (t: number) => stampPassDeposits(cloud.boil!.reseeded(cloud.boil!.drawings.at(t).token).passes[0])[0];
+  const [puff0, puff1] = [0, 1 / 12].map(read);
+  assert.deepEqual(read(1 / 24), puff0);
+  assert.deepEqual(read(1 / 12), puff1);
   assert.notDeepEqual(puff1.stamps, puff0.stamps);
   assert.equal(puff1.id, puff0.id);
   assert.deepEqual(puff1.action, puff0.action);
@@ -224,10 +226,15 @@ test("a boil's epoch re-seeds only its own group's marks, keeping their IDs and 
 
 test('a colour change reshapes nothing: every mark lands where and as it did, only its paint differs', () => {
   const jittery: StampBrush = { ...brush, color: { stamp: { hue: 0.1, saturation: 0.1, lightness: 0.1, darkness: 0 }, stroke: { hue: 0, saturation: 0, lightness: 0, darkness: 0 }, pressure: { hue: 0, saturation: 0, lightness: 0, secondary: 0 } } };
-  const lit = (color: `#${string}`) => stampPassDeposits(compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => {
-    paint.group('sky', { composite: 'glaze', opacity: 1 }, (group) => group.passage('p', {}, (pass) => pass.stroke('glow', { brush: jittery, well: { paint: { kind: 'color', color } }, size: 30, path })));
-  })).groups[0].passes[0])[0];
-  const [day, dusk] = [lit('#c8902f'), lit('#b0402a')];
+  const drawings = drawingSchedule({ fps: 12 });
+  const lit = (color: `#${string}`, t: number) => {
+    const [sky] = compileStampPaintRecipe(stampPaintRecipe(FLAT, (paint) => {
+      paint.group('sky', { composite: 'glaze', opacity: 1, boil: drawings }, (group) => group.passage('p', {}, (pass) => pass.stroke('glow', { brush: jittery, well: { paint: { kind: 'color', color } }, size: 30, path })));
+    })).groups;
+    return stampPassDeposits(sky.boil!.reseeded(drawings.at(t).token).passes[0])[0];
+  };
+  const day = lit('#c8902f', 0), dusk = lit('#b0402a', 1 / 24);
+  assert.notDeepEqual(day.action, dusk.action);
   assert.deepEqual(dusk.stamps, day.stamps);
   assert.deepEqual(dusk.dualStamps, day.dualStamps);
 });

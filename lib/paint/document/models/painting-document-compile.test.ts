@@ -117,10 +117,10 @@ test("a flat own sheet lays its card and no rim; one turning only its shadow off
   assert.deepEqual(program.edge, { kind: 'figure', rings: figure.rings, fadePx: STAMP_FIGURE_CARD_FADE_PX });
 });
 
-test("a boil epoch reseeds its layer's marks and keys alone: each epoch lays them anew, the same epoch alike", () => {
+test("a redraw token reseeds its layer's marks and keys alone: each token lays them anew, the same token alike", () => {
   const evaluation = painting(meadow);
-  const rootOf = (reseed?: ReadonlyMap<string, number>) => compilePaintingSelection(evaluation, brushOf, { reseed }).sheets[0].program;
-  const still = rootOf(), boiled = rootOf(new Map([['landscape', 1]])), again = rootOf(new Map([['landscape', 1]]));
+  const rootOf = (redraw?: ReadonlyMap<string, string>) => compilePaintingSelection(evaluation, brushOf, { redraw }).sheets[0].program;
+  const still = rootOf(), boiled = rootOf(new Map([['landscape', 'cel:a']])), again = rootOf(new Map([['landscape', 'cel:a']]));
   assert.deepEqual(boiled.entries.map(({ digest }, k) => digest === still.entries[k].digest), [false, false, false, true]);
   assert.notEqual(boiled.entries[0].deposit.id, still.entries[0].deposit.id);
   assert.deepEqual(again.entries.map(({ digest }) => digest), boiled.entries.map(({ digest }) => digest));

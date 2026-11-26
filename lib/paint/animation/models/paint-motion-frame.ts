@@ -8,11 +8,12 @@
 // A live node's own pins are its pose, handed to its poser, never a warp; what follows them reaches its marks as
 // warp and lay.
 
+import type { PaintBoilWobble } from './paint-boil-displacement.ts';
 import type { StampGroupPlacement } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import { stampLiveGroupProblem, type PaintMoment, type StampGroupFrameState, type StampPaintFrameState } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledStampGroup } from '#lib/paint/painting/models/stamp-paint-recipe-compile.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
-import { paintBoilEpochAt, paintLaneClipAt, paintNodeTimeAt, sceneSeconds } from './paint-clock.ts';
+import { paintLaneClipAt, paintNodeTimeAt } from './paint-clock.ts';
 import {
   paintPlacementIsRest, paintPlacementRounded, paintRatioSteps, paintWarpChainKey, paintWarpChainMap,
   type PaintDeform, type PaintPinMoved, type PaintWarpChain,
@@ -71,22 +72,22 @@ export function paintLevelPlacementAt(node: CompiledPaintLevel, t: PaintMoment, 
   return paintPlacementIsRest(placement) ? null : { owner: node.id, kind: 'place', placement, pivot: node.pivot };
 }
 
-/** `node`'s boil epoch at `t`, on its own time: 0 unless it boils. A boil is held through its frame, as a hold is. */
-function epochAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): number {
-  if (node.marks.kind !== 'wobble' && node.marks.kind !== 'reseed') return 0;
-  return paintBoilEpochAt(sceneSeconds(paintNodeTimeAt(node.clock, t, motion.animationFps).frame), node.marks.every, motion.animationFps);
-}
-
 /** Rigid placements, innermost first, as one placement about `pivot`: one already about it is handed on as it is. */
 function composedPlacement(places: readonly Extract<PaintDeform, { kind: 'place' }>[], pivot: StampPoint): StampGroupPlacement {
   if (places.length === 1 && places[0].pivot.x === pivot.x && places[0].pivot.y === pivot.y) return places[0].placement;
   return paintPlacementOfSimilarity(places.reduce((inner, place) => paintSimilarityAfter(paintSimilarityOf(place.placement, place.pivot), inner), PAINT_SIMILARITY_IDENTITY), pivot);
 }
 
+/** Finished paint moves through the exposure unless the node's presentation clock holds it. */
+export function paintNodeWobbleAt(node: Pick<CompiledPaintNode, 'id' | 'clock'>, wobble: PaintBoilWobble, t: PaintMoment, fps: number): PaintDeform | null {
+  const frame = paintNodeTimeAt(node.clock, t, fps).at * fps;
+  return frame > 0 ? { owner: node.id, kind: 'wobble', seed: node.id, frame, wobble } : null;
+}
+
 /** Where `node`'s paint goes at `t`: the warp chain (up to its outermost bend) and the rigid lay after it, if any. */
 export function paintNodeWarpAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): { warp: PaintWarpChain; lay: StampGroupPlacement | null } {
-  const epoch = node.marks.kind === 'wobble' ? epochAt(motion, node, t) : 0;
-  const steps: PaintDeform[] = node.marks.kind === 'wobble' && epoch > 0 ? [{ owner: node.id, kind: 'wobble', seed: node.id, epoch, wobble: node.marks.wobble }] : [];
+  const wobble = node.marks.kind === 'wobble' && paintNodeWobbleAt(node, node.marks.wobble, t, motion.animationFps);
+  const steps: PaintDeform[] = wobble ? [wobble] : [];
   for (const [depth, id] of node.levels.entries()) {
     const level = motion.nodes.get(id)!;
     steps.push(...paintLevelDeformsAt(level, t, motion.animationFps, depth > 0 || node.marks.kind !== 'live'));
@@ -123,13 +124,13 @@ function liveMarksAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMomen
 /** `node`'s group's frame at `t`. */
 function nodeFrameAt(motion: PaintMotion, node: CompiledPaintNode, t: PaintMoment): StampGroupFrameState {
   const { warp, lay } = paintNodeWarpAt(motion, node, t), live = liveMarksAt(motion, node, t);
-  const epoch = node.marks.kind === 'reseed' ? epochAt(motion, node, t) : 0;
   const laid = lay && !paintPlacementIsRest(lay) ? lay : null;
+  const token = node.group.boil?.drawings.at(node.marks.kind === 'reseed' ? t.frame : 0).token;
   return {
     ...(laid && { lay: { placement: laid, pivot: node.pivot } }),
     ...(node.glow && { glow: node.glow }),
     ...(warp.length && { warp: { map: paintWarpChainMap(warp), key: paintWarpChainKey(warp) } }),
-    ...(live ? { marks: { kind: 'live', ...live } } : node.group.boil && { marks: { kind: 'written', epoch } }),
+    ...(live ? { marks: { kind: 'live', ...live } } : token !== undefined && { marks: { kind: 'written', token } }),
   };
 }
 

@@ -8,9 +8,10 @@
 //
 // Formulas and stage orders come from the models' WGSL registries; the GPU gate (lib/paint/gate) holds them.
 
+import { redrawSeed, type RedrawToken } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import { STAMP_RESOLVE_ORDERS, stampResolveOrderIndex, type StampResolveStage } from '../models/stamp-deposit-stages.ts';
 import {
-  stampBoilSeed, stampMixedPainting, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampMask, type CompiledStampPaint,
+  stampMixedPainting, stampPassDeposits, type CompiledStampDeposit, type CompiledStampGroup, type CompiledStampMask, type CompiledStampPaint,
   type CompiledStampPass,
 } from '../models/stamp-paint-recipe-compile.ts';
 import { stampDepositWalled, type StampPaintMedia, type StampWashDrying, type StampWetLanding, type StampWetness } from '../models/stamp-wetness.ts';
@@ -65,8 +66,8 @@ const BACKING_SLOTS = 4;
 /** The uniform slots a frame's bloom takes: a gaussian's two passes. */
 const BLOOM_SLOTS = 2;
 
-/** A boiling group's epochs kept on the GPU besides its first: the one drawing, and a couple a scrub returns to. */
-const STAMP_BOIL_EPOCHS_KEPT = 3;
+/** A boiling group's redraws kept on the GPU: the one drawing, and a couple a scrub returns to. */
+const STAMP_REDRAWS_KEPT = 3;
 /** A live group's marks kept on the GPU: the frame drawing's, and the last, which a hold on twos draws again. */
 const STAMP_LIVE_MARKS_KEPT = 2;
 /**
@@ -228,7 +229,7 @@ const latticeCellsMost = ({ warp }: StampGroupFrame) => (warp ? STAMP_WARP_MOST_
 /**
  * A renderer for one painting on `surface`, on its paper and mixed as its mixing says; its parts traced in `trace`. Refuses a
  * painting it can't mix. A frame may round a few pixels a level differently between draws (docs/private-styles.md,
- * "Same pixels"). No render fps reaches it: a boil counts animation frames (stampBoilEpoch).
+ * "Same pixels"). The source supplies its redraw schedule.
  */
 export async function createStampPaintRenderer(
   surface: StampPaintSurface, painting: CompiledStampPaint,
@@ -317,7 +318,7 @@ function rendererOnSurface({
 
   /**
    * `groups`' deposits on the GPU, and what they're drawn with, their washes landing as `wetness` says: the painting
-   * as written, a boil's epoch (epochOf) or a group's live marks (liveOf), each wet by its own marks, its regions and
+   * as written, a scheduled redraw or a group's live marks, each wet by its own marks, its regions and
    * wet stages its own. `scoped`: made in a scope of its own, destroyed as it's given up or the painting disposed.
    */
   function loadBank(groups: readonly CompiledStampGroup[], wetness: StampWetness | null, scoped: boolean): DepositBank {
@@ -671,7 +672,7 @@ function rendererOnSurface({
     if (texture && held) copyStampTextureBox(encoder, { texture: targets.layer.texture, x: held.x, y: held.y }, { texture, x: 0, y: 0 }, held);
   }
 
-  // A boiling group's epochs other than 0 (the painting as written) and a live group's posed marks, each loaded into a
+  // A boiling group's redraws and a live group's posed marks, each loaded into a
   // bank of its own; one store keeps each group's most recently drawn, least recently used given up.
   const banks = new Map<string, { group: number; marks: CompiledStampGroup; bank: DepositBank; used: number }>();
   let bankClock = 0;
@@ -703,9 +704,10 @@ function rendererOnSurface({
         return { marks: drawing.marks, bank };
       });
     }
-    if (!drawing.epoch) return { marks: group, bank: writtenBank };
-    return bankOf(index, `epoch|${index}|${drawing.epoch}`, STAMP_BOIL_EPOCHS_KEPT, () => {
-      const marks = group.boil!.reseeded(drawing.epoch);
+    const { token } = drawing;
+    if (token === undefined) return { marks: group, bank: writtenBank };
+    return bankOf(index, `redraw|${index}|${token}`, STAMP_REDRAWS_KEPT, () => {
+      const marks = group.boil!.reseeded(token);
       // Wet as its own marks land, its stamps elsewhere than the written ones: what each finds under it is its own.
       return { marks, bank: loadBank([marks], wetnessOf?.({ ...painting, groups: [marks] }) ?? null, true) };
     });
@@ -715,14 +717,14 @@ function rendererOnSurface({
    * How a deposit of `pass`, loaded as `loaded`, is drawn by its bank's `home`: its regions, and for a wash's its
    * landing and deposit stages, whose randomness a boil's epoch seeds.
    */
-  function depositDraw(deposit: CompiledStampDeposit, loaded: StampLoadedDeposit, pass: CompiledStampPass, home: BankHome, { paintAt, epoch }: { paintAt: number; epoch: number }, frameTrace?: FrameTrace): StampDepositDraw {
+  function depositDraw(deposit: CompiledStampDeposit, loaded: StampLoadedDeposit, pass: CompiledStampPass, home: BankHome, { paintAt, token }: { paintAt: number; token: RedrawToken | undefined }, frameTrace?: FrameTrace): StampDepositDraw {
     const { regions, stages } = home, traced = frameTrace?.deposits.get(loaded.identity);
     // A deposit within a region wholly off the painting lands nowhere: its `within` is an empty texture, read as none.
     // A flood is within its barrier, its region in the deposit's.
     const isWithin = deposit.kind === 'flood' || !!pass.within || !!deposit.within;
     const bounds = { fluid: deposit.mask ? regions.fluids.get(deposit.mask) ?? null : null, within: isWithin ? { region: barrierOf(regions, deposit) } : null, clipped: !!pass.clipTo };
     const wet = loaded.wash && {
-      landing: home.landings.get(deposit)!, plans: stages, seed: paintPigmentSeed(stampBoilSeed(loaded.identity.id, epoch)), rimmed: stampWetStagesOwnWetEdges(stages, deposit),
+      landing: home.landings.get(deposit)!, plans: stages, seed: paintPigmentSeed(token === undefined ? loaded.identity.id : redrawSeed(loaded.identity.id, token)), rimmed: stampWetStagesOwnWetEdges(stages, deposit),
     };
     const trace = traced ? { buffer: frameTrace!.buffer, offset: traced.offset, crop: traced.request.crop, order: traced.order } : null;
     return { paintAt, tooth: paperTooth, bounds, wet, trace };
@@ -730,10 +732,10 @@ function rendererOnSurface({
 
   /** Paints group `groupFrame`'s film into the layer target from clear, returning its painted box. */
   function paintFilm(encoder: GPUCommandEncoder, { group, marks: drawing, paintAt }: StampGroupFrame, index: number, frameTrace?: FrameTrace): Box | null {
-    const epoch = drawing.kind === 'written' ? drawing.epoch : 0;
+    const token = drawing.kind === 'written' ? drawing.token : undefined;
     const { marks, bank } = marksOf(index, group, drawing);
     // Unkeyed paint reads the same at any time; a recipe's keyed paint always gives its paintAt.
-    const at = { paintAt: paintAt ?? 0, epoch };
+    const at = { paintAt: paintAt ?? 0, token };
     for (const view of targets.layer.layers) clearStampTarget(encoder, view);
     let painted: Box | null = null;
     const { wash } = depositDrawing, { home } = bank;
@@ -745,7 +747,7 @@ function rendererOnSurface({
         const loaded = bank.deposits.get(deposit)!;
         painted = stampBoxUnion(painted, depositDrawing.drawDeposit(encoder, deposit, loaded, depositDraw(deposit, loaded, pass, home, at, frameTrace)));
         const drying = home.dryingsByLast.get(deposit);
-        if (drying) painted = stampBoxUnion(painted, wash!.dry(encoder, drying, home.stages, paintPigmentSeed(stampBoilSeed(drying.id, epoch))));
+        if (drying) painted = stampBoxUnion(painted, wash!.dry(encoder, drying, home.stages, paintPigmentSeed(token === undefined ? drying.id : redrawSeed(drying.id, token))));
       }
     }
     return painted;

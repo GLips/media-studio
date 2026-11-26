@@ -252,7 +252,7 @@ export const stampGateRiggedHeronShot = (reedsRigged = true, heron: OccurrencePr
 export const STAMP_GATE_HERON_BOIL_AT = [1.5 / PAINT_ANIMATION_FPS, 2.5 / PAINT_ANIMATION_FPS] as const;
 
 /** The rigged heron boiling every frame, its wobble on the heron's group, whose rig takes it. */
-export const stampGateBoilingHeronShot = (): StampGateShot => stampGateRiggedHeronShot(true, { marks: { boil: { every: 1 } } });
+export const stampGateBoilingHeronShot = (): StampGateShot => stampGateRiggedHeronShot(true, { clock: { hold: 1 }, marks: { wobble: {} } });
 
 const FOOT_RIG: readonly RigPart[] = [{ id: 'leg', z: 0, parent: null, cels: ['foot'] }];
 

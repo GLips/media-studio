@@ -19,7 +19,7 @@ Pick by what should change:
 |---|---|---|
 | painting time | model seconds, 0 at its sheet's start | `on`, drying |
 | scene time | scene seconds | clocks, `at`, plays, `PaintMoment.at`, reveals |
-| animation grid | frames at `camera.animationFps` (24) | holds, boil |
+| animation grid | frames at `camera.animationFps` (24) | presentation holds |
 | film | frames at the composition's fps | render frames, the default shutter |
 
 ## Washes painted on screen

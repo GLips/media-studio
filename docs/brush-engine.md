@@ -397,11 +397,11 @@ with `renderer.transport({ t, state, from, to })`, apart from any lens. It holds
 each group's:
 - `lay`: a placement about its pivot;
 - `warp`: a rest-to-scene map with a key naming it, sampled on a lattice over the group's painted layer;
-- `marks`: `written` at a boil epoch (0 is as written), or `live`, compiled for this frame, with a key naming them;
+- `marks`: `written` with an optional redraw token, or `live`, compiled for this frame, with a key naming them;
 - `paintAt`: the time its keyed paint reads;
 - `visibility`: 0 draws none of it.
 
-The compiled painting holds no functions of time. A group's painted layer, its film, depends only on its marks and
+A group's painted layer, its film, depends only on its marks and
 the time its keyed paint reads, so the renderer keeps each film on the device's GPU cache
 (`stamp-paint-gpu-cache.ts`, one budget per device) under a key built from those, and equal keys must mean equal
 marks. A group's paint lives one of three ways:
@@ -410,10 +410,10 @@ marks. A group's paint lives one of three ways:
 - **Live:** it is re-placed from its posed geometry and its film painted again; every other film is kept.
   Line width and grain stay true at any stretch. Its marks must be the written group re-placed
   (`stampLiveGroupProblem`).
-- **Boiling:** its rest space is wobbled on a stepped epoch, under its warp.
+- **Boiling:** its source schedule supplies the token for its next set of marks. A presentation wobble displaces the finished film.
 
 A moved or bent layer is laid at four texels, then blended, so crayon keeps its tooth under sub-pixel motion. A
-recipe's own `motion`, `boil` (on the 24 fps animation clock, `PAINT_ANIMATION_FPS`) and keyed paint are evaluated
+recipe's own `motion`, `boil` (its drawing schedule) and keyed paint are evaluated
 into the same shape (`stampPaintFrameStateAt`): given marks replace a recipe's boil, and any other field both write is
 an error. A recipe's `motion` (`StampGroupMotion`, `stamp-group-motion.ts`) belongs to the recipe path and
 StampPainting alone: keys of placements, linear between them. A shot moves a group by a node's `place` play, whose
@@ -566,8 +566,8 @@ evaluation diff (`painting-evaluation-diff.ts`) and the solver read. The checks 
 `painting-document-compile.ts` compiles a selection of an evaluation's layers to one solver program per sheet they
 lie on, its clock and order times with it, each application through `painting-deposit-compile.ts` and
 `painting-area-compile.ts`, each deposit's ID its layer's, wash's and application's keys (`#i` for an unkeyed
-application), which seeds its colour and water, a boiling layer's seeds suffixed for its epoch (`painting-reseed.ts`),
-the epochs given by layer or group key, and the composite's steps, the selections last read kept compiled up to
+application), which seeds its colour and water, a boiling layer's seeds paired with its redraw token (`painting-reseed.ts`),
+the tokens given by layer or group key, and the composite's steps, the selections last read kept compiled up to
 2.5 GiB across every evaluation (`PAINTING_SELECTIONS_KEPT_BYTES`, reckoned at 400 bytes a kept stamp: a render
 reaching light after light, or a layer boiling into epoch after epoch, compiles anew at each, and kept for good they'd
 fill a page's heap);

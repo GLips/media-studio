@@ -32,7 +32,7 @@ import type { PaintRigPicture } from '#lib/paint/rig/models/paint-rig-pieces.ts'
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import type { CompiledPaintedShot, CompiledShotEffectPlane, CompiledShotPaintedPlane, PaintedShotPaintOptions } from '../models/shot-compile.ts';
 import { shotDrawingStarted, shotImageLeafReads, shotEffectBox, shotEffectKeyAt, shotEffectTimeAt, type CompiledShotImage } from '../models/shot-effect.ts';
-import { shotPlanePosesAt, shotPlaneReseedAt, shotPlaneSharesAt, shotRigGroupPivot, type ShotFrameRigs, type ShotRigRead } from '../models/shot-frame-plan.ts';
+import { shotPlanePosesAt, shotPlaneSharesAt, shotRigGroupPivot, type ShotFrameRigs, type ShotRigRead } from '../models/shot-frame-plan.ts';
 import { shotEffectImageKey, shotImageKeys, shotImageReadKey } from '../models/shot-images.ts';
 import type { ShotMaskAcross } from '../models/shot-masks.ts';
 import { shotOccurrencePlane } from '../models/shot-occurrences.ts';
@@ -191,9 +191,9 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effec
    * as `read` reads its rigs and solved.
    */
   async function solveShare(plane: CompiledShotPaintedPlane, selection: LayerSelection, weight: number, frameAt: PaintMoment, read: ShotRigRead) {
-    const trace = costs?.trace() ?? UNTRACED_NESTING, reseed = shotPlaneReseedAt(plane, motion, selection, frameAt);
+    const trace = costs?.trace() ?? UNTRACED_NESTING;
     // Its digests timed in it (the tally's `digest`): a compile kept from before hashes nothing.
-    const compiled = await trace.within('compile', async () => compilePaintingSelection(selection.painting, brushOf, { layers: selection.layers, reseed, costs }), SOLVE_PART);
+    const compiled = await trace.within('compile', async () => compilePaintingSelection(selection.painting, brushOf, { ...selection, costs }), SOLVE_PART);
     const lays = await trace.within('lays', () => laysOf(compiled), SOLVE_PART), at = selection.at, rigs = [...shot.rigs.values()].filter((rig) => rig.plane === plane.id);
     let restCels = new Map<string, ShotRigRestCels>();
     if (rigs.length) {

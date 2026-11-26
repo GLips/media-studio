@@ -86,8 +86,11 @@ export function paintedSourceProblems(plane: string, source: PaintedSource, fiel
 /** One selection a plane's source blends, and its weight in the plane's picture. */
 export type PaintedSourceShare = { readonly selection: LayerSelection; readonly weight: number };
 
+const sameRedraw = (a: LayerSelection['redraw'], b: LayerSelection['redraw']) =>
+  a === b || ((a?.size ?? 0) === (b?.size ?? 0) && [...(a ?? [])].every(([key, token]) => b?.get(key) === token));
+
 const sameSelection = (a: LayerSelection, b: LayerSelection) =>
-  a.painting === b.painting && a.ground === b.ground && a.at === b.at && a.layers.length === b.layers.length && a.layers.every((key, i) => key === b.layers[i]);
+  a.painting === b.painting && a.ground === b.ground && sameRedraw(a.redraw, b.redraw) && a.at === b.at && a.layers.length === b.layers.length && a.layers.every((key, i) => key === b.layers[i]);
 
 /** Whether two reads of sources (paintedSourceShares) blend the same selections at the same weights, in one order. */
 export const samePaintedSourceShares = (a: readonly PaintedSourceShare[], b: readonly PaintedSourceShare[]) =>

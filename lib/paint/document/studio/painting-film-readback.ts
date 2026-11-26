@@ -26,11 +26,11 @@ export type PaintingFilmReader = { readonly owner: StampPaintGpuOwner; readonly 
  * when left out) and its films held until the read resolves. Throws on a layer the selection doesn't hold.
  */
 async function readPaintingFilm<T>(
-  { owner, brushOf, costs }: PaintingFilmReader, { painting, layers, at }: LayerSelection, layer: LayerKey, read: (sheet: StampSheetKeptFilms, film: number) => Promise<T>,
+  { owner, brushOf, costs }: PaintingFilmReader, { painting, layers, at, redraw }: LayerSelection, layer: LayerKey, read: (sheet: StampSheetKeptFilms, film: number) => Promise<T>,
 ): Promise<T> {
   const place = painting.tree.byKey.get(layer);
   if (!place || place.kind !== 'layer') throw new Error(`painting: ${painting.source} has no layer ${layer}`);
-  const ordinal = painting.tree.layers.indexOf(place), compiled = compilePaintingSelection(painting, brushOf, { layers }).sheets.find((each) => each.layers.includes(ordinal));
+  const ordinal = painting.tree.layers.indexOf(place), compiled = compilePaintingSelection(painting, brushOf, { layers, redraw }).sheets.find((each) => each.layers.includes(ordinal));
   if (!compiled) throw new Error(`painting: ${layer} isn't among the layers selected from ${painting.source}`);
   const { films } = await solveStampSheet(owner, compiled.program, { costs, ...(at !== undefined && { at }) });
   const release = holdStampSheetFilms(owner, films);

@@ -1,20 +1,19 @@
 // shot-frame-plan.ts: a shot's painted plane at one moment, purely: the selections its source
-// blends and the clocks its solve reads, the poses its marks solve under, its layers' boil epochs, where its sheets
+// blends and the clocks its solve reads, the poses its marks solve under, where its sheets
 // lie, how visible its occurrences are, the glow its nodes give, and its rigs' poses, read once for every end.
 //
 // A frame's marks are posed at its own moment; its sheets and pieces rigs lie as each exposure or shutter end puts
 // them. Boil wobble moves finished paint: marks are solved without it, and the lay takes it in first, so a lattice
 // carries the solved film where the wobble puts it. A rigged group's wobble goes inside its rig.
 
-import { paintBoilEpochAt, paintNodeTimeAt, sceneSeconds, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
+import { paintNodeTimeAt, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import type { PaintDeform } from '#lib/paint/animation/models/paint-deform.ts';
 import { paintGlowProblem } from '#lib/paint/animation/models/paint-motion-compile.ts';
-import { paintLevelDeformsAt, paintLevelPlacementAt } from '#lib/paint/animation/models/paint-motion-frame.ts';
+import { paintLevelDeformsAt, paintLevelPlacementAt, paintNodeWobbleAt } from '#lib/paint/animation/models/paint-motion-frame.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityOf, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
 import { paintingDeformsPose, paintingPoseAfter, paintingSimilarityPose, type PaintingNodePose } from '#lib/paint/document/models/painting-pose.ts';
 import { paintingProblem, paintingProblemsError, paintingProblemText } from '#lib/paint/document/models/painting-problem.ts';
-import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import type { PaintMoment, StampGroupGlow, StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
@@ -26,17 +25,10 @@ import { shotPlaneRigEndProblems, shotRigCelPoses, shotRigPoseAt, shotRigPosed, 
 import { paintedPlaneBlendProblems, paintedSourceEnds, paintedSourceProblems, paintedSourceShares, type PaintedSourceShare } from './shot-selection.ts';
 import { shotVisibilityProblem } from './shot-visibility.ts';
 
-/** `node`'s boil epoch at `t`, on its own time: 0 unless its marks boil. A boil holds through its frame, as a hold does. */
-export function shotNodeEpochAt(node: CompiledShotNode, t: PaintMoment, animationFps: number): number {
-  if (node.marks.kind === 'stuck') return 0;
-  return paintBoilEpochAt(sceneSeconds(paintNodeTimeAt(node.clock, t, animationFps).frame), node.marks.every, animationFps);
-}
-
-/** `node`'s boil wobble at `t`, its rest space boiled: null unless its marks wobble past epoch 0. */
+/** `node`'s boil wobble at `t`, its rest space displaced at the exposure moment. */
 export function shotNodeWobbleAt(node: CompiledShotNode, t: PaintMoment, animationFps: number): PaintDeform | null {
   if (node.marks.kind !== 'wobble') return null;
-  const epoch = shotNodeEpochAt(node, t, animationFps);
-  return epoch > 0 ? { owner: node.id, kind: 'wobble', seed: node.id, epoch, wobble: node.marks.wobble } : null;
+  return paintNodeWobbleAt(node, node.marks.wobble, t, animationFps);
 }
 
 /**
@@ -152,24 +144,6 @@ export function shotOccurrencePosesAt(
     if (level) poses.set(node, shotNodePoseAt(level, t, motion.animationFps, { wobble: laid && !rigged.has(key), solving: !laid }));
   }
   return poses;
-}
-
-/**
- * The boil epochs reseeding plane `plane`'s layers at `t`, by document key (compilePaintingSelection's `reseed`): each
- * reseeding occurrence node's; its plane's node's over every key `selection` names, where an inner one says nothing.
- */
-export function shotPlaneReseedAt(plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, selection: LayerSelection, t: PaintMoment): Map<NodeKey, number> {
-  const reseed = new Map<NodeKey, number>(), fps = motion.animationFps;
-  for (const { key, node } of plane.occurrences) {
-    const level = motion.nodes.get(key);
-    if (level?.marks.kind === 'reseed') reseed.set(node, shotNodeEpochAt(level, t, fps));
-  }
-  const planeNode = motion.nodes.get(plane.id);
-  if (planeNode?.marks.kind === 'reseed') {
-    const epoch = shotNodeEpochAt(planeNode, t, fps);
-    for (const key of selection.layers) if (!reseed.has(key)) reseed.set(key, epoch);
-  }
-  return reseed;
 }
 
 /**

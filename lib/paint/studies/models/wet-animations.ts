@@ -4,7 +4,8 @@
 //
 // Negative space: no strip is a video. A few frames side by side show what the eye would judge in motion.
 
-import { PAINT_ANIMATION_FPS, type StampGroupBoil } from '#lib/paint/painting/models/stamp-group-motion.ts';
+import { drawingSchedule, type DrawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import { stampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe.ts';
 import type { StampPaintRecipe } from '#lib/paint/painting/models/stamp-paint-recipe-types.ts';
 import type { StampRegion } from '#lib/paint/painting/models/stamp-region.ts';
@@ -55,7 +56,7 @@ const DRIFT = 24;
 const STRIP = [0, 1, 2, 3];
 
 /** A pale sky laid dry, and a grey cloud painted wet into paper wetted about it, drifting right; boiling when `boil`. */
-function driftingCloud(kit: WetPassageKit, boil?: StampGroupBoil): StampPaintRecipe {
+function driftingCloud(kit: WetPassageKit, boil?: DrawingSchedule): StampPaintRecipe {
   const { fill, drop } = kit.brushes;
   const puff: StampRegion = { kind: 'ellipse', x: 110, y: 100, radiusX: 70, radiusY: 34 };
   return stampPaintRecipe(kit, (paint) => {
@@ -87,7 +88,7 @@ export const WET_ANIMATIONS: readonly WetAnimation[] = [
   },
   {
     id: 'drift-boiling', title: 'A drifting cloud, boiling on twos',
-    takes: (kit) => [{ recipe: driftingCloud(kit, { every: 2 }), frames: stripFrames }],
+    takes: (kit) => [{ recipe: driftingCloud(kit, drawingSchedule({ fps: 12 })), frames: stripFrames }],
     shows: 'The same drifting cloud, but repainted every second frame, the way hand-drawn animation “boils”: frames 1 and 2 are one painting, frames 3 and 4 another.',
     lookFor: 'Frames 1 and 2 should be the same cloud moved; frame 3 should be a fresh painting of the same cloud, the same shape and colour, only its marks and texture new. The sky should never change.',
   },

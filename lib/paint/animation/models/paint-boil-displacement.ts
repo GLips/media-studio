@@ -1,10 +1,3 @@
-// paint-boil-displacement.ts: boil as a stepped wobble of a group's rest space, carried as a layer warp (spike 1.0:
-// it reads like Grease Pencil's noise boil, the line wobbling while the texture stays). Each epoch is a fresh field
-// of smooth value noise, seeded by the group's id and the epoch, so the same epoch always wobbles the same way.
-//
-// Negative space: epoch 0 is the group as written, no wobble. Its marks' own randomness is never re-rolled here;
-// that is the re-seed boil (StampGroupFrameState's `epoch`).
-
 import type { StampWarpMap } from '#lib/paint/painting/models/stamp-group-warp.ts';
 import { paintIdHash } from './paint-motion-clips.ts';
 
@@ -40,12 +33,16 @@ export function paintBoilWobbleProblem({ amount, scale }: PaintBoilWobble): stri
   return 7.5 * amount < scale ? null : `its wobble of ${amount} px at ${scale} px can fold paint; keep the amount under ${(scale / 7.5).toFixed(2)} px at that scale`;
 }
 
-/**
- * The wobble of `id`'s rest space at `epoch`: each point moved up to `amount` px along each axis by noise whose
- * bumps are `scale` px apart.
- */
-export function paintBoilDisplacementMap(id: string, epoch: number, { amount, scale }: PaintBoilWobble = PAINT_BOIL_WOBBLE): StampWarpMap {
-  if (epoch === 0) return (rest) => rest;
-  const seedX = paintIdHash(`${id}|wobble${epoch}|x`), seedY = paintIdHash(`${id}|wobble${epoch}|y`);
-  return (rest) => ({ x: rest.x + amount * valueNoise(seedX, rest.x / scale, rest.y / scale), y: rest.y + amount * valueNoise(seedY, rest.x / scale, rest.y / scale) });
+/** A continuous displacement between neighbouring noise fields. Integer presentation frames land on a single field. */
+export function paintBoilDisplacementMap(id: string, frame: number, { amount, scale }: PaintBoilWobble = PAINT_BOIL_WOBBLE): StampWarpMap {
+  if (frame <= 0) return (rest) => rest;
+  const field = (index: number) => {
+    const xSeed = paintIdHash(`${id}|wobble${index}|x`), ySeed = paintIdHash(`${id}|wobble${index}|y`);
+    return (x: number, y: number) => index === 0 ? { x: 0, y: 0 } : { x: valueNoise(xSeed, x, y), y: valueNoise(ySeed, x, y) };
+  };
+  const index = Math.floor(frame), share = fade(frame - index), from = field(index), to = field(index + 1);
+  return (rest) => {
+    const x = rest.x / scale, y = rest.y / scale, a = from(x, y), b = share ? to(x, y) : a;
+    return { x: rest.x + amount * (a.x + (b.x - a.x) * share), y: rest.y + amount * (a.y + (b.y - a.y) * share) };
+  };
 }

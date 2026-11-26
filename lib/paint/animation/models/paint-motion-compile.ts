@@ -34,15 +34,15 @@ export type PaintLivePose<P extends string> = { readonly pins: Partial<Readonly<
  */
 export type PaintLivePoser<P extends string> = (pose: PaintLivePose<P>) => CompiledStampGroup;
 
-/** A boil: every `every` animation frames on its node's time, wobbled as a layer warp, or with `reseed`, re-rolled. */
-export type PaintBoilMarks = { readonly every: number; readonly amount?: number; readonly scale?: number; readonly reseed?: true };
+/** Presentation displacement in the group's rest space. */
+export type PaintWobbleMarks = Partial<PaintBoilWobble>;
 
 /**
  * How a node's marks live: `stuck` (its layer carried; the default), `live` (re-placed by its poser at each pose of its
  * own pins) or boiling: its rest space wobbled (`amount` px at `scale` px; PAINT_BOIL_WOBBLE when left out), or with
  * `reseed`, its marks' randomness re-rolled, for a group compiled with a boil.
  */
-export type PaintMarks<P extends string> = 'stuck' | { readonly live: PaintLivePoser<P> } | { readonly boil: PaintBoilMarks };
+export type PaintMarks<P extends string> = 'stuck' | { readonly live: PaintLivePoser<P> } | 'reseed' | { readonly wobble: PaintWobbleMarks };
 
 /**
  * A group as motion sees it: `id` is the group's. `parent` names the node it follows. `pivot`: what its placement
@@ -76,8 +76,8 @@ export const PAINT_LIVE_POSES_KEPT = 48;
 export type CompiledPaintMarks =
   | { readonly kind: 'stuck' }
   | { readonly kind: 'live'; readonly poser: PaintLivePoser<string>; readonly kept: Map<string, CompiledStampGroup> }
-  | { readonly kind: 'wobble'; readonly every: number; readonly wobble: PaintBoilWobble }
-  | { readonly kind: 'reseed'; readonly every: number };
+  | { readonly kind: 'wobble'; readonly wobble: PaintBoilWobble }
+  | { readonly kind: 'reseed' };
 
 /**
  * A node checked and compiled. `levels`: its id, then each ancestor's, nearest first. `clock`: its ancestors' steps
@@ -134,30 +134,28 @@ export function paintGroupPaintedBox(group: CompiledStampGroup): StampBox | null
   return x0 <= x1 ? { x0: x0 - PAINTED_BOX_PAD, y0: y0 - PAINTED_BOX_PAD, x1: x1 + PAINTED_BOX_PAD, y1: y1 + PAINTED_BOX_PAD } : null;
 }
 
-/** A boil's marks compiled: wobbled or re-seeded every `every` frames. */
-export type CompiledPaintBoil = Extract<CompiledPaintMarks, { kind: 'wobble' | 'reseed' }>;
-
 /**
- * `boil` compiled, its wobble's amount and scale PAINT_BOIL_WOBBLE's where left out, and what's wrong with it, in words
+ * The displacement compiled, its wobble's amount and scale PAINT_BOIL_WOBBLE's where left out, and what's wrong with it, in words
  * its node's id goes before: a painting's node and a shot's alike.
  */
-export function compilePaintBoil(boil: PaintBoilMarks): { readonly marks: CompiledPaintBoil; readonly problems: readonly string[] } {
-  const { every, reseed } = boil, problems: string[] = [];
-  if (!(Number.isInteger(every) && every >= 1)) problems.push(`boils every ${every} frames, not a whole number from 1`);
-  if (reseed) return { marks: { kind: 'reseed', every }, problems };
-  const wobble = { amount: boil.amount ?? PAINT_BOIL_WOBBLE.amount, scale: boil.scale ?? PAINT_BOIL_WOBBLE.scale };
+export function compilePaintWobble(options: PaintWobbleMarks): { readonly marks: Extract<CompiledPaintMarks, { kind: 'wobble' }>; readonly problems: readonly string[] } {
+  const problems: string[] = [];
+  const wobble = { amount: options.amount ?? PAINT_BOIL_WOBBLE.amount, scale: options.scale ?? PAINT_BOIL_WOBBLE.scale };
   const problem = paintBoilWobbleProblem(wobble);
   if (problem) problems.push(problem);
-  return { marks: { kind: 'wobble', every, wobble }, problems };
+  return { marks: { kind: 'wobble', wobble }, problems };
 }
 
 function compileMarks(node: PaintMotionNode, group: CompiledStampGroup, problems: string[]): CompiledPaintMarks {
   const marks = node.marks ?? 'stuck';
   if (marks === 'stuck') return { kind: 'stuck' };
+  if (marks === 'reseed') {
+    if (!group.boil) problems.push(`${node.id} re-seeds its marks, but its group is compiled without a boil`);
+    return { kind: 'reseed' };
+  }
   if ('live' in marks) return { kind: 'live', poser: marks.live, kept: new Map() };
-  const boil = compilePaintBoil(marks.boil);
+  const boil = compilePaintWobble(marks.wobble);
   problems.push(...boil.problems.map((problem) => `${node.id}: ${problem}`));
-  if (boil.marks.kind === 'reseed' && !group.boil) problems.push(`${node.id} re-seeds its marks, but its group is compiled without a boil to re-seed by; give the group a boil`);
   return boil.marks;
 }
 
