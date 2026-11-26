@@ -24,16 +24,19 @@ export type SpokenUnheard = { from: number; to: number; at: number };
 /** A stretch of a line turned down to `gain`, in line seconds: a breath (about −8 dB), a click (0). */
 export type SpokenDip = { start: number; end: number; gain: number };
 
+/** The overlap centred on a cut, and any extra taper over the outgoing clip's tail, both in seconds. */
+export type SpokenJoin = { crossfade: number; fadeOut: number };
+
 /**
  * Where a line's sound is in a library item's media: `file`, each piece from its `start` (media seconds) for its
- * `duration`, at its line second `at`. Pieces cross-fade over `join` seconds; the line fades in and out over `fade`,
+ * `duration`, at its line second `at`. Each inner cut uses its corresponding entry in `joins`; the line fades in and out over `fade`,
  * longer where an edge cuts into sound, and dips where `dips` say.
  */
 export type LibraryVoiceSound = {
   item: string;
   file: string;
   pieces: readonly { start: number; at: number; duration: number }[];
-  join: number;
+  joins: readonly SpokenJoin[];
   fade: { in: number; out: number };
   dips: readonly SpokenDip[];
 };

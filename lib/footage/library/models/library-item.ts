@@ -56,6 +56,8 @@ export const LibraryTrackLevelled = Schema.Struct({
    * What the copy holds between words ([start, end] media seconds, librarySoundSpans): where it's quiet, which a
    * line's edges and inner cuts land in; its breaths, which a line turns down; its clicks, which a line takes out.
    */
+  /** RMS per 10 ms of media, base64 bytes in half-decibels below full scale (0–240). */
+  rms: Schema.optionalKey(Schema.String.check(Schema.isBase64())),
   quiet: Schema.optionalKey(Schema.Array(LibrarySpanSchema)),
   soft: Schema.optionalKey(Schema.Array(LibrarySpanSchema)),
   clicks: Schema.optionalKey(Schema.Array(LibrarySpanSchema)),

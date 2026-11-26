@@ -1,12 +1,8 @@
-// library-line-cut.ts: where a line spoken from a recording is cut, on item time: its edges in the quiet beside its
-// words, and inside it, the disfluencies its rules take out and the pauses it shortens, each joined in the quiet. Pure;
-// libraryFootage's `speech` turns a cut into a line's sound.
-//
-// A cut is placed in the audio, never at a word's timestamp alone: a transcript stretches a word to touch the next,
-// so an edge seeks the quiet between the words' middles, and a removal with no quiet on either side is left in.
+// library-line-cut.ts: the pieces a line keeps on item time and the marks review places on line time.
+// Inner word cuts seek quiet first, then a loudness dip where the words run together.
 import { SPOKEN_CLEANUP_RULES, type SpokenDisfluencyRule } from '#lib/footage/transcript/models/spoken-disfluencies.ts';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
-import type { SpokenDip, SpokenEdge, SpokenPiece, SpokenRemoval, SpokenUnheard } from '#lib/timing/voice/models/recorded-speech.ts';
+import type { SpokenDip, SpokenEdge, SpokenJoin, SpokenPiece, SpokenRemoval, SpokenUnheard } from '#lib/timing/voice/models/recorded-speech.ts';
 
 /** How a line from a recording is cleaned: project-wide (libraryFootage) or on one line (its `speech`). */
 export type LibraryLineCleanup = {
@@ -28,6 +24,7 @@ export type LibraryLineCut = {
   to: number;
   edges: { in: SpokenEdge; out: SpokenEdge };
   pieces: SpokenPiece[];
+  joins: SpokenJoin[];
   removals: SpokenRemoval[];
   unheard: SpokenUnheard[];
   heard: SpokenWord[];
@@ -40,7 +37,14 @@ type Span = { start: number; end: number };
 export type LibraryLineSound = SpokenWord & { unheard?: true };
 
 /** A track a line is cut from, on item time: its sounds in order, and its levelled copy's quiet, breaths and clicks. */
-export type LibraryLineVoice = { sounds: readonly LibraryLineSound[]; quiet: readonly Span[]; soft: readonly Span[]; clicks: readonly Span[] };
+export type LibraryLineVoice = {
+  sounds: readonly LibraryLineSound[];
+  quiet: readonly Span[];
+  soft: readonly Span[];
+  clicks: readonly Span[];
+  /** Half-dB below full scale per window, its origin and window length on item time. */
+  envelope?: { levels: Uint8Array; start: number; step: number };
+};
 
 /** The longest pause a recorded line keeps between its words unless its cleanup sets `pauseCap`, in seconds. */
 export const LIBRARY_PAUSE_CAP = 0.5;
@@ -95,6 +99,39 @@ function decayEdge({ sounds, quiet }: LibraryLineVoice, i: number): number {
   return decay ? edgeInQuiet(decay, end, EDGE_PAD_OUT) : unquietEdge(end, sounds[i + 1]?.start, EDGE_PAD_OUT);
 }
 
+// At 5 dB below both shoulders a trough can take a cut. Under 10 dB the outgoing vowel needs a decay of its own.
+const DIP_DEPTH_HALF_DB = 10, DEEP_DIP_HALF_DB = 20, DIP_REACH = 0.12;
+
+// A cut within voicing lets the outgoing vowel decay before the short overlap with the next sound.
+const VOICED_JOIN: SpokenJoin = { fadeOut: 0.06, crossfade: 0.01 };
+const QUIET_JOIN: SpokenJoin = { fadeOut: 0, crossfade: 0.02 };
+
+/** The deepest RMS trough near the boundary, strictly between word middles. Each byte counts half-dB down. */
+function dipBetween({ envelope, sounds }: LibraryLineVoice, i: number, minDepth: number) {
+  if (!envelope) return undefined;
+  const { levels, start, step } = envelope;
+  const boundary = (sounds[i].end + sounds[i + 1].start) / 2;
+  const center = (k: number) => start + (k + 0.5) * step;
+  const reach = Math.round(DIP_REACH / step);
+  const first = Math.max(1, Math.ceil((boundary - DIP_REACH - start) / step - 0.5));
+  const last = Math.min(levels.length - 2, Math.floor((boundary + DIP_REACH - start) / step - 0.5));
+  let best: { index: number; contrast: number } | undefined;
+  for (let k = first; k <= last; k++) {
+    if (center(k) <= middle(sounds[i])! || center(k) >= middle(sounds[i + 1])!) continue;
+    const depth = levels[k];
+    const left = levels.subarray(Math.max(0, k - reach), k);
+    const right = levels.subarray(k + 1, k + reach + 1);
+    const contrast = depth - Math.max(Math.min(...left), Math.min(...right));
+    if (contrast < minDepth) continue;
+    // Quantization can flatten a trough across several windows. Both slopes must rise as they leave it.
+    if (left.findLast((v) => v !== depth)! > depth || right.find((v) => v !== depth)! > depth) continue;
+    if (best === undefined || depth > levels[best.index] || (depth === levels[best.index] && Math.abs(center(k) - boundary) < Math.abs(center(best.index) - boundary))) {
+      best = { index: k, contrast };
+    }
+  }
+  return best && { time: center(best.index), shallow: best.contrast < DEEP_DIP_HALF_DB };
+}
+
 /** A disfluency a rule found, or a sound a line cuts (`cut`), as indexes into the voice's sounds. */
 type Find = { kind: string; flag: string | undefined; from: number; to: number };
 
@@ -134,7 +171,7 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
       takenBy.set(i, at);
     }
   }
-  // Runs of taken sounds, each kept whole unless both its joins land in quiet (or a line's `cut` asks for it).
+  // Runs of taken sounds, each kept whole unless both its joins land in quiet or a dip (or a line's `cut` asks for it).
   const runs: Taken[] = [];
   for (let i = first; i <= last; i++) {
     const at = takenBy.get(i);
@@ -147,22 +184,35 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
     } else runs.push({ first: i, last: i, finds: [...at.finds], forced: at.forced });
   }
   const inQuiet = (t: number) => inside(voice.quiet, t) !== undefined;
-  const taken = runs.filter((run) => run.forced
-    || ((run.first === first || inQuiet(decayEdge(voice, run.first - 1))) && (run.last === last || inQuiet(leadEdge(voice, run.last + 1)))));
+  const join = (i: number, edge: number, force: boolean) => {
+    if (inQuiet(edge)) return { time: edge, shallow: false };
+    const dip = dipBetween(voice, i, DIP_DEPTH_HALF_DB);
+    if (dip !== undefined || !force) return dip;
+    // A forced cut still seeks the trough when the contrast is weak.
+    return dipBetween(voice, i, 1) ?? { time: edge, shallow: true };
+  };
+  const cuts = runs.map((run) => Object.assign(run, {
+    from: run.first > first ? join(run.first - 1, decayEdge(voice, run.first - 1), run.forced) : undefined,
+    to: run.last < last ? join(run.last, leadEdge(voice, run.last + 1), run.forced) : undefined,
+  }));
+  const taken = cuts.filter((r) => (r.first === first || r.from !== undefined) && (r.last === last || r.to !== undefined));
+  const head = taken.find((r) => r.first === first), tail = taken.find((r) => r.last === last);
   const keptSounds = [...Array(last - first + 1).keys()].map((k) => first + k).filter((i) => !taken.some((run) => run.first <= i && i <= run.last));
   if (!keptSounds.some((i) => !sounds[i].unheard)) throw new Error(`${where}'s line from ${asked} to ${askedTo} s says nothing once its ${taken.flatMap((r) => r.finds.map((f) => f.kind)).join(', ')} are cut: keep one`);
 
   // Pieces: runs of kept sounds, split where a run was taken and where a pause runs past the cap.
   const cap = edits.pauseCap ?? LIBRARY_PAUSE_CAP;
+  const joins: SpokenJoin[] = [];
   const pieces: Span[] = [], gaps: { from: number; to: number; run?: Taken }[] = [], keptPauses: Span[] = [];
-  let start = leadEdge(voice, keptSounds[0]);
+  let start = head?.to?.time ?? leadEdge(voice, keptSounds[0]);
   keptSounds.forEach((i, k) => {
     const next = keptSounds[k + 1];
     if (next === undefined) return;
     const run = taken.find((r) => r.first === i + 1);
     if (run) {
-      pieces.push({ start, end: decayEdge(voice, i) });
-      start = leadEdge(voice, next);
+      pieces.push({ start, end: run.from!.time });
+      joins.push(run.from!.shallow ? VOICED_JOIN : QUIET_JOIN);
+      start = run.to!.time;
       gaps.push({ from: pieces.at(-1)!.end, to: start, run });
       return;
     }
@@ -177,8 +227,9 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
     pieces.push({ start, end: pause.from });
     start = pause.to;
     gaps.push(pause);
+    joins.push(QUIET_JOIN);
   });
-  pieces.push({ start, end: decayEdge(voice, keptSounds.at(-1)!) });
+  pieces.push({ start, end: tail?.from?.time ?? decayEdge(voice, keptSounds.at(-1)!) });
   for (const t of keep) if (!kept.has(t)) throw new Error(`${where}'s line from ${asked} to ${askedTo} s takes nothing out at ${t} s to keep`);
 
   const at = [0];
@@ -193,13 +244,12 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
     return removalsOf(run.finds, sounds, jump, forced);
   });
   // A run taken from either end of the line only moves its edge.
-  const head = taken.find((r) => r.first === first), tail = taken.find((r) => r.last === last);
   if (head) removals.unshift(...removalsOf(head.finds, sounds, 0, forced));
   if (tail) removals.push(...removalsOf(tail.finds, sounds, lineTime(Infinity), forced));
   // What the line leaves in, at the line second it plays: what its `keep` restored, and runs with no quiet to cut in.
   const left: SpokenRemoval[] = [
     ...restored.flatMap((f) => removalsOf([f], sounds, lineTime(sounds[f.from].start)).map((r) => Object.assign(r, { left: 'kept' as const }))),
-    ...runs.filter((r) => !taken.includes(r))
+    ...cuts.filter((r) => !taken.includes(r))
       .flatMap((r) => removalsOf(r.finds, sounds, lineTime(sounds[r.first].start)).map((x) => Object.assign(x, { left: 'no quiet' as const }))),
     ...keptPauses.map(({ start: from, end: to }) => ({ kind: 'pause', text: '', from: round(from), to: round(to), at: lineTime(from), keepAt: round((from + to) / 2), left: 'kept' as const })),
   ];
@@ -216,7 +266,7 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
   const unheard = keptSounds.filter((i) => sounds[i].unheard).map((i) => ({ from: sounds[i].start, to: sounds[i].end, at: lineTime(sounds[i].start) }));
   const rounded = pieces.map((p) => ({ from: round(p.start), to: round(p.end) }));
   const edgeOf = (t: number): SpokenEdge => (inQuiet(t) ? 'clean' : 'rough');
-  return { from: rounded[0].from, to: rounded.at(-1)!.to, edges: { in: edgeOf(pieces[0].start), out: edgeOf(pieces.at(-1)!.end) }, pieces: rounded, removals, unheard, heard, dips };
+  return { from: rounded[0].from, to: rounded.at(-1)!.to, edges: { in: edgeOf(pieces[0].start), out: edgeOf(pieces.at(-1)!.end) }, pieces: rounded, joins, removals, unheard, heard, dips };
 }
 
 /** The removals a taken run's finds make, all at line second `at`, each restored by a moment inside its first word. */

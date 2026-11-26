@@ -52,9 +52,9 @@ const levelLibraryTrack = Effect.fn('LibraryLevelled.levelTrack')(function* (id:
   const out = path.join(yield* media.online(), id, file);
   const { levelled } = track;
   if (levelled?.processing === processing) {
-    if (levelled.quiet && levelled.soft && levelled.clicks) return item;
-    // Made the same way, but measured by older code: only its sound spans are missing.
-    const spans = librarySoundSpans(yield* windowLevels(out));
+    if (levelled.quiet && levelled.soft && levelled.clicks && levelled.rms !== undefined) return item;
+    // Made the same way, but measured by older code: measure the existing PCM again.
+    const spans = yield* measureSound(out);
     return yield* store.updateItem(id, (now) => ({ ...now, tracks: { ...now.tracks, [name]: { ...now.tracks[name], levelled: { ...levelled, ...spans } } } }));
   }
   yield* Effect.log(`levelling ${name} for the mix (${processing})`);
@@ -91,7 +91,7 @@ const levelLibraryTrack = Effect.fn('LibraryLevelled.levelTrack')(function* (id:
   if (check.exitCode !== 0) return yield* new LibrarySpeechUnmeasured({ id, track: name, why: lastLine(check.stderr) });
   const lufs = ebur128IntegratedLufs(check.stderr);
   if (lufs === undefined) return yield* new LibrarySpeechUnmeasured({ id, track: name, why: `its levelled copy ${file} measures silent` });
-  const spans = librarySoundSpans(yield* windowLevels(out));
+  const spans = yield* measureSound(out);
   return yield* store.updateItem(id, (now) => ({ ...now, tracks: { ...now.tracks, [name]: { ...now.tracks[name], levelled: { file, lufs: Math.round(lufs * 10) / 10, processing, ...spans } } } }));
 });
 
@@ -99,7 +99,7 @@ const levelLibraryTrack = Effect.fn('LibraryLevelled.levelTrack')(function* (id:
 const SILENT_DB = -120;
 
 /** `wav`'s RMS level in dBFS per LIBRARY_QUIET_WINDOW, through a file beside it: ffmpeg's stderr comes back cut short. */
-const windowLevels = Effect.fn('LibraryLevelled.windowLevels')(function* (wav: string) {
+const measureSound = Effect.fn('LibraryLevelled.measureSound')(function* (wav: string) {
   const ffmpeg = yield* StudioFfmpeg, fs = yield* FileSystem.FileSystem;
   const rate = 16000, levels = `${wav}.${process.pid}.levels.txt`;
   const graph = `aresample=${rate},asetnsamples=n=${Math.round(rate * LIBRARY_QUIET_WINDOW)}:p=0,astats=metadata=1:reset=1:measure_overall=RMS_level:measure_perchannel=none,`
@@ -107,5 +107,7 @@ const windowLevels = Effect.fn('LibraryLevelled.windowLevels')(function* (wav: s
   yield* ffmpeg.run(['-v', 'error', '-y', '-i', wav, '-af', graph, '-f', 'null', '-']);
   const text = yield* fs.readFileString(levels);
   yield* fs.remove(levels);
-  return [...text.matchAll(/RMS_level=(\S+)/g)].map(([, db]) => Number.isFinite(Number.parseFloat(db)) ? Math.max(SILENT_DB, Number.parseFloat(db)) : SILENT_DB);
+  const dbfs = [...text.matchAll(/RMS_level=(\S+)/g)].map(([, db]) => Number.isFinite(Number.parseFloat(db)) ? Math.max(SILENT_DB, Number.parseFloat(db)) : SILENT_DB);
+  const rms = Buffer.from(dbfs.map((db) => Math.round(-2 * db))).toString('base64');
+  return { ...librarySoundSpans(dbfs), rms };
 });
