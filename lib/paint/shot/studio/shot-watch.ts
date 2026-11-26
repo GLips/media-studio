@@ -28,6 +28,7 @@ const SHOT_PULSE_SECONDS = 15;
 /** What a renderer tells its watch: each run as it starts, with its solves' count, and each solve's start and end. */
 export type ShotSolveProgress = {
   readonly run: (run: ShotRun, total: number) => void;
+  readonly extend?: (additional: number) => void;
   readonly solving: (solve: ShotSolve) => void;
   readonly solved: () => void;
 };
@@ -107,6 +108,7 @@ export function createShotWatch({ name, gpu, costs, log = logRenderPageLine, pul
       place = { run, total, done: 0, solving: null };
       runFrom = { ...reading() };
     },
+    extend: (additional) => { if (place) place = { ...place, total: place.total + additional }; },
     solving: (solve) => {
       if (!place) return;
       place.solving = solve;

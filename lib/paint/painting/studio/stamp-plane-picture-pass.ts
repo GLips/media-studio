@@ -42,7 +42,7 @@ export type StampPlanePictureLay = {
   readonly lay: (backing: StampPaintBacking) => StampPixelBox | null;
 };
 
-type StampPictureNote = StampPlanePictureLayers & { readonly box: StampPixelBox };
+export type StampPictureNote = StampPlanePictureLayers & { readonly box: StampPixelBox };
 
 /**
  * Encodes `painting`'s linear light over `box` (stage texels), laid by `compositor`, into array layer `layer` of `into`
@@ -88,6 +88,7 @@ export function createStampPlanePictures(owner: StampPaintGpuOwner, { stage, are
   }
 
   return {
+    hold: pictures.hold,
     /** The picture kept under `key`, as `encoder`'s frame uses it; null for none. */
     find(key: string, encoder: GPUCommandEncoder): StampPlanePicture | null {
       const found = pictures.find(key, encoder);

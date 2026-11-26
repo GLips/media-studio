@@ -11,7 +11,7 @@ import { compilePaintedShot, type CompiledShotEffectPlane } from './shot-compile
 import { defineShotEffect, shotDrawingStarted, shotEffectKeyAt, shotEffectTimeAt, shotPlaneImage, shotImageLeafReads, shotMomentMapped } from './shot-effect.ts';
 import { shotFigure, shotPlace } from './shot-figure.ts';
 import { shotDrawablesAt } from './shot-plan.ts';
-import { shotImageReach, shotEffectImageKey } from './shot-images.ts';
+import { shotHistoryPlanner, shotImageReach, shotEffectImageKey } from './shot-images.ts';
 import { offsetCopies } from './shot-offset-copies.ts';
 import { channelSplit } from './shot-channel-split.ts';
 import { shotSlicesCell, slices } from './shot-slices.ts';
@@ -161,7 +161,21 @@ test('a group reads masked placed planes at the exposure, with image-only member
   assert.match(messages(shotPlace(group({ under: hero, over: shotPlaneImage('missing') }), { id: 'bad', depth: 1 })), /needs a placed painted or effect plane/);
   assert.match(messages(shotPlace(group({ under: hero, over: shotPlaneImage('b') }), { id: 'a', depth: 1 }),
     shotPlace(group({ under: hero, over: shotPlaneImage('a') }), { id: 'b', depth: 1 })), /cycle: a -> b -> a/);
-  assert.match(messages(actor, shotPlace(chase({ lead: hero, follow: grouped }), { id: 'past', depth: 1 })), /reads this exposure/);
+  const delayed = compiled(actor, shotPlace(chase({ lead: hero, follow: grouped }), { id: 'past', depth: 1 }));
+  assert.deepEqual(delayed.problems, []);
+  assert.deepEqual(shotHistoryPlanner(delayed.shot!)(['past'], paintMoment(0.5)), [
+    { id: 'street', at: paintMoment(0.25) }, { id: 'actor', at: paintMoment(0.25) },
+  ]);
+});
+
+test('an earlier group read diagnoses a member whose position needs live DOM measurements', () => {
+  const pin = { kind: 'pin', points: [{ sourcePx: { x: 30, y: 40 }, element: 'badge' }] } as const;
+  const actor = shotPlace(hero, { id: 'actor', depth: 1, lay: pin });
+  const pair = defineShotEffect({ name: 'pair', inputs: ['back', 'front'], defaults: {} });
+  const group = shotPlace(pair({ back: shotPlaneImage('street'), front: shotPlaneImage('actor') }), { id: 'group', depth: 1 });
+  assert.deepEqual(compiled(actor, group).problems, []);
+  assert.match(messages(actor, group, shotPlace(chase({ lead: hero, follow: shotPlaneImage('group') }), { id: 'delay', depth: 1 })),
+    /earlier image of group depends on DOM pin actor/);
 });
 
 test('twenty earlier drawings compile as ordered reads sharing a single painted leaf', () => {
@@ -174,4 +188,32 @@ test('twenty earlier drawings compile as ordered reads sharing a single painted 
   const reads = shotImageLeafReads(plane.image);
   assert.equal(new Set(reads.map(({ leaf }) => leaf)).size, 1);
   assert.deepEqual(reads.map(({ moments }) => Math.round(shotMomentMapped(moments, paintMoment(1)).frame * FPS)), Array.from({ length: 21 }, (_, i) => FPS - i));
+});
+
+test('a historical group resolves its own delayed members first, once per plane, frame and shutter time', () => {
+  const old = defineShotEffect({ name: 'older', inputs: ['source'], defaults: {},
+    reads: () => [{ input: 'source', moment: { drawingsEarlier: 1 } }, { input: 'source', moment: { drawingsEarlier: 1 } }] });
+  const held = { depth: 1, sourceClock: { hold: 3 } };
+  const { shot, problems } = compiled(
+    shotPlace(hero, { id: 'hand', depth: 1, imageOnly: true }),
+    shotPlace(chase({ lead: shotPlaneImage('street'), follow: shotPlaneImage('hand') }), { ...held, id: 'group', imageOnly: true }),
+    shotPlace(old(shotPlaneImage('group')), { ...held, id: 'mosh' }),
+  );
+  assert.deepEqual(problems, []);
+  assert.deepEqual(shotImageReach(shot!.planes, 'mosh', paintMoment(0.75)), new Set(['mosh']));
+  assert.deepEqual(shotImageReach(shot!.planes, 'group', paintMoment(0.5)), new Set(['group', 'street']));
+  const plan = shotHistoryPlanner(shot!);
+  const request = (at: number, frame: number) => plan(['mosh'], paintMoment(at, frame));
+  const expected = [{ id: 'hand', at: paintMoment(0.375, 0.25) }, { id: 'group', at: paintMoment(0.625, 0.5) }];
+  assert.deepEqual(request(0.75, 0.625), expected);
+  assert.deepEqual(request(0, 0), []);
+  assert.deepEqual(request(0.75, 0.625), expected);
+});
+
+test('a generated ground can turn a cropped effect into a stage effect on the same model', () => {
+  const defaults = { ground: false };
+  const signal = defineShotEffect({ name: 'signal', inputs: ['source'], defaults, extent: ({ ground }) => ground ? 'stage' : 'inputs' });
+  const { shot, problems } = compiled(shotPlace(signal(hero), { id: 'ink', depth: 1 }), shotPlace(signal(hero, { ground: true }), { id: 'screen', depth: 1 }));
+  assert.deepEqual(problems, []);
+  assert.deepEqual(shot!.planes.flatMap((p) => p.kind === 'effect' ? [p.image.extent] : []), ['inputs', 'stage']);
 });

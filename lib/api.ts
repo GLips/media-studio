@@ -270,7 +270,7 @@ export { channelSplit, type ShotChannelSplitParams } from '#lib/paint/shot/model
 export { slices, type ShotSlicesParams } from '#lib/paint/shot/models/shot-slices.ts';
 export { trail, trailStrobe, type ShotTrailParams } from '#lib/paint/shot/models/shot-trail.ts';
 export { mosh } from '#lib/paint/shot/models/shot-mosh.ts';
-export { defineShotEffectGpu, SHOT_EFFECT_PARAMS_MOST, type ShotEffectGpu } from '#lib/paint/shot/studio/shot-effect-gpu.ts';
+export { defineShotEffectGpu, SHOT_EFFECT_PARAMS_MOST, type ShotBlockMotion, type ShotEffectGpu } from '#lib/paint/shot/studio/shot-effect-gpu.ts';
 // Light one plane throws on another, and neon: tubes, flicker and wall spill as parts.
 export { illuminate, lightSpill, SHOT_LIGHT_SPILLS_MOST, type ShotLightSpill } from '#lib/paint/shot/models/shot-light-spill.ts';
 export { neon, neonFlickerValue, neonTubes, type Neon, type NeonFlicker, type NeonOptions, type NeonSpill, type NeonTubesParams } from '#lib/paint/shot/models/shot-neon.ts';

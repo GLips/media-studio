@@ -310,7 +310,7 @@ function compileEffectImage(image: Extract<ShotImageSource, { readonly kind: 'ef
   const timeAt = followsDrawing || followsMoment
     ? (m: PaintMoment) => ({ drawing: followsDrawing ? paintNodeDrawingAt(steps, m, fps)! : 0, seconds: followsMoment ? m.at : 0 })
     : null;
-  return compiledShotEffect(definition, checked.params, reads, checked.grow, timeAt);
+  return compiledShotEffect(definition, checked.params, reads, checked.grow, checked.extent, timeAt);
 }
 
 /**
@@ -320,11 +320,11 @@ function compileEffectImage(image: Extract<ShotImageSource, { readonly kind: 'ef
  */
 function compileEffectPlane(image: Extract<ShotImageSource, { readonly kind: 'effect' }>, farthest: boolean, at: ShotImageCompiling): CompiledShotEffectPlane | null {
   const { props, common, problems } = at, { lay } = props;
-  const filmBack = farthest && image.definition.extent !== 'stage' && !at.page.htmlBehind;
+  const compiled = compileEffectImage(image, 'source', at);
+  const filmBack = compiled && farthest && compiled.extent !== 'stage' && !at.page.htmlBehind;
   if (filmBack) problems.push(shotError(props.id, 'source', `is the farthest plane, the back, and ${image.definition.name}'s output is clear film: place it nearer than a painted back or a picture`));
   if (props.masks?.length) problems.push(shotError(props.id, 'masks', `places ${image.definition.name}'s output, and masks cut a painted plane's films as it lays them: mask what the effect reads`));
   if (lay && typeof lay !== 'function' && 'kind' in lay) problems.push(shotError(props.id, 'lay', `places ${image.definition.name}'s output, and a ${lay.kind} lays only a painted plane: lay it by a lay or a value in time`));
-  const compiled = compileEffectImage(image, 'source', at);
   if (!compiled || filmBack || props.masks?.length || (lay && typeof lay !== 'function' && 'kind' in lay)) return null;
   const occurrences = new Map(shotImageLeaves(compiled).flatMap(({ occurrences: shown }) => shown.map((occurrence) => [occurrence.key, occurrence] as const)));
   return { ...common, kind: 'effect', sourceClock: paintNodeClockSteps(props.sourceClock), lay: compilePlaneLay(props), opaqueBack: farthest && !at.page.htmlBehind, image: compiled, occurrences: [...occurrences.values()] };
