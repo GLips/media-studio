@@ -2,7 +2,7 @@
 // React, TanStack Start (client-rendered: every screen plays media, so there is nothing to server-render). No Nitro:
 // nothing deploys a server (the app runs in-process), and its dev server hands any <video> or <img> fetch to Vite's
 // static files, which don't hold the projects' media.
-import { join } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { unplugin as stylexUnplugin } from '@stylexjs/unplugin';
 import { tanstackStart } from '@tanstack/react-start/plugin/vite';
@@ -22,14 +22,22 @@ const stylexVitePlugin: PluginOption = stylexUnplugin.vite({
   aliases: { '#web/*': [join(WEB_ROOT, 'src', '*')] },
 });
 
-// Vite watches only its root (web/), so a storyboard.ts added under work/ after the server starts never reaches the
-// plan page's globs (storyboard-modules.ts) unless it's watched here. Only the globbed files are watched, never
-// work/'s footage and renders.
+// Vite watches only web/, so a project's storyboard.ts added after the server starts reaches the plan page's globs
+// (storyboard-modules.ts) only if watched here. Warning: Vite's watcher disables globbing, so work/projects/*/… would
+// be a literal path. work/projects is watched whole instead, ignoring all but the globbed files, never footage.
+const PROJECTS_ROOT = join(STUDIO_ROOT, 'work', 'projects');
+const watchedInProject = new Set(['storyboard.ts', 'audio', 'audio/manifest.ts', 'music', 'music/index.ts']);
+const ignoredInProjects = (path: string): boolean => {
+  const inside = relative(PROJECTS_ROOT, path);
+  if (inside === '' || inside.startsWith('..') || isAbsolute(inside)) return false;
+  const [, ...rest] = inside.split(sep);
+  return rest.length > 0 && !watchedInProject.has(rest.join('/'));
+};
 const watchProjectStoryboards: PluginOption = {
   name: 'studio-watch-project-storyboards',
+  config: () => ({ server: { watch: { ignored: [ignoredInProjects] } } }),
   configureServer(server) {
-    const files = ['storyboard.ts', 'audio/manifest.ts', 'music/index.ts'];
-    server.watcher.add(files.map((file) => join(STUDIO_ROOT, 'work', 'projects', '*', file)));
+    server.watcher.add(PROJECTS_ROOT);
   },
 };
 
