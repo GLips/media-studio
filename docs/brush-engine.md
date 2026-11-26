@@ -854,7 +854,10 @@ drawings alone. Six cards over a sky (`shot/card-shadows`), against
 themselves laid flat, cast shadows away from the light that fade and move with their card, a turning card's
 lip stays toward the light, a flat card changes nothing, and a parent's rim stays under its child card. Over footage a figure card (`shot/figure-card`) keeps its
 white and leaves no paper band, and as a shot's figure (`shot/figure-image`) drops the shadow. Read in no plane, it draws
-through `offsetCopies` (`shot/offset-copies`) as when placed alone, each copy fainter, the last past its reach. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
+through `offsetCopies` (`shot/offset-copies`) as when placed alone, each copy fainter, the last past its reach. Split by
+`channelSplit` over green and blue footage (`shot/channel-split`), each channel of the frame is that channel of the
+figure placed alone, moved by its offset. Two looks of one figure, neither placed, tiled by `slices` (`shot/two-looks`)
+show in each cell its look moved as `shotSlicesCell` says, some past the figure. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
 and cuts a tint to the heron's wing, to all but it, and to a disc moving across as a picture plane and as a three
 plane under a panned camera. On a plane nearer than the heron, the tint stays cut to the wing, and to a picture disc,
 as a pan parts their depths (`shot/masks-across`), laid anew each frame they move apart; at the heron's depth, never.

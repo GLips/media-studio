@@ -12,6 +12,8 @@ import { defineShotEffect, shotImageLeafReads, shotMomentMapped } from './shot-e
 import { shotFigure, shotPlace } from './shot-figure.ts';
 import { shotEffectImageKey } from './shot-images.ts';
 import { offsetCopies } from './shot-offset-copies.ts';
+import { channelSplit } from './shot-channel-split.ts';
+import { slices } from './shot-slices.ts';
 import type { PaintedShotProps, PlaneProps } from './shot-props.ts';
 import { shotEffectExtent, shotPaintedExtent } from './shot-reach.ts';
 
@@ -82,4 +84,30 @@ test("an effect's reads at moments map the frame's outermost first, and its outp
   assert.equal(shotEffectImageKey(plane.image.key, 1, twoReads('hero at 0')), shotEffectImageKey(plane.image.key, 1, twoReads('hero at 0')));
   assert.notEqual(shotEffectImageKey(plane.image.key, 1, twoReads('hero at 0')), shotEffectImageKey(plane.image.key, 1, twoReads('hero at 1')));
   assert.notEqual(shotEffectImageKey(plane.image.key, 1, twoReads('hero at 0')), shotEffectImageKey(plane.image.key, 0.5, twoReads('hero at 0')));
+});
+
+test('slices reads each input given, the optional ones left out when not given, and grows its output by its shift', () => {
+  const crayon = shotFigure(painting(street), 'walker', { at: 0.5 });
+  const { shot, problems } = compiled(
+    shotPlace(slices({ source: hero, second: crayon }, { cells: 'rects', shift: 20 }), { id: 'tiles', depth: 1 }),
+    shotPlace(slices({ source: hero }), { id: 'cut', depth: 1 }),
+  );
+  assert.deepEqual(problems, []);
+  const [tiles, cut] = ['tiles', 'cut'].map((id) => shot!.planes.find((plane) => plane.id === id) as CompiledShotEffectPlane);
+  assert.equal(tiles.image.reads.length, 2);
+  assert.ok(shotImageLeafReads(tiles.image).every(({ leaf }) => !leaf.placed));
+  assert.equal(cut.image.reads.length, 1);
+  const input = shotPaintedExtent(shotImageLeafReads(tiles.image)[0].leaf, shot!.motion, new Set()), output = shotEffectExtent(tiles.image, shot!.motion, new Set());
+  assert.ok(input.kind === 'box' && output.kind === 'box');
+  assert.deepEqual(output.box, { x0: input.box.x0 - 20, y0: input.box.y0 - 20, x1: input.box.x1 + 20, y1: input.box.y1 + 20 });
+  assert.match(messages(shotPlace(slices({ second: hero } as never), { id: 'x', depth: 1 })), /slices: reads source, which isn't given: give source/);
+  assert.equal(compiled(shotPlace(slices({ source: hero, second: undefined }), { id: 'y', depth: 1 })).problems.length, 0);
+});
+
+test("channel split reads its input once a channel, each through its channel's offset, its output spanning every channel's", () => {
+  const { shot, problems } = compiled(shotPlace(channelSplit(hero, { red: [10, 0], blue: [0, -4] }), { id: 'split', depth: 1 }));
+  assert.deepEqual(problems, []);
+  const plane = shot!.planes.find(({ id }) => id === 'split') as CompiledShotEffectPlane;
+  assert.deepEqual(plane.image.reads.map(({ map }) => [map.kx, map.ky]), [[10, 0], [0, 0], [0, -4]]);
+  assert.match(messages(shotPlace(channelSplit(hero, { red: [Number.NaN, 0] }), { id: 'x', depth: 1 })), /source\.params\.red: channelSplit: \[NaN, 0\] isn't an offset/);
 });
