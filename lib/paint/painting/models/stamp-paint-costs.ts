@@ -1,6 +1,6 @@
 // stamp-paint-costs.ts: what painting cost, counted as it ran, in the one set of names every producer shares: the
 // document's evaluations and compiles, the shot's poses, the sheet solver's solves and schedule decisions, the film
-// store's and GPU cache's hits, misses and evictions, readbacks and uploads; and what the GPU cache and the page's memos
+// store's (on the device or the disk) and GPU cache's hits, misses and evictions, readbacks and uploads; and what the GPU cache and the page's memos
 // keep. It sits in painting, the lowest feature all of them import, so they count into one tally; the shot sends a
 // frame's or a warmed span's to the profiler (shot-cost-report.ts), and a gate case reads one to hold what a change
 // re-solves. Counting never changes what's drawn.
@@ -14,7 +14,7 @@ import type { StampKeptHeld } from './stamp-kept-memo.ts';
  */
 export const STAMP_PAINT_COST_NAMES = [
   'evaluations made', 'evaluation memo hits', 'selections compiled', 'selection hits', 'hidden solves skipped', 'poses made', 'pose hits', 'solves', 'entries run', 'decisions made', 'decisions reused',
-  'film hits', 'film misses', 'picture hits', 'picture misses', 'film readback hits', 'film readback misses', 'checkpoint hits', 'checkpoint misses',
+  'film hits', 'film disk hits', 'film misses', 'picture hits', 'picture misses', 'film readback hits', 'film readback misses', 'checkpoint hits', 'checkpoint misses',
   'evictions', 'readbacks', 'bytes uploaded',
 ] as const;
 
