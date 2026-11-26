@@ -98,7 +98,7 @@ export {
   drawingSchedule, redrawSeed, type DrawingCadence, type DrawingPhase, type DrawingSchedule, type RedrawToken, type ScheduledDrawing,
 } from '#lib/timing/drawings/models/drawing-schedule.ts';
 export { createLineLook, createPencilLook } from '#lib/paint/looks/models/line-look.ts';
-export { deriveLook, defineLook, printLook, type PaintLook } from '#lib/paint/looks/models/paint-look.ts';
+export { deriveLook, defineLook, printLook, type LookAddition, type PaintLook } from '#lib/paint/looks/models/paint-look.ts';
 export { lookDraw, type LookRedraw, type LookStep, type LookPlace, type LookProcess } from '#lib/paint/looks/models/look-step.ts';
 export { lookPlanes, lookSheets } from '#lib/paint/looks/models/look-planes.ts';
 export { defineLookCatalog, type LookCatalog, type LookDescription, type LookPaletteOf, type LookSampling } from '#lib/paint/looks/models/look-catalog.ts';
@@ -190,6 +190,7 @@ export { paintSubject, requireSubjectPainting, type SubjectOverridesFor, type Su
 export { type SubjectPaintingDiagnostic, type SubjectPaintingReport } from '#lib/paint/subject-painting/models/subject-painting-report.ts';
 export { subjectAreaRegion, subjectPathSubpaths } from '#lib/paint/subject-painting/models/subject-document-geometry.ts';
 export { SUBJECT_FIGURE_CARD_FADE, SUBJECT_GROUND_SLOT, subjectFigureCard } from '#lib/paint/subject-painting/models/subject-figure-card.ts';
+export { burstRays, type BurstRaysOptions } from '#lib/paint/subject-painting/models/subject-burst-rays.ts';
 export { subjectAreasUnion } from '#lib/paint/subject/models/subject-area-union.ts';
 export { subjectShowingOnly } from '#lib/paint/subject/models/subject-showing-only.ts';
 export {

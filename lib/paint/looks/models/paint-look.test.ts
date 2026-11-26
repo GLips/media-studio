@@ -9,7 +9,7 @@ import { subjectVisible } from '#lib/paint/subject/models/subject-geometry.ts';
 import { defineSubject } from '#lib/paint/subject/models/subject.ts';
 import { sourceDrawings } from '#lib/paint/shot/models/shot-props.ts';
 import { createLineLook, createPencilLook } from './line-look.ts';
-import { lookPlanes } from './look-planes.ts';
+import { lookPlanes, lookSheets } from './look-planes.ts';
 import { defineLook, deriveLook, printLook } from './paint-look.ts';
 import { lookDraw, type LookStep } from './look-step.ts';
 
@@ -111,4 +111,35 @@ test('a boiling pencil redraws its contour alone, its construction guides under 
   const selection = figure.source({ frame: 0.5, at: 0.5 });
   assert.deepEqual(selection.painting.document.layers[0].children?.map(({ key }) => key), ['tile.guides', 'tile.fill.part:body', 'tile.contour.part:body', 'tile.line.feature:smile']);
   assert.deepEqual([...selection.redraw!], [['tile.contour.part:body', schedule.at(0.5).token]]);
+});
+
+test('an added sheet on no card stands behind the actor and deals its draw by the redraw token', () => {
+  const schedule = drawingSchedule('held', [{ at: 1, cadence: 'held' }]);
+  const dealt = lookDraw('rays', 'a token-dealt mark', { redraw: schedule }, (_subject, _params, token) => [{
+    key: 'rays', washes: [{ key: 'rays.ink', wetHistory: false, applications: [{
+      key: 'rays.stroke', kind: 'stroke', brush, diameterPx: 4, seed: 'rays', subpaths: [[{ x: 0, y: 0 }, { x: token.length * 10, y: 0 }]],
+      charge: { kind: 'paint', mix: { parts: [{ pigment: '#e5007e', amount: 1 }], strength: 1 } },
+    }] }],
+  }]);
+  const punch = deriveLook(line, { name: 'punch', add: [
+    { step: dealt },
+    { step: { name: 'burst', kind: 'place', sheet: ['rays'], paper: { color: '#ffffff', absorbency: 0.5 }, medium: 'watercolour', card: 'none' }, to: 'show', before: 'actor' },
+  ] });
+  assert.match(printLook(punch), /burst {2}place {2}sheet \[rays\] on no card/);
+  assert.deepEqual(punch.show, ['burst', 'actor']);
+  const sheets = (at: number) => lookSheets(punch, tile, { widthPx: 180, heightPx: 180 }, { at });
+  const [burst, actor] = sheets(0);
+  assert.equal(burst.document.layers[0].sheet, undefined);
+  assert.equal(actor.document.layers[0].sheet?.kind, 'own');
+  assert.deepEqual(sheets(0.5)[0].document, burst.document);
+  assert.notDeepEqual(sheets(1)[0].document, burst.document);
+  // Placed as a plane, the burst repaints at the cut and holds before it.
+  const plane = lookPlanes(punch, tile, { widthPx: 180, heightPx: 180 }, id => ({ id, depth: 1 }))[0].source;
+  assert.ok(typeof plane !== 'function' && plane.kind === 'figure' && typeof plane.source === 'function');
+  const { source } = plane, painted = (t: number) => JSON.stringify(source({ frame: t, at: t }).painting.document);
+  assert.equal(painted(0.5), painted(0));
+  assert.notEqual(painted(1), painted(0));
+  assert.throws(() => deriveLook(line, { add: [{ step: dealt, to: 'actor.sheet', after: 'missing' }] }), /'missing' isn't in actor.sheet/);
+  assert.throws(() => deriveLook(line, { add: [{ step: dealt, to: 'contour.sheet' }] }), /'contour' isn't a sheet place/);
+  assert.throws(() => deriveLook(line, { add: [{ step: line.steps[1] }] }), /duplicate look step 'contour'/);
 });

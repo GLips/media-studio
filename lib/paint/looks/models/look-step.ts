@@ -1,4 +1,4 @@
-import type { DrawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import type { DrawingSchedule, RedrawToken } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import type { LayerNode, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import type { ShotEffectImage } from '#lib/paint/shot/models/shot-effect.ts';
 import { requireSubjectEvidence, type SubjectWithEvidence } from '#lib/paint/subject/models/subject-check.ts';
@@ -16,23 +16,24 @@ type LookDraw<N extends string, P extends object> = {
   readonly description: string;
   readonly params: Readonly<P> & DrawSettings;
   readonly changed: readonly string[];
-  readonly draw: (subject: Subject) => readonly LayerNode[];
+  /** `token`: this drawing's identity on the step's redraw schedule, for choices the draw deals itself (seed them with redrawSeed). */
+  readonly draw: (subject: Subject, token: RedrawToken) => readonly LayerNode[];
   with(fields: Partial<P> & DrawSettings): LookDraw<N, P>;
 };
 
 /** A named subject-local pass. Its settings are the fields a derivation may change independently. */
 export function lookDraw<const N extends string, P extends object, E extends SubjectEvidenceKind = never>(
-  name: N, description: string, params: P & DrawSettings, draw: (subject: SubjectWithEvidence<E>, params: P) => readonly LayerNode[],
+  name: N, description: string, params: P & DrawSettings, draw: (subject: SubjectWithEvidence<E>, params: P, token: RedrawToken) => readonly LayerNode[],
   evidence: readonly E[] = [],
 ): LookDraw<N, P> {
   function resolve(settings: P & DrawSettings): LookDraw<N, P> {
     // SAFETY: each key belongs to these settings, copied from the declared parameters plus redraw.
     const keys = Object.keys(settings) as (keyof typeof settings & string)[];
     return { kind: 'draw', name, description, params: settings, changed: keys.filter(key => settings[key] !== params[key]),
-      draw(subject) {
+      draw(subject, token) {
         const checked = requireSubjectEvidence(subject, evidence, name);
         if (!checked.ok) throw new SubjectDiagnosticError(`look draw '${name}'`, checked.diagnostics);
-        return draw(checked.value, settings);
+        return draw(checked.value, settings, token);
       },
       with(fields) {
         for (const key of Object.keys(fields)) {
@@ -45,9 +46,16 @@ export function lookDraw<const N extends string, P extends object, E extends Sub
   return resolve(params);
 }
 
-/** A placed sheet reads draws in deposit order. An image placement reads one sharp image. */
+/**
+ * A placed sheet reads draws in deposit order, on a figure card cut to the silhouette (`card: 'figure'`, the default)
+ * or on none, so its paint reaches past the body (`'none'`: rays, splatter). An image placement reads one sharp image.
+ */
 export type LookPlace<N extends string = string> = { readonly kind: 'place'; readonly name: N } & (
-  { readonly sheet: readonly string[]; readonly paper: PaintingDocument['paper']; readonly medium: PaintingDocument['medium'] } | { readonly image: string }
+  | {
+    readonly sheet: readonly string[]; readonly paper: PaintingDocument['paper']; readonly medium: PaintingDocument['medium'];
+    readonly card?: 'figure' | 'none';
+  }
+  | { readonly image: string }
 );
 
 /** A sharp image operation names each upstream image, including placed images in stage space. */
