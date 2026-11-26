@@ -21,7 +21,7 @@ const closeTo = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-9, `${a
 test('a voiced join tapers only the outgoing clip and the next quiet join stays equal-power', () => {
   const [the, voice, call] = recordedPieceClips({
     item: 'take', file: 'mic.wav', dips: [], fade: { in: 0, out: 0 },
-    pieces: [0, 1, 2].map((at) => ({ start: 2 * at, at, duration: 1 })),
+    pieces: [0, 1, 2].map((at) => ({ start: 2 * at, at, duration: 1, speed: 1 })),
     joins: [{ fadeOut: 0.06, crossfade: 0.01 }, { fadeOut: 0, crossfade: 0.02 }],
   }, 3);
   closeTo(the.duration, 1.005);

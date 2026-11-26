@@ -2,14 +2,25 @@
 // line) and a video plays it. The library makes one from an item and a range (libraryFootage's `speech`); timing,
 // captions, cues and the mix take it as they take a voice's clip.
 //
-// A stretch keeps its source in and out: nothing is cut or copied, so a picture laid against it stays in sync, and
-// moving an edge is an edit to the storyboard, not a re-import. Inside it, the line plays its pieces back to back,
-// leaving out what its cleanup took (fillers, stutters, long pauses), each removal listed for review to restore.
+// A stretch keeps its source in and out: nothing is copied, so a picture laid against it stays in sync. Inside it,
+// the line plays its pieces back to back, leaving out what its cleanup took (fillers, stutters), each listed for
+// review to restore, and playing long pauses faster, so a face filmed with it never jumps.
 
+import type { SpokenPauseKind } from '#lib/footage/transcript/models/spoken-pauses.ts';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 
-/** A stretch of a library item a line plays, in item seconds. */
-export type SpokenPiece = { from: number; to: number };
+/** A stretch of a library item a line plays, in item seconds, at `speed` item seconds a line second (1 unless given). */
+export type SpokenPiece = { from: number; to: number; speed?: number };
+
+/** How long a piece plays, in line seconds. */
+export const spokenPieceSeconds = (p: SpokenPiece) => (p.to - p.from) / (p.speed ?? 1);
+
+/**
+ * A pause between two of a line's words: what it's for, its silence in item seconds (`from`–`to`), the line second it
+ * starts at and how long it `plays` there, and the fastest `speed` it reaches (1 when left as recorded). A line's
+ * `keep` naming `keepAt` plays it as recorded (`kept`).
+ */
+export type SpokenPause = { kind: SpokenPauseKind; from: number; to: number; at: number; plays: number; speed: number; keepAt: number; kept?: true };
 
 /**
  * Something a line's cleanup took out: its `kind` (`filler`, `pause`, `cut`, a rule's), what was said, where in the
@@ -29,13 +40,13 @@ export type SpokenJoin = { crossfade: number; fadeOut: number };
 
 /**
  * Where a line's sound is in a library item's media: `file`, each piece from its `start` (media seconds) for its
- * `duration`, at its line second `at`. Each inner cut uses its corresponding entry in `joins`; the line fades in and out over `fade`,
- * longer where an edge cuts into sound, and dips where `dips` say.
+ * `duration` (line seconds) at its `speed`, at line second `at`. Each inner cut joins as `joins` says; the line fades
+ * over `fade`, longer at an edge cut into sound, and dips where `dips` say.
  */
 export type LibraryVoiceSound = {
   item: string;
   file: string;
-  pieces: readonly { start: number; at: number; duration: number }[];
+  pieces: readonly { start: number; at: number; duration: number; speed: number }[];
   joins: readonly SpokenJoin[];
   fade: { in: number; out: number };
   dips: readonly SpokenDip[];
@@ -51,7 +62,18 @@ export type SpokenEdge = 'clean' | 'rough';
 export type SpokenStretch = { item: string; from: number; to: number; pieces: readonly SpokenPiece[]; removals: readonly SpokenRemoval[]; unheard: readonly SpokenUnheard[] };
 
 /** How long a stretch plays: its pieces back to back. */
-export const spokenStretchSeconds = ({ pieces }: Pick<SpokenStretch, 'pieces'>) => pieces.reduce((sum, p) => sum + p.to - p.from, 0);
+export const spokenStretchSeconds = ({ pieces }: Pick<SpokenStretch, 'pieces'>) => pieces.reduce((sum, p) => sum + spokenPieceSeconds(p), 0);
+
+/** The item second a stretch plays `t` line seconds in, running on from its last piece past its end. */
+export function spokenItemTimeAt({ pieces, to }: Pick<SpokenStretch, 'pieces' | 'to'>, t: number): number {
+  let left = t;
+  for (const p of pieces) {
+    const seconds = spokenPieceSeconds(p);
+    if (left <= seconds) return p.from + left * (p.speed ?? 1);
+    left -= seconds;
+  }
+  return to + left;
+}
 
 /**
  * A stretch of a library recording a line is spoken in: its edges and whether each lands in quiet, what the
@@ -60,6 +82,7 @@ export const spokenStretchSeconds = ({ pieces }: Pick<SpokenStretch, 'pieces'>) 
  */
 export type RecordedSpeech = SpokenStretch & {
   heard: readonly SpokenWord[];
+  pauses: readonly SpokenPause[];
   edges: { in: SpokenEdge; out: SpokenEdge };
   sound: (LibraryVoiceSound & { lufs: number }) | null;
 };

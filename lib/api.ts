@@ -9,7 +9,9 @@ export type { FlatKey, FlatPose, FlatView } from '#lib/footage/previs/models/fla
 export { transcriptLines, type FootageTranscript } from '#lib/footage/transcript/models/footage-transcript.ts';
 export type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 export { libraryFootage, type LibraryFootage, type LibraryScreenWaypoint, type LibrarySpeechEdits, type LibraryTranscriptFile } from '#lib/footage/library/models/library-footage.ts';
-export { LIBRARY_PAUSE_CAP, type LibraryLineCleanup, type LibraryLineEdits } from '#lib/footage/library/models/library-line-cut.ts';
+export type { LibraryLineCleanup, LibraryLineEdits } from '#lib/footage/library/models/library-line-cut.ts';
+export { LIBRARY_PAUSE_PACING, type LibraryPausePacing } from '#lib/footage/library/models/library-pause-pacing.ts';
+export { spokenPauseKindOf, type SpokenPauseClassifier, type SpokenPauseKind } from '#lib/footage/transcript/models/spoken-pauses.ts';
 export {
   SPOKEN_CLEANUP_RULES, spokenFalseStarts, spokenFillers, spokenRepeats, spokenWordKey, type SpokenDisfluency, type SpokenDisfluencyRule,
 } from '#lib/footage/transcript/models/spoken-disfluencies.ts';
@@ -21,7 +23,7 @@ export { DEFAULT_INSET_PLACEMENT, insetBoxAt, type InsetCorner, type InsetPlacem
 export { useLibraryInputLog } from '#lib/footage/library/studio/use-library-input-log.ts';
 export { LibraryVideo, type LibraryVideoProps } from '#lib/footage/library/studio/library-video.tsx';
 export { LibraryAudio, type LibraryAudioProps } from '#lib/footage/library/studio/library-audio.tsx';
-export type { RecordedSpeech, SpokenRemoval, SpokenStretch, SpokenUnheard } from '#lib/timing/voice/models/recorded-speech.ts';
+export type { RecordedSpeech, SpokenPause, SpokenRemoval, SpokenStretch, SpokenUnheard } from '#lib/timing/voice/models/recorded-speech.ts';
 export { inputLogKeyStrikes, inputLogWaypoints, parseRecorderInputLog, type InputEvent, type InputLog, type InputLogCoordinates, type InputModifier, type InputWaypoint } from '#lib/footage/input-log/models/input-log.ts';
 export { beatGrid, steadyBeatGrid, type BeatGrid } from '#lib/timing/timeline/models/beat-grid.ts';
 export { assertKeysInOrder, camAt, camFit, camTop, camWhole, clampCam, lerpCam, pagePoint, rectToScreen, scaleFor, screenPoint, screenRect, view, viewOf, viewOfScreenRect, viewScale, type Cam, type Shot, type View } from '#lib/picture/camera/models/camera.ts';

@@ -16,6 +16,7 @@ import { Route as LibraryItemRouteImport } from './routes/library.$item'
 import { Route as MediaProjectRouteImport } from './routes/media.$project'
 import { Route as ReviewPeaksProjectRouteImport } from './routes/review-peaks.$project'
 import { Route as ReviewStillsProjectRouteImport } from './routes/review-stills.$project'
+import { Route as RigPausesRouteImport } from './routes/rig.pauses'
 import { Route as ProjectsProjectIndexRouteImport } from './routes/projects.$project.index'
 import { Route as ProjectsProjectPlanRouteImport } from './routes/projects.$project.plan'
 import { Route as ProjectsProjectArtifactsSplatRouteImport } from './routes/projects.$project.artifacts.$'
@@ -56,6 +57,11 @@ const ReviewStillsProjectRoute = ReviewStillsProjectRouteImport.update({
   path: '/review-stills/$project',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RigPausesRoute = RigPausesRouteImport.update({
+  id: '/rig/pauses',
+  path: '/rig/pauses',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsProjectIndexRoute = ProjectsProjectIndexRouteImport.update({
   id: '/projects/$project/',
   path: '/projects/$project/',
@@ -86,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/media/$project': typeof MediaProjectRoute
   '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
+  '/rig/pauses': typeof RigPausesRoute
   '/library/': typeof LibraryIndexRoute
   '/projects/$project/plan': typeof ProjectsProjectPlanRoute
   '/projects/$project/': typeof ProjectsProjectIndexRoute
@@ -99,6 +106,7 @@ export interface FileRoutesByTo {
   '/media/$project': typeof MediaProjectRoute
   '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
+  '/rig/pauses': typeof RigPausesRoute
   '/library': typeof LibraryIndexRoute
   '/projects/$project/plan': typeof ProjectsProjectPlanRoute
   '/projects/$project': typeof ProjectsProjectIndexRoute
@@ -113,6 +121,7 @@ export interface FileRoutesById {
   '/media/$project': typeof MediaProjectRoute
   '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
+  '/rig/pauses': typeof RigPausesRoute
   '/library/': typeof LibraryIndexRoute
   '/projects/$project/plan': typeof ProjectsProjectPlanRoute
   '/projects/$project/': typeof ProjectsProjectIndexRoute
@@ -128,6 +137,7 @@ export interface FileRouteTypes {
     | '/media/$project'
     | '/review-peaks/$project'
     | '/review-stills/$project'
+    | '/rig/pauses'
     | '/library/'
     | '/projects/$project/plan'
     | '/projects/$project/'
@@ -141,6 +151,7 @@ export interface FileRouteTypes {
     | '/media/$project'
     | '/review-peaks/$project'
     | '/review-stills/$project'
+    | '/rig/pauses'
     | '/library'
     | '/projects/$project/plan'
     | '/projects/$project'
@@ -154,6 +165,7 @@ export interface FileRouteTypes {
     | '/media/$project'
     | '/review-peaks/$project'
     | '/review-stills/$project'
+    | '/rig/pauses'
     | '/library/'
     | '/projects/$project/plan'
     | '/projects/$project/'
@@ -168,6 +180,7 @@ export interface RootRouteChildren {
   MediaProjectRoute: typeof MediaProjectRoute
   ReviewPeaksProjectRoute: typeof ReviewPeaksProjectRoute
   ReviewStillsProjectRoute: typeof ReviewStillsProjectRoute
+  RigPausesRoute: typeof RigPausesRoute
   LibraryIndexRoute: typeof LibraryIndexRoute
   ProjectsProjectPlanRoute: typeof ProjectsProjectPlanRoute
   ProjectsProjectIndexRoute: typeof ProjectsProjectIndexRoute
@@ -226,6 +239,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReviewStillsProjectRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/rig/pauses': {
+      id: '/rig/pauses'
+      path: '/rig/pauses'
+      fullPath: '/rig/pauses'
+      preLoaderRoute: typeof RigPausesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projects/$project/': {
       id: '/projects/$project/'
       path: '/projects/$project'
@@ -264,6 +284,7 @@ const rootRouteChildren: RootRouteChildren = {
   MediaProjectRoute: MediaProjectRoute,
   ReviewPeaksProjectRoute: ReviewPeaksProjectRoute,
   ReviewStillsProjectRoute: ReviewStillsProjectRoute,
+  RigPausesRoute: RigPausesRoute,
   LibraryIndexRoute: LibraryIndexRoute,
   ProjectsProjectPlanRoute: ProjectsProjectPlanRoute,
   ProjectsProjectIndexRoute: ProjectsProjectIndexRoute,

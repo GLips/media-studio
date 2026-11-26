@@ -31,13 +31,13 @@ word cuts into sound and is flagged: ask for a stretch ending at a pause, or mar
 
 ## What a line leaves out
 
-A line drops uh/um/er, stutters, false starts and the first of two takes, shortens pauses to half a second, turns
-breaths down and takes clicks out, each cut in quiet. Lexical fillers ("like") stay.
+A line drops uh/um/er, stutters, false starts and retakes, turns breaths down and takes clicks out, each cut in
+quiet. A long pause plays faster, voice and face together: a hesitation shorter than a sentence's end.
 
 Review's voice lane marks each: ✂ taken out, ◌ left in, a dotted underline under speech the transcript has no
 words for. A click writes the line's choice into storyboard.ts. `speech`'s third argument takes `keep: [s]` (restore
-what was cut at item second `s`), `cut: [s]`, and its own `pauseCap` and `rules`; `libraryFootage`'s sets the
-project's. `[...SPOKEN_CLEANUP_RULES, mine]` adds a `SpokenDisfluencyRule`; `[]` takes nothing out.
+what was cut at item second `s`), `cut: [s]`, its own `pauses` (`LibraryPausePacing` values, or `false`) and `rules`;
+`libraryFootage`'s third argument sets the project's. `[...SPOKEN_CLEANUP_RULES, mine]` adds a `SpokenDisfluencyRule`; `[]` takes nothing out.
 
 ## The scenes
 

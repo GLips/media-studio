@@ -177,7 +177,7 @@ function VoiceLineSound({ cue, t }: { cue: LaidVideo['cues'][number]; t: number 
   if (typeof src === 'string') return <SoundClip src={src} t={t} at={cue.start} volume={gain} id={`line ${cue.id}`} />;
   const file = libraryMediaUrl(src.item, src.file);
   return pieces.map((p, k) => (
-    <SoundClip key={k} src={file} t={t} at={cue.start + p.at} from={p.start} duration={p.duration} volume={p.volume} id={`line ${cue.id}${k ? ` piece ${k + 1}` : ''}`} />
+    <SoundClip key={k} src={file} t={t} at={cue.start + p.at} from={p.start} duration={p.duration} rate={p.speed} volume={p.volume} id={`line ${cue.id}${k ? ` piece ${k + 1}` : ''}`} />
   ));
 }
 

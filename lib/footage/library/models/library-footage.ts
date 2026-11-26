@@ -13,9 +13,10 @@ import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 import { inputLogWaypoints, type InputLog, type InputWaypoint } from '#lib/footage/input-log/models/input-log.ts';
 import type { TimedPoint } from '#lib/picture/camera/models/follow-point.ts';
 import type { SceneClock } from '#lib/timing/timeline/models/video-layout.ts';
-import type { RecordedSpeech, SpokenEdge, SpokenStretch } from '#lib/timing/voice/models/recorded-speech.ts';
+import { spokenItemTimeAt, spokenPieceSeconds, type RecordedSpeech, type SpokenEdge, type SpokenStretch } from '#lib/timing/voice/models/recorded-speech.ts';
 import { LibraryFileUnreadable } from './library-errors.ts';
 import { cutLibraryLine, type LibraryLineCleanup, type LibraryLineEdits, type LibraryLineSound, type LibraryLineVoice } from './library-line-cut.ts';
+import { librarySyllableRate } from './library-pause-pacing.ts';
 import { LIBRARY_QUIET_WINDOW } from './library-quiet.ts';
 import { LIBRARY_ITEM_FORMAT, LibraryItem, type LibraryTrack, libraryItemTimeOf, libraryMediaTimeOf, libraryScreenPointOf } from './library-item.ts';
 
@@ -133,6 +134,7 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
       unheard: onItemTime(track, heard.unheard.map((p) => [p.start, p.end])),
       ...levelledSpans(track),
     };
+    voice.syllableRate = librarySyllableRate(voice.words, voice.quiet);
     return [name, voice] as const;
   }));
   // In reading order: each track's lines (its words run together until a pause) by when they start, so two sides
@@ -148,7 +150,7 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
   const cutOf = (voice: LibraryVoice, from: number, to: number, edits: LibraryLineEdits) => {
     if (voice.untranscribed) {
       const edgeAt = (t: number): SpokenEdge => (voice.quiet.some((q) => q.start <= t && t <= q.end) ? 'clean' : 'rough');
-      return { from, to, edges: { in: edgeAt(from), out: edgeAt(to) }, pieces: [{ from, to }], joins: [], removals: [], unheard: [], heard: [], dips: [] };
+      return { from, to, edges: { in: edgeAt(from), out: edgeAt(to) }, pieces: [{ from, to }], joins: [], removals: [], unheard: [], heard: [], dips: [], pauses: [] };
     }
     const sounds: LibraryLineSound[] = [...voice.words, ...voice.unheard.map((u) => ({ text: '', ...u, unheard: true as const }))].toSorted((a, b) => a.start - b.start);
     return cutLibraryLine({ ...voice, sounds }, from, to, edits, item.id);
@@ -182,7 +184,7 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
       const cut = cutOf(voice, asked, askedTo, { ...cleanup, ...edits });
       // A track starting on a fraction of a millisecond can round an edge on its first or last word just outside it.
       const first = libraryItemTimeOf(track, 0), last = libraryItemTimeOf(track, track.mediaSeconds);
-      const pieces = cut.pieces.map((p, k) => ({ from: k ? p.from : Math.max(first, p.from), to: k < cut.pieces.length - 1 ? p.to : Math.min(last, p.to) }));
+      const pieces = cut.pieces.map((p, k) => ({ ...p, from: k ? p.from : Math.max(first, p.from), to: k < cut.pieces.length - 1 ? p.to : Math.min(last, p.to) }));
       const from = pieces[0].from, to = pieces.at(-1)!.to;
       // A stretch reaching outside the track has no sound there to play.
       if (from < first || to > last) throw new Error(`${item.id}'s ${name} runs ${first.toFixed(3)}–${last.toFixed(3)} s: a line can't be spoken from ${from}–${to} s`);
@@ -192,26 +194,19 @@ export function libraryFootage(itemJson: LibraryItemJsonImport, transcriptJson?:
       const sound = levelled && {
         item: item.id, file: levelled.file, lufs: levelled.lufs, fade, joins: cut.joins, dips: cut.dips,
         pieces: pieces.map((p) => {
-          const piece = { start: libraryMediaTimeOf(track, p.from), at, duration: p.to - p.from };
+          const piece = { start: libraryMediaTimeOf(track, p.from), at, duration: spokenPieceSeconds(p), speed: p.speed ?? 1 };
           at += piece.duration;
           return piece;
         }),
       };
-      return { item: item.id, from, to, pieces, removals: cut.removals, unheard: cut.unheard, heard: cut.heard, edges: cut.edges, sound: sound ?? null };
+      return { item: item.id, from, to, pieces, removals: cut.removals, unheard: cut.unheard, heard: cut.heard, pauses: cut.pauses, edges: cut.edges, sound: sound ?? null };
     },
     waypointsOn,
     cursorOn(name, log) {
       return waypointsOn(name, log).flatMap(({ t, x, y, inside }) => (inside ? [{ t, x, y }] : []));
     },
     timeAt: (s) => lineTimeAt(s, (speech, t) => speech.from + t),
-    heardAt: (s) => lineTimeAt(s, (speech, t) => {
-      let left = t;
-      for (const p of speech.pieces) {
-        if (left <= p.to - p.from) return p.from + left;
-        left -= p.to - p.from;
-      }
-      return speech.to + left;
-    }),
+    heardAt: (s) => lineTimeAt(s, spokenItemTimeAt),
   };
 }
 

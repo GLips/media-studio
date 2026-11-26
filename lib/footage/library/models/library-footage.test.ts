@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { resolveStoryboard } from '#lib/timing/storyboard/models/resolve-storyboard.ts';
 import { defineStoryboard } from '#lib/timing/storyboard/models/storyboard.ts';
-import type { LibraryVoiceSound, RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
+import { spokenItemTimeAt, type LibraryVoiceSound, type RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
 import { sceneTimes, videoLayoutOf } from '#lib/timing/timeline/models/video-layout.ts';
 import { libraryFootage, libraryTranscriptLines } from './library-footage.ts';
 import { LIBRARY_ITEM_FORMAT } from './library-item.ts';
@@ -102,34 +102,59 @@ const verbatimItem = {
 };
 const verbatim = libraryFootage(verbatimItem, { heardBy: 'test', tracks: { mic: { duration: 6, pauses: [], unheard: [], words: verbatimSaid.map(([text, start, end]) => ({ text: String(text), start: Number(start), end: Number(end) })) } } });
 
-test('a recorded line drops its stutters and fillers and shortens its long pauses, each cut in quiet, and lists each for review', () => {
+test('a recorded line drops its stutters and fillers and plays its long pause faster, each change in quiet, and lists each for review', () => {
   const speech = verbatim.speech(0.9, 5.5);
   // The first "I" goes with the line's in-point; "uh" from the quiet after "the" to the quiet before "voice"; the pause
-  // after "voice" down to half a second, its breath kept whole.
-  assert.deepEqual(speech.pieces, [{ from: 1.1, to: 2 }, { from: 2.58, to: 3.48 }, { from: 4.38, to: 5.5 }]);
-  assert.deepEqual(speech.removals.map(({ kind, text, at, keepAt }) => [kind, text, at, keepAt]), [['repeat', 'I', 0, 1.05], ['filler', 'uh,', 0.9, 2.3], ['pause', '', 1.8, 3.93]]);
+  // after "voice" plays faster between its decay and the quiet before the breath, which plays as recorded.
+  assert.deepEqual([speech.pieces[0], speech.pieces[1].from, speech.pieces.at(-1)], [{ from: 1.1, to: 2 }, 2.58, { from: 4.38, to: 5.5 }]);
+  const sped = speech.pieces.slice(2, -1);
+  assert.ok(sped.every((p, k) => p.from === speech.pieces[k + 1].to && p.speed! > 1 && p.speed! <= 3), 'butted, never past top speed');
+  assert.deepEqual(speech.removals.map(({ kind, text, at, keepAt }) => [kind, text, at, keepAt]), [['repeat', 'I', 0, 1.05], ['filler', 'uh,', 0.9, 2.3]]);
+  assert.deepEqual(speech.pauses.map(({ kind, from, to, speed, keepAt }) => [kind, from, to, speed, keepAt]), [['hesitation', 3.1, 4.8, 3, 3.95]]);
   // The breath plays 8 dB down and the click not at all.
-  assert.deepEqual(speech.sound?.dips, [{ start: 0.845, end: 0.875, gain: 0 }, { start: 1.92, end: 2.22, gain: 0.4 }]);
+  assert.deepEqual(speech.sound?.dips, [{ start: 0.845, end: 0.875, gain: 0 }, { start: 2.167, end: 2.467, gain: 0.4 }]);
   const { voice } = resolveStoryboard(spokenPlan(speech));
   assert.equal(voice.definition.text, 'I was on the voice call.');
-  assert.equal(voice.definition.duration.toFixed(2), '2.92');
-  assert.deepEqual(voice.definition.words.map((w) => w.start), [0.1, 0.2, 0.4, 0.6, 1.02, 2.42]);
+  assert.equal(voice.definition.duration.toFixed(2), '3.17');
+  assert.deepEqual(voice.definition.words.map((w) => w.start), [0.1, 0.2, 0.4, 0.6, 1.02, 2.667]);
 });
 
-test("a line restores what its cleanup took by a moment in it, cuts a word the rules kept, and sets its own pause cap", () => {
-  const kept = verbatim.speech(0.9, 5.5, { keep: [2.3, 3.93] });
+test("a line restores what its cleanup took by a moment in it, cuts a word the rules kept, and paces its own pauses", () => {
+  const kept = verbatim.speech(0.9, 5.5, { keep: [2.3, 3.95] });
   assert.deepEqual(kept.pieces, [{ from: 1.1, to: 5.5 }]);
   // Review still lists what was restored, where it now plays, to take out again.
-  assert.deepEqual(kept.removals.map(({ kind, at, left }) => [kind, at, left]), [['repeat', 0, undefined], ['filler', 1, 'kept'], ['pause', 2.38, 'kept']]);
+  assert.deepEqual(kept.removals.map(({ kind, at, left }) => [kind, at, left]), [['repeat', 0, undefined], ['filler', 1, 'kept'], ['pause', 2, 'kept']]);
   assert.throws(() => verbatim.speech(0.9, 5.5, { keep: [0.95] }), /takes nothing out at 0\.95 s to keep/);
   // "on" runs into its neighbours with no quiet, so it's cut where it's asked, into sound.
-  const cut = verbatim.speech(0.9, 5.5, { cut: [1.6], pauseCap: Infinity });
+  const cut = verbatim.speech(0.9, 5.5, { cut: [1.6], pauses: false });
   assert.deepEqual(cut.heard.map((w) => w.text), ['I', 'was', 'the', 'voice', 'call.']);
   assert.deepEqual(cut.removals.map((r) => [r.kind, r.cut]), [['repeat', undefined], ['cut', true], ['filler', undefined]]);
-  // A pause review kept stays kept once a raised cap no longer shortens it.
-  assert.deepEqual(verbatim.speech(0.9, 5.5, { keep: [3.93], pauseCap: Infinity }).pieces.length, 2);
+  // A pause review kept stays kept once its line plays every pause as recorded.
+  assert.deepEqual(verbatim.speech(0.9, 5.5, { keep: [3.95], pauses: false }).pieces.length, 2);
   // A project's own rule cleans the same way, here leaving fillers in.
   assert.deepEqual(libraryFootageWords(verbatim.speech(0.9, 5.5, { rules: [] })), ['I', 'I', 'was', 'on', 'the', 'uh,', 'voice', 'call.']);
+});
+
+// Two pauses of 1.2 s, one where a sentence ends and one mid-phrase, then one of 5 s.
+const pacedSaid = [['It', 0.5, 0.8], ['works.', 0.8, 1.2], ['And', 2.4, 2.7], ['the', 2.7, 3.0], ['next', 4.2, 4.5], ['one', 4.5, 4.9], ['waits.', 9.9, 10.3]];
+const pacedItem = {
+  ...item, id: 'paced', tracks: { mic: { ...item.tracks.mic, mediaSeconds: 11, startSeconds: 0, levelled: { file: 'proxies/mic-levelled.wav', lufs: -13, quiet: [[0, 0.5], [1.2, 2.4], [3.0, 4.2], [4.9, 9.9], [10.3, 11]] } } },
+};
+const paced = libraryFootage(pacedItem, { heardBy: 'test', tracks: { mic: { duration: 11, pauses: [], unheard: [], words: pacedSaid.map(([text, start, end]) => ({ text: String(text), start: Number(start), end: Number(end) })) } } });
+
+test('a pause mid-phrase plays shorter than one ending a sentence, the face keeps to its words, and one too long for top speed is cut in its middle', () => {
+  const speech = paced.speech(0.4, 10.4);
+  const [boundary, hesitation, long] = speech.pauses;
+  assert.deepEqual([boundary.kind, hesitation.kind, long.kind], ['boundary', 'hesitation', 'hesitation']);
+  assert.ok(hesitation.plays < boundary.plays && boundary.plays < 1.2, `${hesitation.plays} < ${boundary.plays} < 1.2`);
+  // Wherever a word plays on the line, the face shows the item second it was said.
+  for (const word of speech.heard) assert.ok(Math.abs(spokenItemTimeAt(speech, word.start) - Number(pacedSaid.find(([text]) => text === word.text)![1])) < 0.002, word.text);
+  assert.equal(long.plays, 1.6);
+  assert.deepEqual(speech.removals.map((r) => [r.kind, r.at > hesitation.at]), [['pause', true]]);
+  // A project's own pacing and classifier: every pause a boundary, at most 1.8 s.
+  const own = paced.speech(0.4, 10.4, { pauses: { classify: () => 'boundary', longest: 1.8 } });
+  assert.deepEqual(own.pauses.map((p) => p.kind), ['boundary', 'boundary', 'boundary']);
+  assert.equal(own.pauses[2].plays, 1.8);
 });
 
 const libraryFootageWords = (speech: RecordedSpeech) => speech.heard.map((w) => w.text);
