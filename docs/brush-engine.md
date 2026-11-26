@@ -854,7 +854,9 @@ drawings alone. Six cards over a sky (`shot/card-shadows`), against
 themselves laid flat, cast shadows away from the light that fade and move with their card, a turning card's
 lip stays toward the light, a flat card changes nothing, and a parent's rim stays under its child card. Over footage a figure card (`shot/figure-card`) keeps its
 white and leaves no paper band, and as a shot's figure (`shot/figure-image`) drops the shadow. Read in no plane, it draws
-through `offsetCopies` (`shot/offset-copies`) as when placed alone, each copy fainter, the last past its reach. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
+through `offsetCopies` (`shot/offset-copies`) as when placed alone, each copy fainter, the last past its reach. Neon
+tubes light a wall (`shot/light-spill`): the spill keeps to the wall as the camera pans, follows the tubes' lay, hides
+under a nearer bar, lights a three disc only where it covers, and the bloom adds the same light lit or not. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
 and cuts a tint to the heron's wing, to all but it, and to a disc moving across as a picture plane and as a three
 plane under a panned camera. On a plane nearer than the heron, the tint stays cut to the wing, and to a picture disc,
 as a pan parts their depths (`shot/masks-across`), laid anew each frame they move apart; at the heron's depth, never.
