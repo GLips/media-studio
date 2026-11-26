@@ -21,6 +21,11 @@ type Entry = Omit<MusicTrack, 'src'> & { file: string };
 // Beats are tracked, and fits planned, on mono at this rate; the fitted file keeps the source's own rate and channels.
 const ANALYSIS_RATE = 22050;
 
+/** Refuses a track name the manifest can't key as `music.<name>`. `gen` calls it before paying, not after. */
+function assertMusicTrackName(name: string, flag: '--name' | '--as'): void {
+  if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new Error(`${flag} must be lowercase words joined by dashes, not ${name}`);
+}
+
 /** The Lyria models `studio music gen` uses: a 30 s clip by default, a full-length track for music that has to go somewhere. */
 export const LYRIA_CLIP_MODEL = 'google/lyria-3-clip-preview';
 export const LYRIA_PRO_MODEL = 'google/lyria-3-pro-preview';
@@ -30,6 +35,7 @@ export const LYRIA_PRO_MODEL = 'google/lyria-3-pro-preview';
  * the model and prompt. Returns the path of the music/index.ts it rewrote.
  */
 export async function generateProjectMusicTrack(project: string, { prompt, name, full }: { prompt: string; name: string; full: boolean }): Promise<string> {
+  assertMusicTrackName(name, '--name');
   const model = full ? LYRIA_PRO_MODEL : LYRIA_CLIP_MODEL;
   const { files: [file] } = await generatePaidMedia(project, { kind: 'audio', model, name: `music-${name}`, prompt });
   return addProjectMusicTrack(project, file, name, { model, prompt });
@@ -38,7 +44,7 @@ export async function generateProjectMusicTrack(project: string, { prompt, name,
 /** Adds `source` to the project's music as `name`, and returns the path of the music/index.ts it rewrote. */
 export function addProjectMusicTrack(project: string, source: string, name: string, generated?: MusicTrack['generated']): string {
   if (!existsSync(source)) throw new Error(`no track at ${source}`);
-  if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new Error(`--name must be lowercase words joined by dashes, not ${name}`);
+  assertMusicTrackName(name, '--name');
 
   const dir = join(project, 'music');
   mkdirSync(dir, { recursive: true });
@@ -73,7 +79,7 @@ export type MusicFitShape = { seconds: number } | { bars: readonly number[]; tai
  * Deterministic: the same track and shape always give the same spans.
  */
 export function fitProjectMusicTrack(project: string, { name, as, shape }: { name: string; as: string; shape: MusicFitShape }): MusicFitResult {
-  if (!/^[a-z][a-z0-9-]*$/.test(as)) throw new Error(`--as must be lowercase words joined by dashes, not ${as}`);
+  assertMusicTrackName(as, '--as');
   if (as === name) throw new Error(`--as must differ from --name, so the original stays to refit from`);
   const dir = join(project, 'music');
   const manifest = readMusicManifest(dir), source = manifest[name];
