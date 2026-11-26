@@ -13,6 +13,9 @@ const blue = deriveLook(lineLook, {
 })
 ```
 
+Add a pass with `add` (see `inkPunchLook`): a draw, and a sheet with `card: 'none'` shown `before: 'actor'`. A draw's
+callback gets its redraw token; deal random choices from it.
+
 Place `lookPlanes` in your PaintedShot. Publish private recipes with `defineLook` and `lookDraw`.
 Name independent passes `fill`, `guides`, `contour`, `features`, `shadow` and `ground` where they apply.
 For a one-off or wash study, [paint by hand](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/first-painting.md).

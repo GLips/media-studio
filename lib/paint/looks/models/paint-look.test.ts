@@ -120,6 +120,12 @@ test('an added sheet on no card stands behind the actor and deals its draw by th
   assert.equal(actor.document.layers[0].sheet?.kind, 'own');
   assert.deepEqual(sheets(0.5)[0].document, burst.document);
   assert.notDeepEqual(sheets(1)[0].document, burst.document);
+  // Placed as a plane, the burst repaints at the cut and holds before it.
+  const plane = lookPlanes(punch, tile, { widthPx: 180, heightPx: 180 }, id => ({ id, depth: 1 }))[0].source;
+  assert.ok(typeof plane !== 'function' && plane.kind === 'figure' && typeof plane.source === 'function');
+  const { source } = plane, painted = (t: number) => JSON.stringify(source({ frame: t, at: t }).painting.document);
+  assert.equal(painted(0.5), painted(0));
+  assert.notEqual(painted(1), painted(0));
   assert.throws(() => deriveLook(line, { add: [{ step: dealt, to: 'actor.sheet', after: 'missing' }] }), /'missing' isn't in actor.sheet/);
   assert.throws(() => deriveLook(line, { add: [{ step: dealt, to: 'contour.sheet' }] }), /'contour' isn't a sheet place/);
   assert.throws(() => deriveLook(line, { add: [{ step: line.steps[1] }] }), /duplicate look step 'contour'/);

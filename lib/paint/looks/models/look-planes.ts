@@ -61,7 +61,8 @@ export function lookPlanes(
   return lookSheets(look, subject, size).map(({ name, document, redraws }) => {
     if (!redraws.length) return shotPlace(shotFigure(painting({ default: () => document }), name), placement(name));
     // Each token set's sheet is painted once: a draw dealing its own marks needs them dealt again, and seeking back
-    // to a token set reuses the evaluation it made.
+    // to a token set reuses the evaluation it made. Nothing is evicted, so a schedule redrawing every frame keeps a
+    // sheet per frame for the scene.
     const evaluations = new Map<string, PaintingEvaluation>();
     const evaluationAt = (frame: number) => {
       const key = JSON.stringify(redraws.map(({ redraw }) => redraw.at(frame).token));
