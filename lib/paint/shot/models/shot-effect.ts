@@ -8,6 +8,7 @@
 // the plane holding the effect.
 
 import { paintNodeTimeAt } from '#lib/paint/animation/models/paint-clock.ts';
+import { paintAnimationFrameAt } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import { paintSpanFrameRange } from '#lib/paint/animation/models/paint-span-moments.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityBox, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
@@ -223,6 +224,8 @@ export function shotLeafReadMoment(
 ): PaintMoment | null {
   const mapped = shotMomentMapped(moments, t);
   if (!moments.length) return mapped;
-  const drawn = (m: PaintMoment) => paintNodeTimeAt(leaf.sourceClock, m, shot.motion.animationFps).frame, { first } = paintSpanFrameRange(shot.span);
+  // Compared as whole animation frames: a moment mapped back by seconds lands a rounding short of the grid.
+  const fps = shot.motion.animationFps, drawn = (m: PaintMoment) => paintAnimationFrameAt(paintNodeTimeAt(leaf.sourceClock, m, fps).frame, fps);
+  const { first } = paintSpanFrameRange(shot.span);
   return drawn(mapped) < drawn(paintMoment(first / shot.span.fps)) ? null : mapped;
 }

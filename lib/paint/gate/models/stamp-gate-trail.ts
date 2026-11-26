@@ -135,7 +135,7 @@ const f = (value: number) => value.toFixed(1);
 export function checkStampGateTrail({ inTurn, shuffled, alone, laid, solved }: StampGateTrailFrames) {
   const order = STAMP_GATE_TRAIL_SHUFFLED.map((t) => STAMP_GATE_TRAIL_FRAMES.indexOf(t));
   const apart = order.map((k, i) => stampGateFrameDifference(shuffled[i], inTurn[k])), worst = apart.reduce((a, b) => (b.max > a.max || (b.max === a.max && b.mean > a.mean) ? b : a));
-  const first = stampGateFrameDifference(inTurn[0], alone);
+  const first = stampGateFrameDifference(inTurn[0], alone), second = STAMP_GATE_TRAIL_FRAMES.findIndex((t) => drawingsShown(t).length === 2), early = palms(inTurn[second]).length;
   const fresh = STAMP_GATE_TRAIL_FRAMES.map((t, k) => drawingsShown(t).filter((drawing) => !STAMP_GATE_TRAIL_FRAMES.slice(0, k).some((before) => drawingsShown(before).includes(drawing))).length);
   const reuses = fresh.every((n, k) => laid[k] === n && solved[k] <= n);
   const found = palms(inTurn.at(-1)!), gaps = found.slice(1).map(({ x }, i) => found[i].x - x);
@@ -145,8 +145,8 @@ export function checkStampGateTrail({ inTurn, shuffled, alone, laid, solved }: S
       detail: `drawn in a shuffled order, its ${order.length} frames lie at most ${stampGateFrameDifferenceText(worst)} from them drawn in turn (identical wanted)`,
     },
     {
-      id: 'shot/trail: no ghost before the first drawing', passed: first.max === 0,
-      detail: `its first frame lies ${stampGateFrameDifferenceText(first)} from the hand placed alone (identical wanted)`,
+      id: 'shot/trail: no ghost before the first drawing', passed: first.max === 0 && early === 2,
+      detail: `its first frame lies ${stampGateFrameDifferenceText(first)} from the hand placed alone (identical wanted); frame ${second}, the second drawing's first, shows ${early} palms (2 wanted: the hand and the first drawing's ghost)`,
     },
     {
       id: 'shot/trail: held drawings reuse pictures', passed: reuses,
