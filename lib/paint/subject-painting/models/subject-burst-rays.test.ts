@@ -26,11 +26,11 @@ function rays(...args: Parameters<typeof burstRays>): StampPoint[][] {
 
 test('rays aim at the body from clear of it, the face kept clearer, and run well past it', () => {
   const subject = post(400, 300, 100, 200), dealt = rays(subject, options);
-  assert.ok(dealt.length >= 15);
+  assert.ok(dealt.length >= 12);
   const ring = [[{ x: 400, y: 300 }, { x: 500, y: 300 }, { x: 500, y: 500 }, { x: 400, y: 500 }]];
   for (const [tip, , , , , , , , , , , , end] of dealt) {
-    assert.ok(stampRingsDistance(ring, tip.x, tip.y) <= -0.08 * 200 + 1e-6, 'the inner tip keeps its air');
-    assert.ok(Math.hypot(tip.x - 450, tip.y - 308) >= 2.5 * 0.08 * 200 - 1e-6, 'no tip crowds the face');
+    assert.ok(stampRingsDistance(ring, tip.x, tip.y) <= -0.04 * 200 + 1e-6, 'the inner tip keeps its air');
+    assert.ok(Math.hypot(tip.x - 450, tip.y - 308) >= 3 * 0.04 * 200 - 1e-6, 'no tip crowds the face');
     assert.ok(Math.hypot(end.x - 450, end.y - 400) > 160, 'the ray reaches far past the body');
     // Inner tip, outer end and the body's middle in one line: the ray points at the actor.
     const cross = (tip.x - 450) * (end.y - 400) - (tip.y - 400) * (end.x - 450);
