@@ -6,11 +6,11 @@ import { subjectFigureSheet } from '#lib/paint/subject-painting/models/subject-f
 import type { Subject } from '#lib/paint/subject/models/subject.ts';
 import { checkLookGraph, type LookStep } from './look-step.ts';
 
-/** Place each visible sheet of a resolved look. The scene supplies the subject's page size and the actor's stage position. */
-export function lookPlanes(
+/** Paint the visible sheets in show order, preserving their figure cards for placement or a still. */
+export function lookSheets(
   look: { readonly steps: readonly LookStep[]; readonly show: readonly string[] }, subject: Subject,
-  size: Pick<PaintingDocument, 'widthPx' | 'heightPx'>, placement: (name: string) => Omit<PlaneProps, 'source'>,
-): PlaneProps[] {
+  size: Pick<PaintingDocument, 'widthPx' | 'heightPx'>,
+): { name: string; document: PaintingDocument }[] {
   checkLookGraph(look.steps, look.show);
   const named = new Map(look.steps.map((step) => [step.name, step]));
   const draws = new Map<string, PaintingDocument['layers']>();
@@ -26,7 +26,15 @@ export function lookPlanes(
     if (place?.kind !== 'place' || !('sheet' in place)) throw new Error(`image placement '${name}' needs image-step composition`);
     const { paper, medium } = place;
     const layers = [subjectFigureSheet(subject, place.sheet.flatMap(layersOfDraw), { paper, key: name })];
-    const evaluation = painting({ default: () => ({ ...size, paper, medium, layers }) });
-    return shotPlace(shotFigure(evaluation, name), placement(name));
+    return { name, document: { ...size, paper, medium, layers } };
   });
+}
+
+/** Place each visible sheet at the actor's stage position. */
+export function lookPlanes(
+  look: { readonly steps: readonly LookStep[]; readonly show: readonly string[] }, subject: Subject,
+  size: Pick<PaintingDocument, 'widthPx' | 'heightPx'>, placement: (name: string) => Omit<PlaneProps, 'source'>,
+): PlaneProps[] {
+  return lookSheets(look, subject, size).map(({ name, document }) =>
+    shotPlace(shotFigure(painting({ default: () => document }), name), placement(name)));
 }
