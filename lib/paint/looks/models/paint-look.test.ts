@@ -8,7 +8,7 @@ import { trail } from '#lib/paint/shot/models/shot-trail.ts';
 import { subjectVisible } from '#lib/paint/subject/models/subject-geometry.ts';
 import { defineSubject } from '#lib/paint/subject/models/subject.ts';
 import { createLineLook } from './line-look.ts';
-import { lookPlanes } from './look-planes.ts';
+import { lookPlanes, lookSheets } from './look-planes.ts';
 import { defineLook, deriveLook, printLook } from './paint-look.ts';
 import { lookDraw, type LookStep } from './look-step.ts';
 
@@ -98,4 +98,29 @@ test('a contour redraw at a cue keeps sibling layers and resolves identically on
   const expected = times.map(t => [['tile.contour.part:body', schedule.at(t).token]]);
   assert.deepEqual(times.map(marks), expected);
   assert.deepEqual(times.toReversed().map(marks).toReversed(), expected);
+});
+
+test('an added sheet on no card stands behind the actor and deals its draw by the redraw token', () => {
+  const schedule = drawingSchedule('held', [{ at: 1, cadence: 'held' }]);
+  const dealt = lookDraw('rays', 'a token-dealt mark', { redraw: schedule }, (_subject, _params, token) => [{
+    key: 'rays', washes: [{ key: 'rays.ink', wetHistory: false, applications: [{
+      key: 'rays.stroke', kind: 'stroke', brush, diameterPx: 4, seed: 'rays', subpaths: [[{ x: 0, y: 0 }, { x: token.length * 10, y: 0 }]],
+      charge: { kind: 'paint', mix: { parts: [{ pigment: '#e5007e', amount: 1 }], strength: 1 } },
+    }] }],
+  }]);
+  const punch = deriveLook(line, { name: 'punch', add: [
+    { step: dealt },
+    { step: { name: 'burst', kind: 'place', sheet: ['rays'], paper: { color: '#ffffff', absorbency: 0.5 }, medium: 'watercolour', card: 'none' }, to: 'show', before: 'actor' },
+  ] });
+  assert.match(printLook(punch), /burst {2}place {2}sheet \[rays\] on no card/);
+  assert.deepEqual(punch.show, ['burst', 'actor']);
+  const sheets = (at: number) => lookSheets(punch, tile, { widthPx: 180, heightPx: 180 }, { at });
+  const [burst, actor] = sheets(0);
+  assert.equal(burst.document.layers[0].sheet, undefined);
+  assert.equal(actor.document.layers[0].sheet?.kind, 'own');
+  assert.deepEqual(sheets(0.5)[0].document, burst.document);
+  assert.notDeepEqual(sheets(1)[0].document, burst.document);
+  assert.throws(() => deriveLook(line, { add: [{ step: dealt, to: 'actor.sheet', after: 'missing' }] }), /'missing' isn't in actor.sheet/);
+  assert.throws(() => deriveLook(line, { add: [{ step: dealt, to: 'contour.sheet' }] }), /'contour' isn't a sheet place/);
+  assert.throws(() => deriveLook(line, { add: [{ step: line.steps[1] }] }), /duplicate look step 'contour'/);
 });

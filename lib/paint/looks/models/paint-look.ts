@@ -66,13 +66,56 @@ function replacedSteps<S extends LookStep>(steps: readonly S[], edits: Readonly<
   });
 }
 
-/** Replace named steps against the last resolved plan, then check every connection and inherited knob binding. */
-export function deriveLook<S extends LookStep, K extends Bindings, R extends object = {}>(
-  base: PaintLook<S, K>, patch: { readonly name?: string; readonly replace?: R & NoInfer<Replacements<S>> },
-): PaintLook<Replaced<S, R>, K> {
-  // SAFETY: replacedSteps dispatches by name. Replaced maps that name to its callback's result.
-  const steps = replacedSteps(base.steps, (patch.replace ?? {}) as Record<string, (step: S) => LookStep>) as Replaced<S, R>[];
-  return resolveLook({ ...base, name: patch.name ?? base.name, steps }, base.knobs);
+/**
+ * A step a derivation adds, and the ordered stack it joins: `show`, or a sheet place's draws as `<place>.sheet`, before
+ * or after a member, else last. Without `to` it joins none, for another added step to read.
+ */
+export type LookAddition<T extends LookStep = LookStep> = {
+  readonly step: T; readonly to?: 'show' | `${string}.sheet`; readonly before?: string; readonly after?: string;
+};
+
+/** `members` with `name` put where `addition` says, or why it can't go there. */
+function joined(members: readonly string[], name: string, { to, before, after }: LookAddition): string[] {
+  const anchor = before ?? after;
+  if (before !== undefined && after !== undefined) throw new Error(`add ${name} to ${to}: say before or after, not both`);
+  if (anchor === undefined) return [...members, name];
+  const at = members.indexOf(anchor);
+  if (at < 0) throw new Error(`add ${name} to ${to}: '${anchor}' isn't in ${to}`);
+  return members.toSpliced(before === undefined ? at + 1 : at, 0, name);
+}
+
+/** `plan` with each addition's step appended and joined to its stack. The graph check that follows catches name clashes. */
+function addedSteps(plan: { readonly steps: readonly LookStep[]; readonly show: readonly string[] }, additions: readonly LookAddition[]): { steps: LookStep[]; show: string[] } {
+  let steps: LookStep[] = [...plan.steps], show = [...plan.show];
+  for (const addition of additions) {
+    const { step, to } = addition;
+    if (to === undefined && (addition.before !== undefined || addition.after !== undefined)) throw new Error(`add ${step.name}: before and after need a stack to name`);
+    if (to === 'show') show = joined(show, step.name, addition);
+    else if (to !== undefined) {
+      const owner = to.slice(0, -'.sheet'.length), place = steps.find(({ name }) => name === owner);
+      if (place?.kind !== 'place' || !('sheet' in place)) throw new Error(`add ${step.name} to ${to}: '${owner}' isn't a sheet place`);
+      steps = steps.map((candidate) => (candidate === place ? { ...place, sheet: joined(place.sheet, step.name, addition) } : candidate));
+    }
+    steps.push(step);
+  }
+  return { steps, show };
+}
+
+/**
+ * Replace named steps against the last resolved plan, then add steps (LookAddition), then check every connection and
+ * inherited knob binding.
+ */
+export function deriveLook<S extends LookStep, K extends Bindings, R extends object = {}, const A extends readonly LookAddition[] = []>(
+  base: PaintLook<S, K>,
+  patch: { readonly name?: string; readonly replace?: R & NoInfer<Replacements<S>>; readonly add?: A },
+): PaintLook<Replaced<S, R> | A[number]['step'], K> {
+  // SAFETY: replace's keys name S's steps, each callback typed by Replacements<S>; replacedSteps dispatches by name.
+  const replaced = replacedSteps(base.steps, (patch.replace ?? {}) as Record<string, (step: S) => LookStep>);
+  const { steps, show } = addedSteps({ steps: replaced, show: base.show }, patch.add ?? []);
+  // SAFETY: Replaced maps each replaced name to its callback's result, and addedSteps appends A's steps and copies
+  // places with only their sheet lists changed, so every step is one of these.
+  const derived = steps as (Replaced<S, R> | A[number]['step'])[];
+  return resolveLook({ ...base, name: patch.name ?? base.name, steps: derived, show }, base.knobs);
 }
 
 /** Print resolved parameters, coordinate space, ordered sheet membership and visible outputs. */
@@ -82,7 +125,9 @@ export function printLook(look: Plan<LookStep> & { readonly knobs: Bindings }): 
       const changed = step.changed.length ? ` changed: ${step.changed.join(', ')}` : '';
       return `${step.name}  draw  ${step.description} (local) ${JSON.stringify({ ...step.params, redraw: step.params.redraw ? 'scheduled' : 'inherited' })}${changed}`;
     }
-    if (step.kind === 'place') return `${step.name}  place  ${'sheet' in step ? `sheet [${step.sheet.join(', ')}]` : step.image} (stage)`;
+    if (step.kind === 'place') {
+      return `${step.name}  place  ${'sheet' in step ? `sheet [${step.sheet.join(', ')}]${step.card === 'none' ? ' on no card' : ''}` : step.image} (stage)`;
+    }
     return `${step.name}  process  ${step.definition.name} ${JSON.stringify(step.inputs)} (${step.space})`;
   }), `show  ${look.show.join(', ')}`, ...Object.entries(look.knobs).map(([name, targets]) =>
     `${name}  knob  ${targets.map(([step, field]) => `${step}.${field}`).join(', ')}`)].join('\n');
