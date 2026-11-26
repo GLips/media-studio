@@ -27,6 +27,8 @@ export type PauseRigTuner = {
   turns: Record<PauseRigTunedKnob, number>;
   answers: PauseRigAnswer[];
   repeats: { asked: number; agreed: number };
+  /** Pairs skipped by knob, which move its clip on; absent in a session saved before skipping was offered. */
+  skips?: Partial<Record<PauseRigTunedKnob, number>>;
 };
 
 // Each knob's first step (a pair a step either side of its best differs plainly), the finest step a listener notices
@@ -138,7 +140,8 @@ export function nextPauseRigTrial(tuner: PauseRigTuner, clips: readonly PauseRig
     const showing = pauseRigClipsShowing(tuner, knob, clips, measure);
     if (showing.length === 0) continue;
     // Offset by the knob, so knobs asked in a row play different clips.
-    return order({ knob, clip: showing[(tuner.turns[knob] + PAUSE_RIG_TUNED_KNOBS.indexOf(knob)) % showing.length] }, ...pairOf(tuner, knob));
+    const turn = tuner.turns[knob] + (tuner.skips?.[knob] ?? 0) + PAUSE_RIG_TUNED_KNOBS.indexOf(knob);
+    return order({ knob, clip: showing[turn % showing.length] }, ...pairOf(tuner, knob));
   }
   return undefined;
 }
@@ -165,6 +168,10 @@ export function pickPauseRigTrial(tuner: PauseRigTuner, trial: PauseRigTrial, pi
     repeats: tuner.repeats,
   };
 }
+
+/** The tuner once the listener has skipped `trial`: no knob moves, and its knob asks on its next clip. */
+export const skipPauseRigTrial = (tuner: PauseRigTuner, trial: PauseRigTrial): PauseRigTuner =>
+  ({ ...tuner, skips: { ...tuner.skips, [trial.knob]: (tuner.skips?.[trial.knob] ?? 0) + 1 } });
 
 /**
  * Turns answered, and about how many a session takes in all: every unsettled knob's turns left but those `unshown`,

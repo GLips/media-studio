@@ -10,7 +10,7 @@ import { appendPauseRigLogFn, type PauseRigLogEntry } from '../controllers/pause
 import { PAUSE_RIG_CONFIRM_LINES, PAUSE_RIG_LINES, pauseRigLeadStart, pauseRigLineTimeOf, pauseRigWithLeadIn, type PauseRigClip } from './pause-rig-lines.ts';
 import { createPauseRigPlayer } from './pause-rig-player.ts';
 import {
-  nextPauseRigTrial, pauseRigTunedValues, pauseRigUnshownKnobs, pickPauseRigTrial, startPauseRigTuner,
+  nextPauseRigTrial, pauseRigTunedValues, pauseRigUnshownKnobs, pickPauseRigTrial, skipPauseRigTrial, startPauseRigTuner,
   type PauseRigFeel, type PauseRigMeasure, type PauseRigPick, type PauseRigTrial, type PauseRigTunedValues, type PauseRigTuner,
 } from './pause-rig-tuner.ts';
 
@@ -19,6 +19,9 @@ export type PauseRigVersion = 'first' | 'second' | 'line';
 
 // Silence between the two versions, so each lands as its own.
 const BETWEEN_VERSIONS_MS = 700;
+// A version counts as heard once it has played its clip or this long, whichever comes first, so a playback that
+// stalls never locks the answers; and it is stopped this long past its clip's end.
+const HEARD_AFTER_MS = 8000, OVERRUN_MS = 1500;
 // Seconds of the line as played a clip leads into its pause with, as offered and at first.
 export const PAUSE_RIG_LEAD_INS: readonly number[] = [2, 4, 6];
 const LEAD_IN_KEY = 'pause-rig-lead-in';
@@ -92,6 +95,7 @@ export function usePauseRigPick({ active, clips, cut, cutAsRecorded, takeOf, vid
   const leadInNow = useRef(leadIn);
   leadInNow.current = leadIn;
   const [leadGot, setLeadGot] = useState<number | undefined>();
+  const watch = useRef<{ heard?: ReturnType<typeof setTimeout>; overrun?: ReturnType<typeof setTimeout> }>({});
   const playStretch = (version: PauseRigVersion, line: number, values: PauseRigTunedValues, range: (speech: RecordedSpeech) => [RecordedSpeech, number, number], then?: () => void) => {
     const take = takeOf(line), cutSpeech = cut(line, values);
     if (!take || !video.current || typeof cutSpeech === 'string') return;
@@ -99,11 +103,25 @@ export function usePauseRigPick({ active, clips, cut, cutAsRecorded, takeOf, vid
     setLastPlayed(version);
     const [speech, from, to] = range(cutSpeech);
     const heardAs = asking;
-    void player.play(take.item, speech, from, to, video.current, () => {
-      setPlaying(undefined);
-      setHeard((h) => (h.asking === heardAs ? { asking: heardAs, versions: [...h.versions, version] } : { asking: heardAs, versions: [version] }));
-      then?.();
+    const markHeard = () => setHeard((h) => {
+      if (h.asking !== heardAs) return { asking: heardAs, versions: [version] };
+      return h.versions.includes(version) ? h : { asking: heardAs, versions: [...h.versions, version] };
     });
+    clearTimeout(watch.current.heard);
+    clearTimeout(watch.current.overrun);
+    const ended = () => {
+      clearTimeout(watch.current.heard);
+      clearTimeout(watch.current.overrun);
+      setPlaying(undefined);
+      markHeard();
+      then?.();
+    };
+    watch.current.heard = setTimeout(markHeard, Math.min(HEARD_AFTER_MS, (to - from) * 1000));
+    watch.current.overrun = setTimeout(() => {
+      player.stop();
+      ended();
+    }, (to - from) * 1000 + OVERRUN_MS);
+    void player.play(take.item, speech, from, to, video.current, ended);
   };
   const play = (version: PauseRigVersion, then?: () => void) => {
     if (version === 'line' && confirmLine !== undefined) playStretch('line', confirmLine, best, (s) => [s, 0, spokenStretchSeconds(s)]);
@@ -122,6 +140,8 @@ export function usePauseRigPick({ active, clips, cut, cutAsRecorded, takeOf, vid
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const stop = () => {
     clearTimeout(timer.current);
+    clearTimeout(watch.current.heard);
+    clearTimeout(watch.current.overrun);
     player.stop();
     setPlaying(undefined);
   };
@@ -164,6 +184,13 @@ export function usePauseRigPick({ active, clips, cut, cutAsRecorded, takeOf, vid
 
   return {
     session, best, trial, unshown, playing, leadIn, leadGot,
+    /** Moves on from the pair on show without answering it: logged, and no knob moves. */
+    skip: () => {
+      if (!trial) return;
+      stop();
+      logPauseRigPick({ type: 'skip', knob: trial.knob, clip: clipOfLog(trial), version1: trial.first, version2: trial.second });
+      setSession((s) => ({ ...s, tuner: skipPauseRigTrial(s.tuner, trial), trial: undefined }));
+    },
     /** Leads clips in with `seconds`, replaying the pair on show with it. */
     setLeadIn: (seconds: number) => {
       storeLeadIn(seconds);

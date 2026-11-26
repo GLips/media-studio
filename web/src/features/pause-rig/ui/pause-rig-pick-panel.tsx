@@ -116,6 +116,7 @@ export function PauseRigPickPanel({ pick }: { pick: ReturnType<typeof usePauseRi
           {PAUSE_RIG_TUNED_KNOBS.map((knob) => <Box key={knob} title={knob} {...stylex.props(styles.dot, pauseRigKnobSettled(session.tuner, knob) && styles.settled)} />)}
         </Group>
         <Button variant="subtle" disabled={session.history.length === 0} onClick={pick.undo}>Undo last pick</Button>
+        {!confirming && <Button variant="subtle" onClick={pick.skip}>Skip this pair</Button>}
       </Group>
       {!confirming && (
         <Group gap="tight">
