@@ -39,9 +39,10 @@ export type ShotEffectRead<I extends string = string> = {
 export type ShotEffectProblem = { readonly field: string; readonly message: string };
 
 /**
- * An effect's models half. `name` keys its output and names it in problems, so it's unique among a shot's effects.
+ * An effect's models half. `name` keys its output and names it in problems, unique among a shot's effects.
  * `inputs` names what it reads. `problems` checks its parameters, `defaults` filled in; `reads` lists its reads, at
- * most SHOT_EFFECT_READS_MOST; `grow`, px its output spreads past them (a blur's reach), 0 when left out.
+ * most SHOT_EFFECT_READS_MOST; `grow`, px its output spreads past them, 0 when left out. `emits`: its
+ * emission is its own light, blooming and spilling.
  */
 export type ShotEffectDefinition<P extends ShotEffectParams = ShotEffectParams, I extends string = string> = {
   readonly name: string;

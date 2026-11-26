@@ -51,16 +51,18 @@ export const neonTubes = defineShotEffect({
 });
 
 /**
- * A flicker: steady but for a faint buzz, dipping by up to `depth` on a `chance` share of the `rate` steps a second,
+ * A flicker: steady but for a faint buzz, dipping by up to `depth` (0..1, held there) on a `chance` share of the `rate` steps a second,
  * each step's fate drawn from `seed`. The same at a moment on every render, whatever order frames are drawn in.
  */
 export type NeonFlicker = { readonly rate: number; readonly depth: number; readonly chance: number; readonly seed: number | string };
 
 /** `flicker` as a value in time, 0..1, for the tubes' visibility. */
 export function neonFlickerValue({ rate, depth, chance, seed }: NeonFlicker): (moment: PaintMoment) => number {
+  // Past 1, a dip would turn the tubes' visibility below 0.
+  const dip = Math.min(Math.max(depth, 0), 1);
   return ({ at }) => {
     const step = Math.floor(at * rate), buzz = 0.03 * hashRandom('neon buzz', seed, step);
-    return hashRandom('neon dip', seed, step) < chance ? 1 - depth * (0.4 + 0.6 * hashRandom('neon depth', seed, step)) : 1 - buzz;
+    return hashRandom('neon dip', seed, step) < chance ? 1 - dip * (0.4 + 0.6 * hashRandom('neon depth', seed, step)) : 1 - buzz;
   };
 }
 

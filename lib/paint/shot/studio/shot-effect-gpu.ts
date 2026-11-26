@@ -160,7 +160,7 @@ export function createShotEffectPass(owner: StampPaintGpuOwner, { stage, arena }
   const pipelineOf = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
   return {
     /**
-     * `draw`'s output, kept under its key, or drawn into `encoder` and kept: a film, emitting when a read does. Every
+     * `draw`'s output, kept under its key, or drawn into `encoder` and kept: a film, emitting when its definition or a read does. Every
      * read's picture is used by `encoder` (the cache's own rule), so none is given up before it's read.
      */
     draw(encoder: GPUCommandEncoder, { gpu, params, reads, box, visibility, key }: ShotEffectPassDraw): StampPlanePicture {

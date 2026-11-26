@@ -16,6 +16,8 @@ fn neonGasOf(a: vec3f) -> vec3f {
   let sum = a.r + a.g + a.b;
   if (sum < 0.03) { return neonGas(0u); }
   let hue = a / sum;
+  // Grey paint has no hue to match: it takes the first gas, as black does.
+  if (max(hue.r, max(hue.g, hue.b)) - min(hue.r, min(hue.g, hue.b)) < 0.04) { return neonGas(0u); }
   var best = neonGas(0u);
   var nearest = 1e9;
   for (var i = 0u; i < u32(shotParam(3u)); i++) {
