@@ -61,8 +61,11 @@ mode, `isolation`, a z-index on a positioned element, a clip path or mask): it's
 behind it inside the shot at every frame; over a dark page, put an opaque background behind it inside the shot.
 
 **Effects.** An effect draws one image from others: a figure, a selection on a transparent ground, a painting in time,
-or another effect. Its inputs need no plane of their own; each is laid through the effect's plane's lay. `offsetCopies`
-is built in. Define your own as the studio does, in two halves: `defineShotEffect({name, inputs, defaults, problems,
+or another effect. Its inputs need no plane of their own; each is laid through the effect's plane's lay. Built in:
+`offsetCopies`; `channelSplit(hero, {red: [x, y], green, blue})`, each channel moved whole, so its fringe tints
+coloured footage cleanly; and `slices({source, second?, third?, fourth?}, {cells: 'rows' | 'rects', size, shift,
+share, seed})`, cells of the frame a seeded share moved, each showing one input: give two looks of one subject, neither
+placed, for a tiled mosh. Slices sit on the frame, not the subject, and the same seed always cuts the same. Define your own as the studio does, in two halves: `defineShotEffect({name, inputs, defaults, problems,
 reads, grow?})` (plain data: each read names an input, a map in plane px, and a moment map), and
 `defineShotEffectGpu(effect, {wgsl, uniforms})`, whose WGSL defines `fn shotEffect(p: vec2f) -> ShotFilm` over
 `shotRead(i, p)`, `shotOver`, `shotFaded` and `shotParam(i)` (`studio api defineShotEffectGpu`). Pass your halves to
