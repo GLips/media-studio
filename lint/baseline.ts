@@ -53,6 +53,27 @@ export function rebaselineTier(baseline: Baseline, tier: BaselineTier, findings:
   return Object.fromEntries(Object.entries(merged).toSorted(([a], [b]) => a.localeCompare(b)));
 }
 
+/**
+ * The baseline split by path: `judged` holds the entries of paths the gate reads, `setAside` those `isSetAside` names (a
+ * frozen project's, which no gate reads until it thaws, so they neither excuse nor go stale meanwhile).
+ */
+export function partitionBaseline(baseline: Baseline, isSetAside: (path: string) => boolean): { judged: Baseline; setAside: Baseline } {
+  const judged: Baseline = {}, setAside: Baseline = {};
+  for (const [check, files] of Object.entries(baseline)) {
+    for (const [path, keys] of Object.entries(files)) ((isSetAside(path) ? setAside : judged)[check] ??= {})[path] = keys;
+  }
+  return { judged, setAside };
+}
+
+/** Two baselines of disjoint paths as one, checks and paths in order. */
+export function mergeBaselines(a: Baseline, b: Baseline): Baseline {
+  const checks = [...new Set([...Object.keys(a), ...Object.keys(b)])].toSorted((x, y) => x.localeCompare(y));
+  return Object.fromEntries(checks.map((check) => {
+    const files = { ...a[check], ...b[check] };
+    return [check, Object.fromEntries(Object.entries(files).toSorted(([x], [y]) => x.localeCompare(y)))];
+  }));
+}
+
 /** Each of the baseline's entries at most its count in `counted`; one `counted` lacks is gone. */
 function lowerBaseline(baseline: Baseline, counted: Baseline): Baseline {
   const lowered: Baseline = {};

@@ -9,9 +9,10 @@
 
 import { execFileSync } from 'node:child_process';
 import { lstatSync, readFileSync, readlinkSync } from 'node:fs';
+import { FROZEN_PROJECT_RECORD, frozenProjectsInPaths, inFrozenProject, parseFrozenProjectRecord } from '#lib/platform/project/models/frozen-project.ts';
 import { join } from 'node:path';
 
-export type CandidateSnapshot = { kind: 'worktree' } | { kind: 'index' } | { kind: 'commit'; rev: string };
+export type CandidateSnapshot = { kind: 'worktree'; project?: string } | { kind: 'index' } | { kind: 'commit'; rev: string };
 
 /** A snapshot a hand run or a hook can name: a commit is check:arch's alone. */
 export type LiveSnapshot = Exclude<CandidateSnapshot, { kind: 'commit' }>;
@@ -45,11 +46,36 @@ const gitPaths = (root: string, gitEnv: NodeJS.ProcessEnv, args: readonly string
     .filter((path) => path && !path.endsWith('/'));
 
 /** Every file the snapshot holds. The working tree's are its tracked and unignored untracked files still on disk. */
-export function listSnapshotPaths({ root, snapshot, gitEnv }: SnapshotRepository): string[] {
+function allSnapshotPaths({ root, snapshot, gitEnv }: SnapshotRepository): string[] {
   if (snapshot.kind === 'commit') return gitPaths(root, gitEnv, ['ls-tree', '-r', '-z', '--name-only', snapshot.rev]);
   if (snapshot.kind === 'index') return gitPaths(root, gitEnv, ['ls-files', '-z', '--cached']);
   return gitPaths(root, gitEnv, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'])
     .filter((path) => lstatSync(join(root, path), { throwIfNoEntry: false }) !== undefined);
+}
+
+function uncheckedProjects(repo: MountedSnapshot, paths: readonly string[]): Set<string> {
+  const frozen = frozenProjectsInPaths(paths);
+  const markers = Array.from(frozen, (name) => `projects/${name}/${FROZEN_PROJECT_RECORD}`);
+  readSnapshotTexts(repo, markers).forEach((text, index) => parseFrozenProjectRecord(text, markers[index]));
+  const selected = repo.snapshot.kind === 'worktree' && repo.snapshot.project;
+  if (selected) {
+    for (const path of paths) {
+      const [, name] = path.split('/');
+      if (path.startsWith('projects/') && name !== selected) frozen.add(name);
+    }
+  }
+  return frozen;
+}
+
+export function uncheckedProjectsOfSnapshot(repo: MountedSnapshot): Set<string> {
+  return repo.mount === 'work' ? uncheckedProjects(repo, allSnapshotPaths(repo)) : new Set();
+}
+
+export function listSnapshotPaths(repo: MountedSnapshot): string[] {
+  const paths = allSnapshotPaths(repo);
+  if (repo.mount !== 'work') return paths;
+  const frozen = uncheckedProjects(repo, paths);
+  return paths.filter((path) => !inFrozenProject(path, frozen));
 }
 
 /** Each path's text, in order: from git's objects for the index or a commit, from disk for the working tree. */

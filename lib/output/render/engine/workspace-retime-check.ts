@@ -4,16 +4,18 @@
 //
 // `npm run test:workspace` and `npm test` run it by name. It isn't a `.test.ts`, so the studio's own gate (lib's
 // specs, what a clean clone holds) never reads work/, another repository with gitignored audio.
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { activeStudioProjects } from '#lib/platform/project/engine/frozen-project-record.ts';
 import { test } from 'node:test';
 import { STUDIO_PROJECTS_DIR } from '#lib/platform/project/engine/studio-project.ts';
 import { assertTimelineRetimes } from '#lib/timing/timeline/models/retime.ts';
 import { readProjectTimeline } from './project-clock.ts';
 
-const timedProjects = existsSync(STUDIO_PROJECTS_DIR)
-  ? readdirSync(STUDIO_PROJECTS_DIR).filter((name) => existsSync(join(STUDIO_PROJECTS_DIR, name, 'storyboard.ts'))).toSorted()
-  : [];
+const selected = process.env.STUDIO_RETIME_PROJECTS;
+// SAFETY: workspace-check serializes the selected project names with JSON.stringify.
+const projects = selected ? JSON.parse(selected) as string[] : activeStudioProjects();
+const timedProjects = projects.filter((name) => existsSync(join(STUDIO_PROJECTS_DIR, name, 'storyboard.ts')));
 
 for (const name of timedProjects) {
   test(`${name} retimes: a longer scene moves every later one and its cues, and nothing before`, async () => {

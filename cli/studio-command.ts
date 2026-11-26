@@ -6,20 +6,23 @@ import type { StudioVerbGroups } from './command-help.ts';
 
 /** Every verb, under the heading the root index lists it by; the index refuses a registered verb missing here. */
 export const STUDIO_VERB_GROUPS = {
-  make: ['new', 'library', 'grade', 'capture', 'voice', 'audition', 'music', 'sfx', 'gen', 'paint', 'brushes', 'still', 'render'],
+  make: ['new', 'library', 'grade', 'capture', 'voice', 'audition', 'music', 'sfx', 'gen', 'paint', 'brushes', 'still', 'stills', 'render'],
   inspect: ['look', 'check', 'clock', 'mix', 'probe', 'transcribe', 'study', 'repeatable', 'profile', 'trace', 'api', 'gpu'],
   review: ['review', 'preview', 'app'],
-  setup: ['workspace', 'hosts', 'remote', 'home', 'recorder', 'camera', 'light'],
+  setup: ['freeze', 'thaw', 'workspace', 'hosts', 'remote', 'home', 'recorder', 'camera', 'light'],
 } as const satisfies StudioVerbGroups;
 
 export const studioCommand = defineCommand({
   meta: {
     name: 'studio',
-    description: 'Videos and stills made in code. `studio <verb> --help` gives a verb\'s modes, outputs, failures and every flag.',
-    about: 'A <project> is its slug, part of its name, or a path; projects, brand kits and styles live in the workspace, work/ under `studio home`. A project\'s own paths (out/, music/, review/) are inside it. Payload goes to stdout, progress to stderr.',
+    description: 'Make videos and stills in code. See `studio <verb> --help` for modes, outputs, errors and flags. Progress uses stderr.',
+    about: '<project> accepts a name, substring or path. Projects, brands and styles live in work/ under `studio home`.',
   },
   setup: refuseOptionsBeforeSubcommand,
   subCommands: {
+    freeze: () => import('./commands/freeze.ts').then((m) => m.freeze),
+    thaw: () => import('./commands/freeze.ts').then((m) => m.thaw),
+    stills: () => import('./commands/still.ts').then((m) => m.default),
     workspace: () => import('./commands/workspace.ts').then((m) => m.default),
     recorder: () => import('./commands/recorder.ts').then((m) => m.default),
     camera: () => import('./commands/camera.ts').then((m) => m.default),

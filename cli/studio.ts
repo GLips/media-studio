@@ -48,9 +48,11 @@ if (stray !== null) {
   const { studioTempRoot } = await import('#lib/platform/temp/engine/studio-temp.ts');
   const { runAsStudioGpuJob } = await import('#lib/platform/gpu/engine/gpu-lease.ts');
   exitStudioProcessOnSignals();
-  // Made up front, not on first use, so every command sweeps what a crashed or killed one left in the temp dir.
-  studioTempRoot();
   try {
+    const { runFrozenRender } = await import('./frozen-render.ts');
+    if (await runFrozenRender(rawArgs)) process.exit(process.exitCode ?? 0);
+    // Freeze and thaw run the checks in child processes, each with its own temporary files.
+    if (!['freeze', 'thaw'].includes(rawArgs[0])) studioTempRoot();
     const gpuJob = { kind: INTERACTIVE_GPU_VERBS.has(rawArgs[0]) ? 'interactive' : 'batch', command: ['studio', ...rawArgs].join(' ') } as const;
     await runAsStudioGpuJob(gpuJob, () => runCommand(studioCommand, { rawArgs }));
   } catch (error) {

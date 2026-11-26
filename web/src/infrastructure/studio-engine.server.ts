@@ -47,3 +47,4 @@ export const readLibraryItemView = (id: string) => runLibraryApp(readLibraryItem
 export const readLibraryFlags = (id: string) => runLibraryApp(readLibraryFlagsEffect(id));
 /** The reviewer's change to an item's flags; the flags after it. */
 export const changeLibraryFlags = (id: string, op: LibraryFlagOp) => runLibraryApp(changeLibraryFlagsEffect(id, op, 'reviewer'));
+export { frozenReviewOrigin } from '#lib/platform/web/engine/frozen-review-app.ts';

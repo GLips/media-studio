@@ -7,3 +7,4 @@ export { StudioWaitingTitle } from './ui/studio-waiting-title.tsx';
 export { loadProjectSummaries, loadProjectSummary, projectPulseQueryOptions, useProjectPulse } from './controllers/project-queries.ts';
 export type { ProjectPulse } from './controllers/project-pulse.ts';
 export { respondWithProjectMedia, respondWithStudioCheckout } from './controllers/project-media-response.ts';
+export { fetchFrozenReviewOrigin } from './controllers/project-summaries.ts';

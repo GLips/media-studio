@@ -177,3 +177,9 @@ async function namedStudioCommand(command: CommandDef, words: readonly string[],
   if (word === undefined || !Object.hasOwn(subs, word)) return { path, command };
   return namedStudioCommand(await resolveHelpValue(subs[word]), rest, [...path, word]);
 }
+
+/** The arguments the registered command accepts, including positional arguments. */
+export async function studioCommandArguments(root: CommandDef, words: readonly string[]): Promise<ArgsDef> {
+  const { command } = await namedStudioCommand(root, words, []);
+  return (await resolveHelpValue(command.args)) ?? {};
+}

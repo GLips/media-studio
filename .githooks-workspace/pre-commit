@@ -31,6 +31,7 @@ case "${GIT_INDEX_FILE:-}" in
   /*) ;;
   *) GIT_INDEX_FILE="$(pwd)/$GIT_INDEX_FILE"; export GIT_INDEX_FILE ;;
 esac
+workspace_index=$(git rev-parse --path-format=absolute --git-path index) || exit 1
 cd "$(dirname "$0")/.." || exit 1
 
 failed=''
@@ -43,18 +44,9 @@ for name in $(env | sed -n 's/^\(GIT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$name"
 # The typecheck leaves out the workspace's untracked paths, as check:arch and lint do: tsc -p a config extending the
 # studio's, its exclude widened by them. A tracked file that imports one still checks it. effect-tsgo runs it, as the
 # studio's scripts do: plain tsc ignores the Effect language service's plugin and its diagnostics.
-gate_config=.tsconfig.workspace-gate.json
-node -e '
-const { execFileSync } = require("node:child_process");
-const { writeFileSync } = require("node:fs");
-const shown = JSON.parse(execFileSync("node_modules/.bin/tsc", ["-p", ".", "--showConfig"], { encoding: "utf8" }));
-const untracked = execFileSync("git", ["-C", "work", "ls-files", "-z", "--others", "--exclude-standard", "--directory"], { encoding: "utf8" })
-  .split("\0").filter(Boolean).map((path) => "work/" + path.replace(/\/$/, ""));
-writeFileSync(process.argv[1], JSON.stringify({ extends: "./tsconfig.json", exclude: [...(shown.exclude ?? []), ...untracked] }));
-' "$gate_config" && node_modules/.bin/effect-tsgo tsc -p "$gate_config" || failed="$failed typecheck"
-rm -f "$gate_config"
+npm run -s typecheck -- --tracked "$workspace_index" || failed="$failed typecheck"
 log=$(mktemp)
-npm run -s test:workspace > "$log" 2>&1 || { tail -n 60 "$log"; failed="$failed test"; }
+npm run -s test:workspace -- --tracked "$workspace_index" > "$log" 2>&1 || { tail -n 60 "$log"; failed="$failed test"; }
 rm -f "$log"
 
 if [ -n "$failed" ]; then
