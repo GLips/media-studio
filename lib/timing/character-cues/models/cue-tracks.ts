@@ -5,7 +5,8 @@
 // Everything here is a pure function of the score and the time sampled: snapshots and move entries are memoised, but
 // what they hold doesn't depend on which frame asked first.
 
-import type { LookCatalog } from '#lib/paint/looks/models/look-catalog.ts';
+import { lookCadence, type LookCatalog } from '#lib/paint/looks/models/look-catalog.ts';
+import { CUE_TIME_SLACK, drawingSchedule, type DrawingPhase, type DrawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import { cueBlendCurve, type CueBlend, type CueBlendCurve } from './cue-blend.ts';
 import type { AnyCueCharacter, CueCharacterState } from './cue-character.ts';
 import type { CueCast, CueFrame, CueMoveEnd, CueRow, CueVector } from './cue-score.ts';
@@ -14,16 +15,14 @@ import {
 } from './cue-state.ts';
 import { cueSecondsOf, cueTimeSeconds, type CueClock, type CueNamesOfClock, type CueTime } from './cue-time.ts';
 
-/** A compiled score: the frame at any scene time. */
+/**
+ * A compiled score: the frame at any scene time, and when its drawings start: each look's cadence from its cut, a
+ * palette cue keeping the phase. Whatever draws the character redraws on `drawings` rather than keeping a clock of its own.
+ */
 export type CueScore<C extends AnyCueCharacter, L extends LookCatalog, Camera extends CueState> = {
   readonly sample: (t: number) => CueFrame<C, L, Camera>;
+  readonly drawings: DrawingSchedule;
 };
-
-/**
- * How far early a write or look still counts as begun. A render's `s.t` (frame / fps less the scene's start) can land a rounding error
- * before a cue computed as (frame - cut) / fps for the same frame; with this slack a cue lands on the frame it names.
- */
-const CUE_TIME_SLACK = 1e-6;
 
 /** The squash a spring's overshoot may not pass below: a body squashed through zero would turn inside out. */
 const SQUASH_FLOOR = 0.05;
@@ -37,7 +36,7 @@ type Write = {
 
 type StageState = { character: CueState; actor: { position: CueVector; squash: number }; camera: CueState };
 
-type LookSpan = { readonly start: number; readonly look: string; readonly palette: string; readonly phase: number };
+type LookSpan = { readonly start: number; readonly look: string; readonly palette: string };
 
 export function compileCueScore<Clock extends CueClock, C extends AnyCueCharacter, L extends LookCatalog, Camera extends CueState>(
   clock: Clock, cast: CueCast<C, L, Camera>, rows: readonly CueRow<C, L, Camera, CueNamesOfClock<Clock>>[],
@@ -158,18 +157,17 @@ export function compileCueScore<Clock extends CueClock, C extends AnyCueCharacte
   }
   const entryOf = (index: number): CueState => stageOf(entryLeaves(index)).character;
 
-  const looks = lookSpans(cast.looks, rows.map((row) => ({ ...row, seconds: at(row.at) })), clock.id);
+  const { spans: looks, drawings } = lookSpans(cast.looks, rows.map((row) => ({ ...row, seconds: at(row.at) })), clock);
 
   return {
+    drawings,
     sample(t) {
       const span = looks.findLast((s) => s.start <= t + CUE_TIME_SLACK) ?? looks[0];
-      const sampling = cast.looks[span.look].sampling;
-      const fps = sampling === 'live' ? clock.fps : sampling.fps;
-      const drawing = Math.floor((t - span.phase + CUE_TIME_SLACK) * fps), drawingTime = sampling === 'live' ? t : span.phase + drawing / fps;
-      const leaves = schema.paths.map((path, leaf) => leafAt(leaf, path.startsWith('camera.') || path === 'actor.position' ? t : drawingTime));
+      const drawing = drawings.at(t);
+      const leaves = schema.paths.map((path, leaf) => leafAt(leaf, path.startsWith('camera.') || path === 'actor.position' ? t : drawing.time));
       const stage = stageOf(leaves);
       return {
-        t, drawing, drawingTime, look: span.look, palette: span.palette,
+        t, drawing: drawing.index, drawingTime: drawing.time, look: span.look, palette: span.palette,
         // SAFETY: the character's subtree was read from its own initial state, so it rebuilds as that state's type.
         character: stage.character as CueCharacterState<C>,
         // SAFETY: the camera's subtree was read from the cast's camera, so it rebuilds as Camera.
@@ -180,11 +178,17 @@ export function compileCueScore<Clock extends CueClock, C extends AnyCueCharacte
   };
 }
 
-/** Which look and palette show from when: a genuine look change starts a new drawing phase; a palette change doesn't. */
-function lookSpans(catalog: LookCatalog, rows: readonly { seconds: number; look?: string; palette?: string | { look: string; name: string } }[], scene: string): LookSpan[] {
-  const first = Object.keys(catalog)[0];
+/**
+ * Which look and palette show from when, and the drawing phases they start: a genuine look change starts a new phase at
+ * its cut, redrawn at that look's cadence; a palette change doesn't.
+ */
+function lookSpans(
+  catalog: LookCatalog, rows: readonly { seconds: number; look?: string; palette?: string | { look: string; name: string } }[], clock: CueClock,
+): { spans: LookSpan[]; drawings: DrawingSchedule } {
+  const scene = clock.id, first = Object.keys(catalog)[0];
   if (first === undefined) throw new Error(`score for scene ${scene}: its look catalog is empty`);
-  const spans: LookSpan[] = [{ start: -Infinity, look: first, palette: catalog[first].palettes[0], phase: 0 }];
+  const spans: LookSpan[] = [{ start: -Infinity, look: first, palette: catalog[first].palettes[0] }];
+  const phases: DrawingPhase[] = [];
   const sorted = rows.map((row, n) => ({ ...row, n })).filter((row) => row.look !== undefined || row.palette !== undefined)
     .toSorted((a, b) => a.seconds - b.seconds);
   for (const [k, row] of sorted.entries()) {
@@ -194,11 +198,14 @@ function lookSpans(catalog: LookCatalog, rows: readonly { seconds: number; look?
       const named = typeof row.palette === 'string' ? row.palette : undefined;
       const palette = named ?? catalog[row.look].palettes[0];
       if (row.look === now.look) spans.push({ ...now, start: row.seconds, palette });
-      else spans.push({ start: row.seconds, look: row.look, palette, phase: row.seconds });
+      else {
+        spans.push({ start: row.seconds, look: row.look, palette });
+        phases.push({ at: row.seconds, cadence: lookCadence(catalog[row.look], clock.fps) });
+      }
     } else if (typeof row.palette === 'object') {
       if (row.palette.look !== now.look) throw new Error(`score for scene ${scene}, row ${row.n + 1}: palette ${row.palette.name} is ${row.palette.look}'s, but ${now.look} is showing`);
       spans.push({ ...now, start: row.seconds, palette: row.palette.name });
     }
   }
-  return spans;
+  return { spans, drawings: drawingSchedule(lookCadence(catalog[first], clock.fps), phases) };
 }

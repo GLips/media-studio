@@ -94,6 +94,9 @@ export type { CueCast, CueFrame, CueMoveCall, CueMoveEnd, CueRow, CueVector } fr
 export type { CueLeaf, CueLeafPath, CueNumberPath, CuePatch, CuePath, CueState } from '#lib/timing/character-cues/models/cue-state.ts';
 export { cueSecondsOf, cueTimeSeconds, type CueAnchor, type CueClock, type CueNamesOfClock, type CueOffset, type CueSeconds, type CueTime } from '#lib/timing/character-cues/models/cue-time.ts';
 export { compileCueScore, type CueScore } from '#lib/timing/character-cues/models/cue-tracks.ts';
+export {
+  drawingSchedule, redrawSeed, type DrawingCadence, type DrawingPhase, type DrawingSchedule, type RedrawToken, type ScheduledDrawing,
+} from '#lib/timing/drawings/models/drawing-schedule.ts';
 export { defineLookCatalog, type LookCatalog, type LookDescription, type LookPaletteOf, type LookSampling } from '#lib/paint/looks/models/look-catalog.ts';
 export {
   checkGltfCueManifest, gltfCueCharacter, type GltfClipMove, type GltfClipPose, type GltfClipSample, type GltfCueManifest, type GltfCueState, type GltfMorphPatch,

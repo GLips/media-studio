@@ -129,7 +129,7 @@ export const LIB_LAYERS: readonly LibLayer[] = [
   // the library, which index by it; the input log below capture, the recorder's readers and the kit's cursor.
   { name: 'footage-logs', features: ['footage/transcript', 'footage/input-log'] },
   { name: 'vocabulary', features: ['picture/frame', 'picture/motion', 'picture/type', 'picture/color', 'picture/shot-camera', 'picture/lens', 'picture/readback'] },
-  { name: 'timing', features: ['timing/voice', 'timing/timeline', 'timing/sound', 'timing/music', 'timing/storyboard'] },
+  { name: 'timing', features: ['timing/voice', 'timing/timeline', 'timing/sound', 'timing/music', 'timing/storyboard', 'timing/drawings'] },
   // The camera keeps clear of the caption band a style reserves, so it stands on captions.
   { name: 'framing', features: ['picture/captions', 'picture/camera'] },
   { name: 'measurement', features: ['picture/measurement', 'picture/profiling'] },

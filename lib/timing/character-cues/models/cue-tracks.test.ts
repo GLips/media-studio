@@ -108,3 +108,25 @@ test('bars and beats land on the grid, and a score that names a cue twice or a c
   // @ts-expect-error 'stop' isn't one of scene a's cues
   assert.throws(() => compileCueScore(a, cast, [{ at: 'stop', pose: 'up' }]), /scene a has no cue stop/);
 });
+
+test('a palette cue preserves a held drawing until a look cue cuts it short', () => {
+  const score = compileCueScore(a, cast, [
+    { at: { from: 'go', offset: { seconds: -1.25 } }, look: 'paint' },
+    { at: { from: 'go', offset: { seconds: 0.06 } }, palette: { look: 'paint', name: 'cool' } },
+    { at: { from: 'go', offset: { seconds: 0.08 } }, look: 'toon' },
+  ]);
+  assert.equal(score.sample(-0.3).drawing, Math.floor((-0.3 + 1e-6) * a.fps));
+  const held = score.drawings.at(1.05);
+  assert.equal(score.sample(1.07).palette, 'cool');
+  assert.deepEqual(score.drawings.at(1.07), held);
+  assert.equal(score.sample(1.08).drawingTime, 1.08);
+  assert.equal(score.drawings.at(1.08).index, 0);
+  assert.notEqual(score.drawings.at(1.08).token, held.token);
+});
+
+test('catalog sampling and the live scene cadence reject invalid rates at construction', () => {
+  for (const fps of [Infinity, NaN, 0, -1]) {
+    assert.throws(() => defineLookCatalog({ paint: { sampling: { fps }, palettes: ['ink'] } }), /look paint: drawing fps must be finite and positive/);
+    assert.throws(() => compileCueScore({ ...a, fps }, cast, []), /drawing fps must be finite and positive/);
+  }
+});
