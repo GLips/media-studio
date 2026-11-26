@@ -39,8 +39,8 @@ const messages = (...planes: PlaneProps[]) => compiled(...planes).problems.map((
 const twoReads = (key: string) => [{ key, map: PAINT_SIMILARITY_IDENTITY }, { key, map: { ...PAINT_SIMILARITY_IDENTITY, kx: 30 } }];
 
 /** Two inputs, each read once, the second at the moment a quarter second earlier. */
-const trail = defineShotEffect({
-  name: 'trail', inputs: ['lead', 'follow'], defaults: { lag: 0.25 },
+const chase = defineShotEffect({
+  name: 'chase', inputs: ['lead', 'follow'], defaults: { lag: 0.25 },
   problems: ({ lag }) => (lag >= 0 ? [] : [{ field: 'lag', message: `${lag} s runs ahead` }]),
   reads: ({ lag }) => [{ input: 'lead' }, { input: 'follow', moment: ({ at, frame }) => ({ at: at - lag, frame: frame - lag }) }],
 });
@@ -62,20 +62,20 @@ test('bad parameters and graphs are refused with what to do, each at its field',
   const said = messages(
     shotPlace(offsetCopies(hero, { count: 0, fade: 2 }), { id: 'a', depth: 1 }),
     { id: 'b', depth: 1, source: { ...offsetCopies(hero), params: { speed: 3 } } },
-    { id: 'c', depth: 1, source: trail({ lead: hero } as never) },
+    { id: 'c', depth: 1, source: chase({ lead: hero } as never) },
     { id: 'd', depth: 1, source: offsetCopies(layersOf(painting(street), ['shadow'])) },
     { id: 'e', depth: 1, source: offsetCopies(hero), masks: [{ kind: 'alphaOf', drawable: 'street/shadow' }] },
   );
   assert.match(said, /source\.params\.count: offsetCopies: 0 isn't a whole number of copies from 1 to 11/);
   assert.match(said, /source\.params\.fade: offsetCopies: 2 isn't within 0\.\.1/);
   assert.match(said, /source\.params\.speed: offsetCopies: takes no parameter speed; it takes count, dx, dy, fade/);
-  assert.match(said, /source\.inputs: trail: reads follow, which isn't given: give lead, follow/);
+  assert.match(said, /source\.inputs: chase: reads follow, which isn't given: give lead, follow/);
   assert.match(said, /source\.inputs\.source: lays its paper ground, and offsetCopies reads colour and transmittance/);
   assert.match(said, /masks: places offsetCopies's output, and masks cut a painted plane's films/);
 });
 
 test("an effect's reads at moments map the frame's outermost first, and its output's key names its effect, parameters and reads, never a moment", () => {
-  const { shot, problems } = compiled(shotPlace(trail({ lead: hero, follow: trail({ lead: hero, follow: hero }, { lag: 0.5 }) }), { id: 'chase', depth: 1 }));
+  const { shot, problems } = compiled(shotPlace(chase({ lead: hero, follow: chase({ lead: hero, follow: hero }, { lag: 0.5 }) }), { id: 'chase', depth: 1 }));
   assert.deepEqual(problems, []);
   const plane = shot!.planes.find(({ id }) => id === 'chase') as CompiledShotEffectPlane;
   assert.deepEqual(shotImageLeafReads(plane.image).map(({ moments }) => shotMomentMapped(moments, paintMoment(1)).at), [1, 0.75, 0.25]);

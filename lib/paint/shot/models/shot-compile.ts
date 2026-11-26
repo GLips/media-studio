@@ -10,7 +10,7 @@
 
 import { buildPaintCamera, paintCameraLensBuilt, paintShotCameraOptions } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
-import { paintNodeClockProblem, paintNodeClockSteps, paintNodeTimeAt, type PaintNodeClock, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
+import { paintNodeClockProblem, paintNodeClockSteps, paintNodeDrawingSeconds, paintNodeTimeAt, type PaintNodeClock, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import { paintPlacementMoveProblem } from '#lib/paint/animation/models/paint-motion-clips.ts';
 import { paintSecondsText, paintSpanFrames, paintSpanMoments, paintSpanProblem } from '#lib/paint/animation/models/paint-span-moments.ts';
 import { presentationValueAt, type PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
@@ -21,8 +21,9 @@ import { PAPER_KEY_LIGHT, paintLightProblem, type PaintLight } from '#lib/paint/
 import { PAINT_ANIMATION_FPS } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { paintMoment, type PaintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { momentEarlier } from '#lib/picture/lens/models/lens-shutter.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
-import { compiledShotEffect, shotEffectChecked, shotEffectReadMap, shotImageLeaves, type CompiledShotEffectImage, type CompiledShotEffectRead, type CompiledShotImage, type ShotImageSource } from './shot-effect.ts';
+import { compiledShotEffect, shotEffectChecked, shotEffectReadMap, shotImageLeaves, type CompiledShotEffectImage, type CompiledShotEffectRead, type CompiledShotImage, type ShotEffectMoment, type ShotImageSource } from './shot-effect.ts';
 import { shotFigureProblems } from './shot-figure.ts';
 import { shotPlaneMomentAt } from './shot-frame-plan.ts';
 import { shotPlaneEntries } from './shot-entries.ts';
@@ -284,7 +285,19 @@ function compileEffectImage(image: Extract<ShotImageSource, { readonly kind: 'ef
     return given === undefined ? [] : [[name, compileEffectInput(given, paintingField(field, `inputs.${name}`), definition.name, at)] as const];
   }));
   if (checked.problems.length || [...inputs.values()].some((input) => input === null)) return null;
-  const reads = checked.reads.map((read): CompiledShotEffectRead => ({ input: inputs.get(read.input)!, map: shotEffectReadMap(read), moment: read.moment ?? null }));
+  const drawing = paintNodeDrawingSeconds(paintNodeClockSteps(at.props.sourceClock), at.fps);
+  const countsDrawings = checked.reads.some(({ moment }) => moment && typeof moment !== 'function' && moment.drawingsEarlier > 0);
+  if (countsDrawings && drawing === null) {
+    // A drawing clock is declared, never found by comparing pictures: a source's pixels may hold while its pose moves.
+    at.problems.push(shotError(at.props.id, 'sourceClock', `${definition.name} reads its input drawings earlier, and the plane declares no drawing clock: give it sourceClock: { hold: n }, each drawing held n animation frames`));
+    return null;
+  }
+  const momentOf = (moment: ShotEffectMoment | undefined): CompiledShotEffectRead['moment'] => {
+    if (moment === undefined || typeof moment === 'function') return moment ?? null;
+    const seconds = moment.drawingsEarlier * drawing!;
+    return seconds ? (m) => momentEarlier(m, seconds) : null;
+  };
+  const reads = checked.reads.map((read): CompiledShotEffectRead => ({ input: inputs.get(read.input)!, map: shotEffectReadMap(read), moment: momentOf(read.moment) }));
   return compiledShotEffect(definition, checked.params, reads, checked.grow);
 }
 

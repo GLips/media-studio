@@ -33,3 +33,11 @@ export function shutterTravel(at: (t: number) => number, t: number, shutter: num
  * through a shutter `shutter` long opened as shutterOpensAt says.
  */
 export const shutterMomentAt = (t: number, shutter: number, share: number, start = -Infinity) => shutterOpensAt(t, shutter, start) + share * shutter;
+
+/**
+ * The past's one convention, for every sampler reading a thing as it was: moment `moment` `seconds` earlier moves the
+ * time seen and the frame shown back together, so a drawing held on its frame moves back with it. Samples of the past
+ * stand whole drawings apart on the source's own clock (paintNodeDrawingSeconds), never a distance guessed from pixels.
+ */
+export const momentEarlier = <M extends { readonly at: number; readonly frame: number }>(moment: M, seconds: number): M =>
+  ({ ...moment, at: moment.at - seconds, frame: moment.frame - seconds });

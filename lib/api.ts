@@ -38,7 +38,7 @@ export { backOutEase, clamp, latchCurve, lerp, motionCurves, motionDurations, of
 export { foldAbout, foldMatrix, type FoldMatrix } from '#lib/picture/motion/models/fold.ts';
 export { CONTACT_SHARPNESS, STRAIN_ROUND, contactLoad, mixStrain, scaleStrain, strainAbout, strainAffine, strainAlong, strainAlongPath, strainAlongVelocity, strainCssMatrix, strainEllipse, strainExtent, strainMatrix, strainMatrix3, strainOfContact, strainOfLift, type Strain } from '#lib/picture/motion/models/strain.ts';
 export { ShutterBlur } from '#lib/picture/film/studio/motion-blur.tsx';
-export { REEL_SHUTTER, shutterOpensAt, shutterTravel, smearSigma } from '#lib/picture/lens/models/lens-shutter.ts';
+export { momentEarlier, REEL_SHUTTER, shutterOpensAt, shutterTravel, smearSigma } from '#lib/picture/lens/models/lens-shutter.ts';
 export { motionAttrs, motionEchoAttrs, pieceMotionAttrs, unmeasuredAttrs, useMotionTag, type MotionTag } from '#lib/picture/measurement/studio/motion-tag.ts';
 export { ClickRipple, ClipToBox, Cursor, CursorPath, Glass, Highlight, Spotlight, Tag, TakeCursor, Text, Wash, cursorAt, offscreen, type CursorKey } from '#lib/picture/kit/studio/overlays.tsx';
 export { hashRandom, randomSeedFromKey, seededRandom } from '#lib/picture/motion/models/random.ts';
@@ -257,8 +257,8 @@ export { paintingInTime, type PaintingInTime, type PaintingInTimeOptions, type P
 export { shotFigure, shotFigureInTime, shotFigureSilhouette, shotPlace, type ShotFigure } from '#lib/paint/shot/models/shot-figure.ts';
 // Effects: a definition's models half and its studio half, made alike by the built-ins and a project's own.
 export {
-  defineShotEffect, SHOT_EFFECT_READS_MOST, type ShotEffect, type ShotEffectDefinition, type ShotEffectImage, type ShotEffectParams, type ShotEffectProblem, type ShotEffectRead,
-  type ShotImageSource,
+  defineShotEffect, SHOT_EFFECT_READS_MOST, type ShotEffect, type ShotEffectDefinition, type ShotEffectImage, type ShotEffectParams, type ShotEffectMoment, type ShotEffectProblem,
+  type ShotEffectRead, type ShotImageSource,
 } from '#lib/paint/shot/models/shot-effect.ts';
 export { offsetCopies, type ShotOffsetCopiesParams } from '#lib/paint/shot/models/shot-offset-copies.ts';
 export { defineShotEffectGpu, SHOT_EFFECT_PARAMS_MOST, type ShotEffectGpu } from '#lib/paint/shot/studio/shot-effect-gpu.ts';
