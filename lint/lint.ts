@@ -27,12 +27,12 @@ const root = join(dirname(script), '..');
 
 const { values } = parseArgs({
   options: {
-    scope: { type: 'string' }, project: { type: 'string' }, snapshot: { type: 'string' }, list: { type: 'boolean' },
+    scope: { type: 'string' }, project: { type: 'string', multiple: true }, snapshot: { type: 'string' }, list: { type: 'boolean' },
     'update-baseline': { type: 'boolean' }, 'admit-new': { type: 'boolean' },
   },
 });
 
-type LintRunOptions = { project?: string; snapshot?: string; list?: boolean };
+type LintRunOptions = { project?: string[]; snapshot?: string; list?: boolean };
 
 const baselineRewrite = parseBaselineRewrite(values);
 const passed = values.scope === undefined

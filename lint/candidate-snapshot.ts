@@ -12,7 +12,7 @@ import { lstatSync, readFileSync, readlinkSync } from 'node:fs';
 import { FROZEN_PROJECT_RECORD, frozenProjectsInPaths, inFrozenProject, parseFrozenProjectRecord } from '#lib/platform/project/models/frozen-project.ts';
 import { join } from 'node:path';
 
-export type CandidateSnapshot = { kind: 'worktree'; project?: string } | { kind: 'index' } | { kind: 'commit'; rev: string };
+export type CandidateSnapshot = { kind: 'worktree'; projects?: string[] } | { kind: 'index' } | { kind: 'commit'; rev: string };
 
 /** A snapshot a hand run or a hook can name: a commit is check:arch's alone. */
 export type LiveSnapshot = Exclude<CandidateSnapshot, { kind: 'commit' }>;
@@ -55,13 +55,13 @@ function allSnapshotPaths({ root, snapshot, gitEnv }: SnapshotRepository): strin
 
 function uncheckedProjects(repo: MountedSnapshot, paths: readonly string[]): Set<string> {
   const frozen = frozenProjectsInPaths(paths);
-  const markers = Array.from(frozen, (name) => `projects/${name}/${FROZEN_PROJECT_RECORD}`);
+  const selected = repo.snapshot.kind === 'worktree' && repo.snapshot.projects;
+  const markers = Array.from(selected ? selected.filter((name) => frozen.has(name)) : frozen, (name) => `projects/${name}/${FROZEN_PROJECT_RECORD}`);
   readSnapshotTexts(repo, markers).forEach((text, index) => parseFrozenProjectRecord(text, markers[index]));
-  const selected = repo.snapshot.kind === 'worktree' && repo.snapshot.project;
   if (selected) {
     for (const path of paths) {
       const [, name] = path.split('/');
-      if (path.startsWith('projects/') && name !== selected) frozen.add(name);
+      if (path.startsWith('projects/') && !selected.includes(name)) frozen.add(name);
     }
   }
   return frozen;

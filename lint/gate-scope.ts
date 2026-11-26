@@ -84,13 +84,13 @@ export const readGateBaseline = (repo: GateRepository): Baseline =>
  * index, which the hook judges: a baseline excuses what a commit holds, and counting an untracked or unstaged source
  * would excuse what no commit holds, a new project's violations among them.
  */
-export function gateRunSnapshot(argument: string | undefined, updateBaseline: boolean, project?: string): LiveSnapshot {
+export function gateRunSnapshot(argument: string | undefined, updateBaseline: boolean, projects?: string[]): LiveSnapshot {
   const snapshot = parseLiveSnapshot(argument ?? (updateBaseline ? 'index' : 'worktree'));
   if (updateBaseline && snapshot.kind !== 'index') {
     throw new Error('--update-baseline counts the index, what the hook judges: stage what the baseline should excuse, and leave out --snapshot worktree');
   }
-  if (project && snapshot.kind !== 'worktree') throw new Error('--project selects a project in the working tree');
-  return project ? { kind: 'worktree', project } : snapshot;
+  if (projects && snapshot.kind !== 'worktree') throw new Error('--project selects a project in the working tree');
+  return projects ? { kind: 'worktree', projects } : snapshot;
 }
 
 /**

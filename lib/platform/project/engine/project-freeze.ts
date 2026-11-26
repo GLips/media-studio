@@ -1,51 +1,44 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, linkSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
+import { isolatedGitEnv, runFixtureGit } from '#lib/platform/git/engine/fixture-git.ts';
 import { assertStudioWorkspace } from './studio-workspace.ts';
 import { FROZEN_PROJECT_RECORD, formatFrozenProjectRecord } from '../models/frozen-project.ts';
 import { resolveStudioProjectWith, STUDIO_PROJECTS_DIR, STUDIO_ROOT, STUDIO_WORKSPACE_DIR } from './studio-project.ts';
 
-function checkedRevision(root: string, paths: string[]) {
-  const git = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8', env: isolatedGitEnv() }).trim();
-  const changes = git('status', '--porcelain', '--untracked-files=all', '--', ...paths);
-  if (changes) throw new Error(`Cannot freeze: HEAD does not contain these changes in ${root}:\n${changes}`);
-  return git('rev-parse', 'HEAD');
+/** Both revisions must still describe the inputs after checks finish. Project files travel with their record. */
+export function freezeRevision(engine: string, workspace: string, ignored: Set<string>) {
+  function checkedRevision(root: string, paths: string[]) {
+    const status = runFixtureGit(root, ['status', '--porcelain=v1', '-z', '--no-renames', '--untracked-files=all', '--', ...paths]);
+    const blocking = status.split('\0').filter(Boolean).filter((entry) => {
+      const path = entry.slice(3);
+      if (root !== engine || !entry.startsWith('?? ') || /^(?:(?:lib|cli|web|harness)\/|package(?:-lock)?\.json$|npm-shrinkwrap\.json$)/.test(path)) return true;
+      ignored.add(path);
+      return false;
+    });
+    if (blocking.length) throw new Error(`Cannot freeze: HEAD does not contain these changes in ${root}:\n${blocking.join('\n')}`);
+    return runFixtureGit(root, ['rev-parse', 'HEAD']).trim();
+  }
+  return formatFrozenProjectRecord({
+    engine: checkedRevision(engine, ['.']),
+    workspace: checkedRevision(workspace, ['.', ':(exclude)projects']),
+  });
 }
 
-function freezeRevision() {
-  return {
-    engine: checkedRevision(STUDIO_ROOT, ['.']),
-    workspace: checkedRevision(STUDIO_WORKSPACE_DIR, ['.', ':(exclude)projects']),
-  };
-}
-
-function checkProject(name: string) {
+function checkProjects(names: string[]) {
+  const scope = ['--scope', 'workspace', ...names.flatMap((name) => ['--project', name])];
   const checks = [
-    ['lint/check-arch.ts', '--scope', 'workspace', '--project', name], ['lint/lint.ts', '--scope', 'workspace', '--project', name],
-    ['lint/workspace-check.ts', 'typecheck', name], ['lint/workspace-check.ts', 'test', name],
+    ['lint/check-arch.ts', ...scope], ['lint/lint.ts', ...scope],
+    ['lint/workspace-check.ts', 'typecheck', ...names], ['lint/workspace-check.ts', 'test', ...names],
   ];
   const failed = checks.filter((args) => spawnSync(process.execPath, args, {
     cwd: STUDIO_ROOT, stdio: 'inherit', env: isolatedGitEnv(),
   }).status !== 0);
-  if (failed.length) throw new Error(`${name} is active. Failed checks: ${failed.map((args) => args.join(' ')).join(', ')}`);
+  if (failed.length) throw new Error(`Projects remain active: ${names.join(', ')}. Failed checks: ${failed.map((args) => args.slice(0, 2).join(' ')).join(', ')}`);
 }
 
-export function changeProjectFreeze(arg: string, action: 'freeze' | 'thaw') {
-  assertStudioWorkspace();
-  const project = realpathSync(resolveStudioProjectWith(arg, 'project.ts'));
-  if (dirname(project) !== realpathSync(STUDIO_PROJECTS_DIR)) throw new Error('Choose a project directly under work/projects');
-  const file = join(project, FROZEN_PROJECT_RECORD);
-  if (action === 'thaw') {
-    unlinkSync(file);
-    checkProject(basename(project));
-    return;
-  }
-  if (existsSync(file)) throw new Error(`${project} is already frozen; thaw it to check it again`);
-  const revision = formatFrozenProjectRecord(freezeRevision());
-  checkProject(basename(project));
-  if (revision !== formatFrozenProjectRecord(freezeRevision())) throw new Error('HEAD changed during the checks; run freeze again');
+function writeRecord(file: string, revision: string) {
   const pending = `${file}.${randomUUID()}`;
   try {
     writeFileSync(pending, revision, { flag: 'wx' });
@@ -53,4 +46,31 @@ export function changeProjectFreeze(arg: string, action: 'freeze' | 'thaw') {
   } finally {
     rmSync(pending, { force: true });
   }
+}
+
+export function changeProjectFreeze(args: string[], action: 'freeze' | 'thaw') {
+  assertStudioWorkspace();
+  const projects = new Set(args.map((arg) => realpathSync(resolveStudioProjectWith(arg, 'project.ts'))));
+  const names = Array.from(projects, (project) => basename(project));
+  const files = Array.from(projects, (project) => {
+    if (dirname(project) !== realpathSync(STUDIO_PROJECTS_DIR)) throw new Error('Choose a project directly under work/projects');
+    const file = join(project, FROZEN_PROJECT_RECORD);
+    if (existsSync(file) === (action === 'freeze')) throw new Error(`${project} is already ${action === 'freeze' ? 'frozen' : 'active'}`);
+    return file;
+  });
+  if (action === 'thaw') {
+    files.forEach((file) => unlinkSync(file));
+    checkProjects(names);
+    return names;
+  }
+  const ignored = new Set<string>();
+  try {
+    const revision = freezeRevision(STUDIO_ROOT, STUDIO_WORKSPACE_DIR, ignored);
+    checkProjects(names);
+    if (revision !== freezeRevision(STUDIO_ROOT, STUDIO_WORKSPACE_DIR, ignored)) throw new Error('HEAD changed during the checks; run freeze again');
+    files.forEach((file) => writeRecord(file, revision));
+  } finally {
+    if (ignored.size) process.stderr.write(`Ignored untracked studio files:\n${[...ignored].join('\n')}\n`);
+  }
+  return names;
 }
