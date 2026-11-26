@@ -101,6 +101,21 @@ test("a source schedule holds what its source reads apart from what its clock ho
   assert.deepEqual(warmed.map(({ at }) => Math.round(at * FPS)), [0, 4, 6, 8, 12]);
 });
 
+test('an observed source reads the same held drawing as the original across frames 6 through 18', () => {
+  const original = scheduledSource(({ at }: PaintMoment) => layersOf(pond, ['sky'], { at }), drawingSchedule({ fps: FPS / 6 }));
+  const heard: number[] = [];
+  const source = { ...original, read(moment: PaintMoment) {
+    heard.push(moment.at);
+    return original.read(moment);
+  } };
+  const { shot } = compilePaintedShot({ camera, span: SPAN, planes: [{ id: 'street', depth: 1, source }] }, []);
+  const plane = shot?.planes[0];
+  assert.ok(shot && plane?.kind === 'painted');
+  heard.length = 0;
+  for (let frame = 6; frame <= 18; frame++) shotPlaneSharesAt(shot, plane, paintMoment((frame + 0.5) / FPS));
+  assert.deepEqual(heard, [...Array<number>(6).fill(6 / FPS), ...Array<number>(6).fill(12 / FPS), 18 / FPS]);
+});
+
 /** The pond with an egret in the heron's group. */
 const crowded = painting({
   default: function crowded(): PaintingDocument {

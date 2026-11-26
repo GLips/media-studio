@@ -41,7 +41,7 @@ import { shotCoveredPlanes, shotPlacementProblems, shotStillBackProblem } from '
 import { shotDrawableOrder } from './shot-plan.ts';
 import type { DrawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import { sourceDrawings, sourceMoment } from './shot-props.ts';
-import type { CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceRig, PaintedShotProps, PictureSource, PlaneMask, PlaneProps, ScreenPin, ThreeSource } from './shot-props.ts';
+import type { ScheduledRead, CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceRig, PaintedShotProps, PictureSource, PlaneMask, PlaneProps, ScreenPin, ThreeSource } from './shot-props.ts';
 import { shotCameraPlanes } from './shot-reach.ts';
 import { compileShotRig, shotPlaneRigEndProblems, shotRigShowsGroup, type CompiledShotRig } from './shot-rigs.ts';
 import { paintedPlaneBlendProblems, paintedSourceEnds, paintedSourceProblems, type PaintedSource, type PaintedSourceEnd, type ShotPlanePaints } from './shot-selection.ts';
@@ -220,9 +220,10 @@ function movingLayProblems(plane: ShotPlanePlacement, motion: CompiledShotMotion
  * behind the first canvas, it's clear film. An effect's input isn't `placed`: it takes its plane's lay, not its masks.
  */
 function compilePaintedPlane(
-  props: PlaneProps, given: PresentationValue<PaintedSource> | ShotKeyDrawings, common: ShotPlaneCommon, farthest: boolean, page: ShotPage, drawings: DrawingSchedule | undefined,
+  props: PlaneProps, input: PresentationValue<PaintedSource> | ScheduledRead | ShotKeyDrawings, common: ShotPlaneCommon, farthest: boolean, page: ShotPage, drawings: DrawingSchedule | undefined,
   problems: PaintingProblem[], field = 'source', figure: GroupKey | null = null, placed = true,
 ): CompiledShotPaintedPlane | null {
+  const given = typeof input !== 'function' && input.kind === 'scheduled-read' ? input.read : input;
   const keyDrawings = typeof given !== 'function' && given.kind === 'key-drawings' ? given : null;
   const source: PresentationValue<PaintedSource> = typeof given === 'function' || given.kind !== 'key-drawings' ? given : (moment) => shotKeyDrawingsAt(given, moment);
   const first = presentationValueAt(source, sourceMoment(drawings, paintMoment(0)));
@@ -260,7 +261,7 @@ function compileEffectInput(source: ShotImageSource, field: string, reader: stri
   if (typeof source !== 'function' && source.kind === 'effect') return compileEffectImage(source, field, at);
   const figure = typeof source !== 'function' && source.kind === 'figure' ? source.card : null;
   const painted = typeof source !== 'function' && source.kind === 'figure' ? source.source : source;
-  let given: PresentationValue<PaintedSource> | ShotKeyDrawings;
+  let given: PresentationValue<PaintedSource> | ScheduledRead | ShotKeyDrawings;
   if (typeof painted !== 'function' && painted.kind === 'in-time') {
     const planned = planShotKeyDrawings(props.id, painted, shotSourceMoments(at.span, at.scheduleOf(source)));
     problems.push(...planned.problems.filter(({ severity }) => severity === 'error'));

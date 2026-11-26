@@ -75,9 +75,9 @@ async function checkRepeatedPose(): Promise<StampGateWashCheck> {
  */
 async function checkWalking(): Promise<StampGateWashCheck> {
   const shot = stampGateRainyStreetShot(), heard: number[][] = [], street = shot.planes.find((plane) => plane.id === 'street');
-  if (street?.kind === 'instanced' || typeof street?.source !== 'function') throw new Error("the rainy street's street plane reads its source by a callback");
+  if (!street || street.kind === 'instanced' || typeof street.source === 'function' || street.source.kind !== 'scheduled-read') throw new Error("the rainy street's street plane needs a scheduled read");
   // The moments the street's source reads, by frame: none heard before the first frame begins.
-  const { source } = street, listened = { ...street, source: (moment: PaintMoment) => (heard.at(-1)?.push(moment.at), source(moment)) };
+  const { source } = street, listened = { ...street, source: { ...source, read: (moment: PaintMoment) => (heard.at(-1)?.push(moment.at), source.read(moment)) } };
   const planes = shot.planes.map((plane) => (plane === street ? listened : plane)), times = STAMP_GATE_RAINY_STREET_AT.walking;
   const { costs } = await stampGateShotFrames({ ...shot, planes }, times, () => heard.push([]));
   const read = heard.map((ats) => Array.from(new Set(ats)));

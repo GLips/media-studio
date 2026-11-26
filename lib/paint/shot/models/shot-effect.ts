@@ -19,6 +19,7 @@ import { stampBoxGrown, type StampBox } from '#lib/paint/painting/models/stamp-r
 import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
 import type { ShotFigure } from './shot-figure.ts';
 import type { PaintingInTime } from './shot-painting-in-time.ts';
+import type { ScheduledRead } from './shot-props.ts';
 import type { PaintedSource } from './shot-selection.ts';
 
 /** A parameter's value: plain data, so parameters key an output as written; a record groups a few (`every: { drawings: 2 }`). */
@@ -83,7 +84,7 @@ export type ShotEffectDefinition<P extends ShotEffectParams = ShotEffectParams, 
 export const SHOT_EFFECT_READS_MOST = 24;
 
 /** What an effect reads: a painted source, a painting in time, a figure, or another effect's image. */
-export type ShotImageSource = PresentationValue<PaintedSource> | PaintingInTime | ShotFigure | ShotEffectImage | ShotPlaneImage;
+export type ShotImageSource = PresentationValue<PaintedSource> | ScheduledRead | PaintingInTime | ShotFigure | ShotEffectImage | ShotPlaneImage;
 
 /** The sharp image of a placed painted or effect plane, with its masks, pose and visibility, at the read's moment. */
 export type ShotPlaneImage = { readonly kind: 'plane-image'; readonly plane: string };

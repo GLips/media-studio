@@ -24,20 +24,22 @@ import type { ShotFigure } from './shot-figure.ts';
 import type { PaintingInTime } from './shot-painting-in-time.ts';
 import type { PaintedSource } from './shot-selection.ts';
 
-const schedule = Symbol('source drawings');
-type Scheduled = { readonly [schedule]?: DrawingSchedule };
+type SourceRead = (moment: PaintMoment) => PaintedSource;
+type SourceTiming = { readonly drawingSchedule: DrawingSchedule };
+export type ScheduledRead = SourceTiming & { readonly kind: 'scheduled-read'; readonly read: SourceRead };
+type WithSchedule<T> = T extends SourceRead ? ScheduledRead & { readonly read: T } : T & SourceTiming;
 
 /** Attach a seekable drawing schedule to a source before placing or processing it. */
-export function scheduledSource<T extends PlaneProps['source']>(source: T, drawings: DrawingSchedule): T & Scheduled;
+export function scheduledSource<T extends PlaneProps['source']>(source: T, drawings: DrawingSchedule): WithSchedule<T>;
 export function scheduledSource(source: PlaneProps['source'], drawings: DrawingSchedule) {
   if (typeof source !== 'function' && source.kind === 'effect' && Object.keys(source.inputs).length) {
     throw new Error(`${source.definition.name} inherits its primary input's schedule: schedule the source`);
   }
-  const value = typeof source === 'function' ? (m: PaintMoment) => source(m) : { ...source };
-  return Object.assign(value, { [schedule]: drawings });
+  if (typeof source === 'function') return { kind: 'scheduled-read', read: source, drawingSchedule: drawings } as const;
+  return { ...source, drawingSchedule: drawings };
 }
 
-export const sourceDrawings = (source: object & Scheduled) => source[schedule];
+export const sourceDrawings = (source: object & Partial<SourceTiming>) => source.drawingSchedule;
 
 export const sourceMoment = (drawings: DrawingSchedule | undefined, moment: PaintMoment): PaintMoment =>
   drawings ? { at: drawings.poseAt(moment.frame, moment.at), frame: drawings.at(moment.frame).time } : moment;
@@ -121,7 +123,7 @@ export type PlaneProps = PlaneCommon & ShotNodeFields & {
    */
   readonly depth: PresentationValue<number>;
   readonly masks?: readonly PlaneMask[];
-  readonly source: PresentationValue<PaintedSource> | PaintingInTime | ShotFigure | ShotEffectImage | PictureSource | ThreeSource;
+  readonly source: PresentationValue<PaintedSource> | ScheduledRead | PaintingInTime | ShotFigure | ShotEffectImage | PictureSource | ThreeSource;
   /** Plays on the plane's own node, which its node fields (`pivot`, `pins`, `marks`, `glow`) write: it moves the whole plane. */
   readonly plays?: readonly ShotNodePlay[];
   /** What each layer or group the plane shows does, by its key. */
