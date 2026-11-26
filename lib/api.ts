@@ -97,7 +97,7 @@ export { compileCueScore, type CueScore } from '#lib/timing/character-cues/model
 export {
   drawingSchedule, redrawSeed, type DrawingCadence, type DrawingPhase, type DrawingSchedule, type RedrawToken, type ScheduledDrawing,
 } from '#lib/timing/drawings/models/drawing-schedule.ts';
-export { createLineLook } from '#lib/paint/looks/models/line-look.ts';
+export { createLineLook, createPencilLook } from '#lib/paint/looks/models/line-look.ts';
 export { deriveLook, defineLook, printLook, type PaintLook } from '#lib/paint/looks/models/paint-look.ts';
 export { lookDraw, type LookRedraw, type LookStep, type LookPlace, type LookProcess } from '#lib/paint/looks/models/look-step.ts';
 export { lookPlanes, lookSheets } from '#lib/paint/looks/models/look-planes.ts';

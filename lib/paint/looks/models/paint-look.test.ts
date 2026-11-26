@@ -7,7 +7,8 @@ import { stampSheetEntryKey, stampSheetHeadKey } from '#lib/paint/painting/model
 import { trail } from '#lib/paint/shot/models/shot-trail.ts';
 import { subjectVisible } from '#lib/paint/subject/models/subject-geometry.ts';
 import { defineSubject } from '#lib/paint/subject/models/subject.ts';
-import { createLineLook } from './line-look.ts';
+import { sourceDrawings } from '#lib/paint/shot/models/shot-props.ts';
+import { createLineLook, createPencilLook } from './line-look.ts';
 import { lookPlanes } from './look-planes.ts';
 import { defineLook, deriveLook, printLook } from './paint-look.ts';
 import { lookDraw, type LookStep } from './look-step.ts';
@@ -98,4 +99,16 @@ test('a contour redraw at a cue keeps sibling layers and resolves identically on
   const expected = times.map(t => [['tile.contour.part:body', schedule.at(t).token]]);
   assert.deepEqual(times.map(marks), expected);
   assert.deepEqual(times.toReversed().map(marks).toReversed(), expected);
+});
+
+test('a boiling pencil redraws its contour alone, its construction guides under it keeping their marks', () => {
+  const schedule = drawingSchedule({ fps: 12 });
+  const boiling = deriveLook(createPencilLook({ ink: brush, pencil: brush }), { replace: { contour: c => c.with({ redraw: schedule }) } });
+  const [plane] = lookPlanes(boiling, tile, { widthPx: 180, heightPx: 180 }, id => ({ id, depth: 1 }));
+  const figure = plane.source;
+  assert.ok(typeof figure !== 'function' && figure.kind === 'figure' && typeof figure.source === 'function');
+  assert.equal(sourceDrawings(figure), schedule);
+  const selection = figure.source({ frame: 0.5, at: 0.5 });
+  assert.deepEqual(selection.painting.document.layers[0].children?.map(({ key }) => key), ['tile.guides', 'tile.fill.part:body', 'tile.contour.part:body', 'tile.line.feature:smile']);
+  assert.deepEqual([...selection.redraw!], [['tile.contour.part:body', schedule.at(0.5).token]]);
 });
