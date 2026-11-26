@@ -25,7 +25,12 @@ export function subjectFigureCard(
 ): LayerNode[] {
   const grounded = new Set([...report.contributions, ...report.replacements].flatMap(({ slot, documentKeys }) => (slot === SUBJECT_GROUND_SLOT ? documentKeys : [])));
   const ground = layers.filter((layer) => grounded.has(layer.key)), figure = layers.filter((layer) => !grounded.has(layer.key));
-  if (subject.silhouette.kind === 'hidden') return [...ground, { key, children: figure }];
+  return [...ground, subjectFigureSheet(subject, figure, { key, paper, fadePx })];
+}
+
+/** A sheet whose paper follows the subject, keeping the figure's whites when placed over another plane. */
+export function subjectFigureSheet(subject: Subject, children: readonly LayerNode[], { key, paper, fadePx }: { key: Key; paper: Paper; fadePx?: number }): LayerNode {
+  if (subject.silhouette.kind === 'hidden') return { key, children };
   const card = { figure: subjectAreaRegion(subject.silhouette.geometry), fadePx: fadePx ?? SUBJECT_FIGURE_CARD_FADE * subjectUnitPx(subject) };
-  return [...ground, { key, sheet: { kind: 'own', paper, card }, children: figure }];
+  return { key, sheet: { kind: 'own', paper, card }, children };
 }

@@ -1,15 +1,21 @@
 # Painting a subject automatically
 
-A figure with a model behind it (a character built in three.js, a posed primitive figure) can be painted whole by a
-style's **subject painter**. The **subject** says what the figure is and what shows: its parts, materials, features
-(eyes, a mouth, a brow) and frames, by name, in page pixels. The **painter** decides how a style paints it.
+A subject supplies named parts, materials, features and frames in page pixels. Its painter interprets them.
 
-## When to paint automatically, and when by hand
+## Start from the nearest look
 
-Paint automatically when a figure has a subject (a brand character often ships one) and the style has a painter: one
-source then paints it in every style, pose and light. Paint by hand (the [first painting](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/first-painting.md) way) for a
-one-off figure with no model, washes that are the point, or a look no painter has. Or paint automatically, then
-retune, replace or finish, below.
+Import `lineLook` from `#styles/watercolor/subject-painter.ts`. Inspect `printLook(lineLook)`.
+Thin both ink passes with `lineLook.with({ inkWeight: 0.6 })`, or recolour the outline alone:
+
+```ts
+const blue = deriveLook(lineLook, {
+  name: 'blue-contour', replace: { contour: c => c.with({ colour: '#2455bb' }) },
+})
+```
+
+Place `lookPlanes` in your PaintedShot. Publish private recipes with `defineLook` and `lookDraw`.
+Name independent passes `fill`, `guides`, `contour`, `features`, `shadow` and `ground` where they apply.
+For a one-off or wash study, [paint by hand](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/first-painting.md).
 
 ## Painting a subject
 
