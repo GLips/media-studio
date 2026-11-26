@@ -262,6 +262,7 @@ export {
 } from '#lib/paint/shot/models/shot-effect.ts';
 export { offsetCopies, type ShotOffsetCopiesParams } from '#lib/paint/shot/models/shot-offset-copies.ts';
 export { channelSplit, type ShotChannelSplitParams } from '#lib/paint/shot/models/shot-channel-split.ts';
+export { slices, type ShotSlicesParams } from '#lib/paint/shot/models/shot-slices.ts';
 export { defineShotEffectGpu, SHOT_EFFECT_PARAMS_MOST, type ShotEffectGpu } from '#lib/paint/shot/studio/shot-effect-gpu.ts';
 export type {
   CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceProps, OccurrenceRig, PaintedShotProps, PaintedTexture, PictureSource, PinPoint, PlaneInstance,
