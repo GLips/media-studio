@@ -166,7 +166,7 @@ export function createShotEffectPass(owner: StampPaintGpuOwner, { stage, arena }
     draw(encoder: GPUCommandEncoder, { gpu, params, reads, box, visibility, key }: ShotEffectPassDraw): StampPlanePicture {
       const found = outputs.find(key, encoder);
       if (found) return { ...found.note, texture: found.textures[0] };
-      const emits = reads.some(({ picture }) => !!picture && picture.emission !== null), layers = stampPlanePictureLayers('film', { emits, travels: false });
+      const emits = !!gpu.definition.emits || reads.some(({ picture }) => !!picture && picture.emission !== null), layers = stampPlanePictureLayers('film', { emits, travels: false });
       const [texture] = outputs.make(key, encoder, [{
         width: box.w, height: box.h, layers: stampPlanePictureLayerCount(layers), format: 'rgba16float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
       }], { ...layers, box }).textures;

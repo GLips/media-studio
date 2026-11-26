@@ -18,6 +18,7 @@ import type { PaintRigPartMove } from '#lib/paint/rig/models/paint-rig-pose.ts';
 import type { PaintedThreeSource } from '#lib/paint/three-layers/studio/painted-three-sources.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import type { ShotEffectImage } from './shot-effect.ts';
+import type { ShotLightSpill } from './shot-light-spill.ts';
 import type { ShotFigure } from './shot-figure.ts';
 import type { PaintingInTime } from './shot-painting-in-time.ts';
 import type { PaintedSource } from './shot-selection.ts';
@@ -110,6 +111,8 @@ export type PlaneProps = PlaneCommon & ShotNodeFields & {
   readonly plays?: readonly ShotNodePlay[];
   /** What each layer or group the plane shows does, by its key. */
   readonly occurrences?: Readonly<Record<NodeKey, OccurrenceProps>>;
+  /** Light other planes throw onto it (shot-light-spill.ts): give them with `illuminate`. */
+  readonly spills?: readonly ShotLightSpill[];
 };
 
 /**

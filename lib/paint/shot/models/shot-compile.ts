@@ -24,6 +24,7 @@ import { paintMoment, type PaintMoment, type StampGroupLay } from '#lib/paint/pa
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import { compiledShotEffect, shotEffectChecked, shotEffectReadMap, shotImageLeaves, type CompiledShotEffectImage, type CompiledShotEffectRead, type CompiledShotImage, type ShotImageSource } from './shot-effect.ts';
 import { shotFigureProblems } from './shot-figure.ts';
+import { shotLightSpillProblems, type ShotLightSpill } from './shot-light-spill.ts';
 import { shotPlaneMomentAt } from './shot-frame-plan.ts';
 import { shotPlaneEntries } from './shot-entries.ts';
 import { compileShotInstancedPlane, type CompiledShotInstancedPlane } from './shot-instances.ts';
@@ -104,7 +105,8 @@ export function shotPlaneLeaves(plane: CompiledShotPlane): readonly CompiledShot
 /**
  * A shot compiled: its planes far to near, the back first; its instanced planes; both as `written`, which a frame
  * orders with its items; its canvas count; `clearBack`: the back is clear where it lays nothing, over HTML; its
- * motion, rigs, visibility by occurrence, masks' graph, camera, light, span, warm span (null: none) and painted textures.
+ * motion, rigs, visibility by occurrence, masks, camera, light, span, warm span (null: none), painted textures, and
+ * spills by receiving plane.
  */
 export type CompiledPaintedShot = {
   readonly span: SceneShownSpan;
@@ -121,6 +123,7 @@ export type CompiledPaintedShot = {
   readonly light: PaintLight;
   readonly warm: ShotWarm | null;
   readonly paintedTextures: readonly CompiledShotPaintedTexture[];
+  readonly spills: ReadonlyMap<string, readonly ShotLightSpill[]>;
 };
 
 /** What a compiled shot paints with, its planes and its painted textures alike: its brushes, and where its solves, readbacks and warnings count. */
@@ -450,6 +453,12 @@ export function compilePaintedShot(
   problems.push(...shotVisibilityProblems(visibility), ...visibilityBackProblems(visibility, back && !clearBack ? back.id : null));
   const masks = shotMaskCheck(props.planes, occurrences);
   problems.push(...masks.problems, ...maskPiecesProblems(planes, rigs), ...maskEffectProblems(planes));
+  const kindOf = (id: string) => planes.find((plane) => plane.id === id)?.kind ?? (instanced.some((plane) => plane.id === id) ? 'instanced' : undefined);
+  const spills = new Map(planes.flatMap(({ id }) => {
+    const given = written.get(id)!.spills ?? [];
+    problems.push(...shotLightSpillProblems(id, given, kindOf));
+    return given.length ? [[id, given] as const] : [];
+  }));
   const motion = compileShotMotion(motionPlanes, entries.motion, new Set(rigs.keys()), fps, moments);
   problems.push(...motion.problems);
   for (const plane of planes) if (plane.kind === 'painted' || plane.kind === 'effect') problems.push(...movingLayProblems(plane, motion.motion));
@@ -466,7 +475,7 @@ export function compilePaintedShot(
   const shot: CompiledPaintedShot = {
     span: props.span, planes: covered.planes, instanced, written: props.planes, canvases: Math.max(1, canvases.length), clearBack, motion: motion.motion, rigs,
     visibility, masks: masks.graph, camera: built.camera, light: props.light ?? PAPER_KEY_LIGHT, warm: props.warm ?? null,
-    paintedTextures: textures.textures,
+    paintedTextures: textures.textures, spills,
   };
   return answer(shot, [...problems, ...warnings, ...shotMotionWarnings(shot, frames)]);
 }

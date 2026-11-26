@@ -47,6 +47,7 @@ export type ShotEffectDefinition<P extends ShotEffectParams = ShotEffectParams, 
   readonly name: string;
   readonly inputs: readonly [I, ...I[]];
   readonly defaults: P;
+  readonly emits?: boolean;
   // Methods, so a definition of any parameters stands as one of ShotEffectParams in a table (method parameters are bivariant).
   problems(params: P): readonly ShotEffectProblem[];
   reads(params: P): readonly ShotEffectRead<I>[];
@@ -161,6 +162,11 @@ export function shotEffectBox(effect: CompiledShotEffectImage, inputBox: (read: 
     if (input) box = paintingBoxUnion(box, paintSimilarityBox(read.map, input));
   });
   return box ? stampBoxGrown(box, effect.grow) : null;
+}
+
+/** Whether `image` makes light of its own: an effect within it whose definition `emits`. A read may glow besides. */
+export function shotEffectImageEmits(image: CompiledShotImage): boolean {
+  return image.kind === 'effect' && (!!image.definition.emits || image.reads.some(({ input }) => shotEffectImageEmits(input)));
 }
 
 /** Every painted image `image` reads, through any effect, each once, in read order. */

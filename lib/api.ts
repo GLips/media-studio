@@ -262,6 +262,8 @@ export {
 } from '#lib/paint/shot/models/shot-effect.ts';
 export { offsetCopies, type ShotOffsetCopiesParams } from '#lib/paint/shot/models/shot-offset-copies.ts';
 export { defineShotEffectGpu, SHOT_EFFECT_PARAMS_MOST, type ShotEffectGpu } from '#lib/paint/shot/studio/shot-effect-gpu.ts';
+// Light one plane throws on another.
+export { illuminate, lightSpill, SHOT_LIGHT_SPILLS_MOST, type ShotLightSpill } from '#lib/paint/shot/models/shot-light-spill.ts';
 export type {
   CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceProps, OccurrenceRig, PaintedShotProps, PaintedTexture, PictureSource, PinPoint, PlaneInstance,
   PlaneLay, PlaneMask, PlaneProps, RigPart, RigPartPose, RigPose, ScreenPin, ShotNodePlay, ThreeSource,
