@@ -12,6 +12,7 @@ import { layersOf, type LayerSelection } from '#lib/paint/document/models/painti
 import type { PaintingEvaluation, PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
+import type { ShotEffectImage } from './shot-effect.ts';
 import { shotPlaneSharesAt } from './shot-frame-plan.ts';
 import { paintingInTime, type PaintingInTime, type PaintingInTimeOptions } from './shot-painting-in-time.ts';
 import type { PlaneProps } from './shot-props.ts';
@@ -39,8 +40,8 @@ export function shotFigureInTime<S extends PropertySchema>(
   return { kind: 'figure', card, source: paintingInTime(source, { ...options, layers: [card], ground: 'transparent' }) };
 }
 
-/** A plane laying `image`, an image source, where `plane` says: its placement and presentation, everything but its source. */
-export const shotPlace = (image: ShotFigure, plane: Omit<PlaneProps, 'source'>): PlaneProps => ({ ...plane, source: image });
+/** A plane laying `image`, a figure or an effect's image, where `plane` says: its placement and presentation, everything but its source. */
+export const shotPlace = (image: ShotFigure | ShotEffectImage, plane: Omit<PlaneProps, 'source'>): PlaneProps => ({ ...plane, source: image });
 
 /**
  * The silhouette of figure `card` in `selection`, document px: its own sheet's figure card's region. Null for a group

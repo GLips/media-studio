@@ -1,7 +1,7 @@
 // shot-reach.ts: where each plane of a shot can hold paint, as the camera build checks it. The opaque
-// back holds paper everywhere (its paint: shot-back.ts). A nearer painted plane holds its layers' stated geometry,
-// padded for paint flowing past it, grown along each occurrence's motion nodes by the most each moves it, then laid
-// by its lay at each of the shot's moments; its ground's paper, when it lays one, over the document.
+// back holds paper everywhere. A nearer painted plane holds its layers' stated geometry, padded for paint flowing past
+// it, grown along each occurrence's motion nodes by the most each moves it, laid by its lay at the shot's moments; its
+// ground's paper, when it lays one, over the document. An effect plane holds its reads' inputs' reach, mapped and grown.
 //
 // Negative space: a plane whose source is a function or that holds a rig is checked everywhere: neither can be bounded
 // before it's drawn. A painting in time paints every drawing as it loads. A pin or cover is checked once laid.
@@ -13,6 +13,7 @@ import { paintingBoxUnion, paintingNodeBox } from '#lib/paint/document/models/pa
 import type { StampPlaneExtent } from '#lib/paint/painting/models/stamp-plane.ts';
 import { stampBoxGrown, type StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import type { CompiledShotPaintedPlane, CompiledShotPlane } from './shot-compile.ts';
+import { shotEffectBox, type CompiledShotEffectImage } from './shot-effect.ts';
 import { shotPlaneLayAt } from './shot-frame-plan.ts';
 import type { CompiledShotMotion, CompiledShotNode } from './shot-motion.ts';
 import { paintedSourceNodeKeys, shotOccurrenceKey } from './shot-occurrences.ts';
@@ -85,6 +86,21 @@ export function shotPaintedExtent(plane: CompiledShotPaintedPlane, motion: Compi
   return { kind: 'box', box: paintSimilarityBox(paintSimilarityOf(lay.placement, lay.pivot), reach) };
 }
 
+/**
+ * Effect image `image`'s extent, laid through its plane's placement, `rigged` naming the rigged occurrences: each read's
+ * input's (shotPaintedExtent for a painted one) carried through its map and grown (shotEffectBox). Everywhere when
+ * any input is, as a callback's is; unchecked when any is. Its reads at moments are bounded by its inputs' reach over
+ * the shot's moments.
+ */
+export function shotEffectExtent(image: CompiledShotEffectImage, motion: CompiledShotMotion, rigged: ReadonlySet<OccurrenceKey>): StampPlaneExtent {
+  const inputs = image.reads.map(({ input }) => (input.kind === 'painted' ? shotPaintedExtent(input, motion, rigged) : shotEffectExtent(input, motion, rigged)));
+  const unchecked = inputs.find((extent) => extent.kind === 'unchecked');
+  if (unchecked) return unchecked;
+  if (inputs.some((extent) => extent.kind === 'everywhere')) return { kind: 'everywhere' };
+  const box = shotEffectBox(image, (_, i) => { const extent = inputs[i]; return extent.kind === 'box' ? extent.box : null; });
+  return box ? { kind: 'box', box } : { kind: 'empty' };
+}
+
 /** Painted plane `plane` as the camera build takes it, `rigged` naming the rigged occurrences: a picture plane held as far as its reach. */
 export const shotPaintedCameraPlane = (plane: CompiledShotPaintedPlane, motion: CompiledShotMotion, rigged: ReadonlySet<OccurrenceKey>): PaintCameraPicturePlane =>
   ({ id: plane.id, depth: plane.depth, kind: 'picture', extent: shotPaintedExtent(plane, motion, rigged) });
@@ -96,6 +112,7 @@ export function shotCameraPlanes(planes: readonly CompiledShotPlane[], motion: C
     const { id } = plane;
     if (plane.kind === 'three') return { id, depth: plane.depth, kind: 'three' };
     if (plane.kind === 'picture') return { id, depth: plane.depth, kind: 'picture', extent: plane.source.extent };
+    if (plane.kind === 'effect') return { id, depth: plane.depth, kind: 'picture', extent: shotEffectExtent(plane.image, motion, rigged) };
     return shotPaintedCameraPlane(plane, motion, rigged);
   });
 }

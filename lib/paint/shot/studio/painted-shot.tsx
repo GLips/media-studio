@@ -40,6 +40,7 @@ import { shotCostsTraceAttributes, shotFrameCosts } from '../models/shot-cost-re
 import { shotPlanesKeyDrawingsText } from '../models/shot-painting-in-time.ts';
 import { shotWatchName, type ShotWatchName } from '../models/shot-progress.ts';
 import type { PaintedShotProps } from '../models/shot-props.ts';
+import type { ShotEffectGpu } from './shot-effect-gpu.ts';
 import { shotWarmPastScene } from '../models/shot-warm.ts';
 import {
   createShotCanvasSurface, disposeShotCanvasSurface, placeShotCanvas, removeShotCanvas, shotCanvasPageOrder, shotElementStyle, type ShotCanvasElements, type ShotCanvasSurface,
@@ -85,19 +86,23 @@ export function PaintedShotCanvas({ name }: { readonly name: string }) {
   return <span ref={host} />;
 }
 
+const NO_SHOT_EFFECTS: readonly ShotEffectGpu[] = [];
+
 /**
  * What `studio paint check` hands a scene it renders without a page (shot-scene-check.ts): every PaintedShot rendered
- * gives it its shot. Null in a render.
+ * gives it its shot and its effects' studio halves. Null in a render.
  */
-export const PaintedShotSeenContext = createContext<((shot: PaintedShotProps) => void) | null>(null);
+export const PaintedShotSeenContext = createContext<((shot: PaintedShotProps, effects: readonly ShotEffectGpu[]) => void) | null>(null);
 
 /**
  * Draws `shot` at scene second `t`, holding the frame until its paint is solved. Its element is the camera's frame,
- * scaled to fill `box` (composition px; all of it when left out); `children`, HTML and PaintedShotCanvases, stack in
- * DOM order. Keep `shot` a module constant or memoised: a new one loads anew.
+ * scaled to fill `box` (composition px; all when left out); `children`, HTML and PaintedShotCanvases, stack in DOM
+ * order. `effects`: studio halves of effects past the built-ins. Keep `shot` and `effects` constant: a new one reloads.
  */
-export function PaintedShot({ shot, t, box: given, children }: { readonly shot: PaintedShotProps; readonly t: number; readonly box?: { x: number; y: number; w: number; h: number }; readonly children?: ReactNode }) {
-  useContext(PaintedShotSeenContext)?.(shot);
+export function PaintedShot({ shot, t, box: given, effects = NO_SHOT_EFFECTS, children }: {
+  readonly shot: PaintedShotProps; readonly t: number; readonly box?: { x: number; y: number; w: number; h: number }; readonly effects?: readonly ShotEffectGpu[]; readonly children?: ReactNode;
+}) {
+  useContext(PaintedShotSeenContext)?.(shot, effects);
   const format = useVideoFormat(), box = given ?? fullFrameRect(format), { frame } = shot.camera.stage, { fps } = format;
   // The scene playing the shot, when it's played in one: its length is what a warm span is held to.
   const sceneDur = useSceneOrNull()?.dur ?? null, pictureDrawn = usePictureDrawn(), trace = usePageTrace();
@@ -148,7 +153,7 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
     if (ownHost) holder.current!.prepend(ownHost);
     const own = ownHost && placeShotCanvas(ownHost), elements = own ? [own] : named.map(([canvas]) => canvas);
     const name = shotWatchName(holder.current!.closest<HTMLElement>('[data-scene]')?.dataset.scene ?? null, shot.planes.map(({ id }) => id));
-    const context = { holder: holder.current!, pinsMoved: layoutMoved, fps, sceneDur, lensMode, name, pictureDrawn, trace, loadingIn: () => loadingIn.current };
+    const context = { holder: holder.current!, pinsMoved: layoutMoved, fps, sceneDur, lensMode, name, pictureDrawn, trace, effects, loadingIn: () => loadingIn.current };
     const loading = loadPaintedShotScene(shot, elements, named.map(([, canvasName]) => canvasName), context);
     loading.ready.then(() => {
       if (!live) return undefined;
@@ -164,7 +169,7 @@ export function PaintedShot({ shot, t, box: given, children }: { readonly shot: 
       setScene(null);
       release();
     };
-  }, [shot, canvases, fps, sceneDur, lensMode, pictureDrawn, trace, delayRender, continueRender, cancelRender]);
+  }, [shot, effects, canvases, fps, sceneDur, lensMode, pictureDrawn, trace, delayRender, continueRender, cancelRender]);
 
   useLayoutEffect(() => {
     if (!scene) return undefined;
@@ -212,7 +217,7 @@ type PaintedShotScene = {
 /**
  * Where a shot loads: `holder`, its element; `pinsMoved`, told when a pinned element resizes; the fps and lens mode
  * it's compiled and warmed for; its scene's length, s (null outside one); its `name`; whether the pass draws; the
- * page's trace; the frame it loads in, as its warm is traced.
+ * page's trace; the effects' studio halves it draws with; the frame it loads in, as its warm is traced.
  */
 type PaintedShotLoadContext = {
   readonly holder: HTMLElement;
@@ -223,6 +228,7 @@ type PaintedShotLoadContext = {
   readonly name: ShotWatchName;
   readonly pictureDrawn: boolean;
   readonly trace: PageTrace;
+  readonly effects: readonly ShotEffectGpu[];
   readonly loadingIn: () => PaintedShotFrameTrace;
 };
 
@@ -232,7 +238,7 @@ type PaintedShotLoadContext = {
  * solved. Refuses every problem at once. Without the picture, only checked.
  */
 function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCanvasElements[], names: readonly string[], context: PaintedShotLoadContext): PaintedShotScene {
-  const { holder, pinsMoved, fps, sceneDur, lensMode, name, pictureDrawn, trace, loadingIn } = context;
+  const { holder, pinsMoved, fps, sceneDur, lensMode, name, pictureDrawn, trace, effects, loadingIn } = context;
   let owner: StampPaintGpuOwner | null = null, renderer: PaintedShotRenderer | null = null, page: ShotPageWatch | null = null, disposed = false;
   // The span the shot's solves run under now (its warm, or the frame drawing), the spans of the solve running in it,
   // and whether it's traced in detail: the shot's work runs one task at a time, so each is its own.
@@ -312,7 +318,7 @@ function loadPaintedShotScene(props: PaintedShotProps, canvases: readonly ShotCa
       const adopted = await placements;
       if (adopted) span.note({ placements: { value: adopted.placements, unit: 'placements' }, bytes: { value: adopted.bytes, unit: 'B' } });
     });
-    renderer = await phase(load, 'renderer', () => createPaintedShotRenderer(made, surfaces, shot, { brushOf: paintedShotBrushOf, costs, progress }));
+    renderer = await phase(load, 'renderer', () => createPaintedShotRenderer(made, surfaces, shot, { brushOf: paintedShotBrushOf, costs, progress, effects }));
     if (!shot.warm) return;
     // Said in every render, not only a profiled one: a span written in frames warms far less than meant.
     for (const warning of sceneDur === null ? [] : shotWarmPastScene(shot.warm, sceneDur)) {

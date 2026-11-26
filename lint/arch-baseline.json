@@ -1201,9 +1201,6 @@
     "lib/picture/captions/studio/caption-style.tsx": {
       "const band = useMemo(() => style.band(size), [style, size.width, size.height]);": 1
     },
-    "lib/picture/composition/studio/Video.tsx": {
-      "const pages = useMemo(() => burnedCaptionPages(captioned.style, captioned.track, config), [captioned, config.width, config.height]);": 1
-    },
     "lib/picture/stills/studio/stills.tsx": {
       "}, [name, text, box.w, box.h, max, min, face.family, face.stretch?.[0], face.stretch?.[1], delayRender, continueRender]);": 2,
       "const [lo, hi] = face.stretch ?? [100, 100];": 1,
@@ -1224,9 +1221,6 @@
   "react(memo-dependencies)": {
     "lib/picture/captions/studio/caption-style.tsx": {
       "const band = useMemo(() => style.band(size), [style, size.width, size.height]);": 1
-    },
-    "lib/picture/composition/studio/Video.tsx": {
-      "const pages = useMemo(() => burnedCaptionPages(captioned.style, captioned.track, config), [captioned, config.width, config.height]);": 1
     }
   },
   "react(no-object-type-as-default-prop)": {

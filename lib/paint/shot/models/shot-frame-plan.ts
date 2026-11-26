@@ -64,7 +64,7 @@ export function shotScaledToNothingAt(shot: CompiledPaintedShot, plane: string, 
     if (place && placesNothing(place.placement)) return true;
   }
   const compiled = shot.planes.find((each) => each.id === plane);
-  return compiled?.kind === 'painted' && compiled.lay.kind === 'moving' && placesNothing(compiled.lay.lay(shotPlaneMomentAt(motion, plane, t)).placement);
+  return (compiled?.kind === 'painted' || compiled?.kind === 'effect') && compiled.lay.kind === 'moving' && placesNothing(compiled.lay.lay(shotPlaneMomentAt(motion, plane, t)).placement);
 }
 
 /** The moment plane `plane`'s presentation reads at frame moment `t`: through its own clock. */

@@ -288,6 +288,15 @@
       "acceptedOver": "4247cd66",
       "adapter": "apple metal-3"
     },
+    "shot/offset-copies": {
+      "file": "shot/offset-copies.png",
+      "output": "a043a3ca6a3671e9329bd21680f595e0eb83732e9c5bc55b2136eb1282df4894",
+      "inputs": "93b923742c8db65e9449e405e255e6b4a18b4ded8aaca2de070c9634dbe43e7e",
+      "reason": "vid-216: new baseline, offsetCopies over a figure in no plane",
+      "accepted": "2026-11-25",
+      "acceptedOver": "885a8aa6",
+      "adapter": "apple metal-3"
+    },
     "shot/painted-cylinder": {
       "file": "shot/painted-cylinder.png",
       "output": "1e57e9f8f648eba833026a6f095edf09369cd72cefefaaa4be887f13f7336aa6",

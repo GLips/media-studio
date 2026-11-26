@@ -47,6 +47,7 @@ PaintedShotProps {camera, span, light?, planes, paintedTextures?, warm?}
 | masks | `masks: [{kind: 'alphaOf', drawable: '<plane>' or '<plane>/<key>', invert?}]` on a painted plane | cuts by another drawable's coverage where the frame shows it, through parallax; no mask reads its own plane through any chain; to leave a layer unmasked, put it on a second plane at the same depth |
 | instances | `{kind: 'instanced', depths, variants, instances(m)}` | each variant solved once and shared by every item; paint a variant on a document tight round its paint; one key per item's lifetime, so the shutter blurs it along its own travel |
 | figure | `shotPlace(shotFigure(painting, card), plane)` | `subjectFigureCard`'s group alone, as an image; `shotFigureSilhouette` reads its outline |
+| effect | `shotPlace(offsetCopies(hero, {count, dx, dy, fade}), plane)` | an image made from others: below |
 | dissolve | `dissolve(a, b, k)`, nestable | blends pictures, never pigment or shapes; every end one document size on one ground |
 | picture | `{kind: 'picture', extent, pictureAt}` | premultiplied; return the same object while it's still |
 | HTML among canvases | `<PaintedShot>` children: HTML and `<PaintedShotCanvas name>`, in DOM order | below |
@@ -58,6 +59,14 @@ HTML behind it (a violet wash turns a yellow block brown, as paint would), exact
 wrapper between a canvas and its shot may transform, filter or make a stacking context (opacity below 1, a blend
 mode, `isolation`, a z-index on a positioned element, a clip path or mask): it's refused. A clear back needs HTML
 behind it inside the shot at every frame; over a dark page, put an opaque background behind it inside the shot.
+
+**Effects.** An effect draws one image from others: a figure, a selection on a transparent ground, a painting in time,
+or another effect. Its inputs need no plane of their own; each is laid through the effect's plane's lay. `offsetCopies`
+is built in. Define your own as the studio does, in two halves: `defineShotEffect({name, inputs, defaults, problems,
+reads, grow?})` (plain data: each read names an input, a map in plane px, and a moment map), and
+`defineShotEffectGpu(effect, {wgsl, uniforms})`, whose WGSL defines `fn shotEffect(p: vec2f) -> ShotFilm` over
+`shotRead(i, p)`, `shotOver`, `shotFaded` and `shotParam(i)` (`studio api defineShotEffectGpu`). Pass your halves to
+`<PaintedShot effects={[...]}>`, a module constant. An effect plane can't be the back or take masks, and no mask reads it.
 
 ## The camera
 

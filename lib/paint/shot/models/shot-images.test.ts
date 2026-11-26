@@ -8,12 +8,12 @@ const dissolvingPond = (k: number) => [{ key: 'pond dawn', weight: 1 - k }, { ke
 
 /** Tint reading heron's wing, heron reading a photo's render keyed `photo`, through `across` between tint and heron. */
 function chain(photo: string, heron = 'heron', across: PaintSimilarity = PAINT_SIMILARITY_IDENTITY) {
-  const heronKeys = shotImageKeys([{ key: heron, weight: 1 }], [{ drawable: 'photo', key: photo }]);
-  return { heron: heronKeys, tint: shotImageKeys([{ key: 'tint', weight: 1 }], [{ drawable: 'heron/wing', key: shotImageReadKey(heronKeys.image, across) }]) };
+  const heronKeys = shotImageKeys([{ key: heron, weight: 1 }], [{ name: 'photo', key: photo }]);
+  return { heron: heronKeys, tint: shotImageKeys([{ key: 'tint', weight: 1 }], [{ name: 'heron/wing', key: shotImageReadKey(heronKeys.image, across) }]) };
 }
 
 /** Glow's image key, reading a pond whose image is keyed `pond`. */
-const glow = (pond: string) => shotImageKeys([{ key: 'glow', weight: 1 }], [{ drawable: 'pond', key: shotImageReadKey(pond, PAINT_SIMILARITY_IDENTITY) }]).image;
+const glow = (pond: string) => shotImageKeys([{ key: 'glow', weight: 1 }], [{ name: 'pond', key: shotImageReadKey(pond, PAINT_SIMILARITY_IDENTITY) }]).image;
 
 test("a reader's image key moves with what it reads and where the camera shows it, through a chain and across a dissolve, and only then", () => {
   const keys = chain('photo@1');

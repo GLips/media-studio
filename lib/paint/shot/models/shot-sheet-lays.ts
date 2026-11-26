@@ -436,7 +436,8 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
 
   const reveals = paintingRevealLinksOf(compiled, solved, selection.at);
   const masks = shotMasksOf(input), reads = shotPlaneReads(input, order);
-  const visibility = plane.opaqueBack ? 1 : shotVisibilityAt(shot, plane.id, plane.id, at), emits = steps.some((step) => step?.glow && step.opacity > 0);
+  // An effect's input is drawn whole: the effect's output takes its plane's visibility.
+  const visibility = plane.opaqueBack || !plane.placed ? 1 : shotVisibilityAt(shot, plane.id, plane.id, at), emits = steps.some((step) => step?.glow && step.opacity > 0);
   const travels = !!shutter && ((ground?.kind === 'placed' && latticeTravels(ground.lattice)) || steps.some((step) => step && shotStepLatticed(step.lay) && latticeTravels(step.lay.lattice)) || pieces.some((each) => each.travels));
   // All the lay reads: the compile and its films, every pose at the moment and the shutter's ends, how much shows of
   // what, the ground, the pieces, the masks and the drawables read, and the light. The stage's own store keeps the

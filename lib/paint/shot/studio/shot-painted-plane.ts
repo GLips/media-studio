@@ -5,7 +5,8 @@
 // held still is laid once; a dissolve sums them by weight.
 //
 // A plane's image, its sharp picture at a moment, is evaluated apart from where the lens places it: it asks first
-// for what its masks read, and is kept under what it read and through what map (shotImageKeys).
+// for what its masks read (an effect plane's, its reads' images), and is kept under what it read and through what
+// map (shotImageKeys).
 
 import { paintSimilarityAfter } from '#lib/paint/animation/models/paint-similarity.ts';
 import { compilePaintingSelection, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
@@ -17,7 +18,7 @@ import { solvePaintingSheetFilms } from '#lib/paint/document/studio/painting-she
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampPictureDefocus, type StampPictureDefocus, type StampPlaneLook } from '#lib/paint/painting/models/stamp-plane.ts';
 import { STAMP_FILMS_WHOLE } from '#lib/paint/painting/models/stamp-reveal.ts';
-import { stampWrapPeriods, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import { stampStageTexelsWithin, stampWrapPeriods, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampArrayView } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
 import { stampPlanePictureLayers } from '#lib/paint/painting/studio/stamp-paint-plane-passes.ts';
@@ -29,15 +30,17 @@ import type { StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform
 import type { LensCompositor, LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import type { PaintRigPicture } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
-import type { CompiledPaintedShot, CompiledShotPaintedPlane, PaintedShotPaintOptions } from '../models/shot-compile.ts';
+import type { CompiledPaintedShot, CompiledShotEffectPlane, CompiledShotPaintedPlane, PaintedShotPaintOptions } from '../models/shot-compile.ts';
+import { shotEffectBox, type CompiledShotImage } from '../models/shot-effect.ts';
 import { shotPlanePosesAt, shotPlaneReseedAt, shotPlaneSharesAt, shotRigGroupPivot, type ShotFrameRigs, type ShotRigRead } from '../models/shot-frame-plan.ts';
-import { shotImageKeys, shotImageReadKey } from '../models/shot-images.ts';
+import { shotEffectImageKey, shotImageKeys, shotImageReadKey } from '../models/shot-images.ts';
 import type { ShotMaskAcross } from '../models/shot-masks.ts';
 import { shotOccurrencePlane } from '../models/shot-occurrences.ts';
 import type { OccurrenceKey } from '../models/shot-props.ts';
 import { shotRigFound } from '../models/shot-rigs.ts';
 import { shotPiecesPlaced, shotPlaneLayPlan, type ShotMomentAt, type ShotPlaneLayPlan, type ShotRigPiecesAt } from '../models/shot-sheet-lays.ts';
 import { createShotDissolve, type ShotDissolveShare } from './shot-dissolve-pass.ts';
+import { createShotEffectPass, type ShotEffectTable } from './shot-effect-gpu.ts';
 import { shotCoverageLayers, shotPictureCoverage, type ShotMaskCoverage } from './shot-mask-passes.ts';
 import type { ShotRigPictures, ShotRigPiecesDrawer, ShotRigRestCels } from './shot-rig-pieces.ts';
 import type { ShotPiecesDrawn, ShotSheetsLayer, ShotSheetsLayFrame } from './shot-sheets-lay.ts';
@@ -91,16 +94,28 @@ export type ShotPlaneMoment = {
 type ShotImageShare = { readonly picture: StampPlanePicture | null; readonly key: string; readonly weight: number };
 
 /**
- * A painted plane's image: its sharp picture at one moment, not yet placed by the lens. Its moment; each selection's
- * sharp picture, none for a nearer plane faded out; the key a reader names it by; and `sharp`, its selections summed,
- * the coverage read of it in its last layers, drawn when first asked.
+ * An image: its sharp picture at one moment, not yet placed by the lens. The key a reader names it by; whether it's
+ * the opaque back, laid unclipped; `sharp`, its picture (null: it lays nothing), drawn when first asked; and
+ * `defocused`, that picture defocused through a lens as the picture pass keeps it.
  */
 export type ShotImage = {
-  readonly moment: ShotPlaneMoment;
-  readonly shares: readonly ShotImageShare[];
   readonly key: string;
+  readonly opaqueBack: boolean;
   readonly sharp: () => StampPlanePicture | null;
+  readonly defocused: (lens: LensCompositor, defocus: StampPictureDefocus) => StampPlanePicture | null;
 };
+
+/**
+ * A painted image: its moment, and each selection's sharp picture, none for a nearer plane faded out; its `sharp`, its
+ * selections summed, holds the coverage read of it in its last layers.
+ */
+type ShotPaintedImage = ShotImage & { readonly moment: ShotPlaneMoment; readonly shares: readonly ShotImageShare[] };
+
+/**
+ * An effect plane as one exposure lays it: the plane; each painted image its effect reads as that read lies
+ * (shotImageLeafReads' order); and the visibility its output is laid at.
+ */
+export type ShotEffectLaid = { readonly plane: CompiledShotEffectPlane; readonly leaves: readonly ShotPlaneMoment[]; readonly visibility: number };
 
 /**
  * What an image reads where an alphaOf mask names a drawable, whatever lays it: another plane's image, a source's
@@ -113,11 +128,12 @@ export type ShotImageRead = { readonly key: string; readonly coverage: () => Sho
 export type ShotSourceReads = (plane: string, reader: string) => ShotImageRead;
 
 /**
- * What a moment's images are evaluated over: each painted plane as it lies (`moments`), those `hidden` this frame,
+ * What a moment's images are evaluated over: each painted plane as it lies (`moments`), each effect plane (`effects`), those `hidden` this frame,
  * what `sources` rendered, and the camera's map between planes, `across`, through which a mask reads.
  */
 export type ShotImagesAt = {
   readonly moments: ReadonlyMap<string, ShotPlaneMoment>;
+  readonly effects: ReadonlyMap<string, ShotEffectLaid>;
   readonly hidden: ReadonlySet<CompiledShotPaintedPlane>;
   readonly sources: ShotSourceReads;
   readonly across: ShotMaskAcross;
@@ -132,6 +148,7 @@ const SHOT_READS_NOTHING = (): ShotMaskCoverage | null => null;
 /** What a shot's painted planes are drawn with on its device: what it paints with, one stage, one arena, one lay, one picture reader and drawer. */
 export type ShotPaintedPlanesOptions = PaintedShotPaintOptions & {
   readonly shot: CompiledPaintedShot;
+  readonly effects: ShotEffectTable;
   readonly stage: StampStage;
   readonly arena: StampUniformArena;
   readonly layer: ShotSheetsLayer;
@@ -140,14 +157,14 @@ export type ShotPaintedPlanesOptions = PaintedShotPaintOptions & {
 };
 
 /** A shot's painted planes on `owner`'s device, their pictures kept in its cache until `dispose`. */
-export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage, brushOf, costs, arena, layer, rigPictures, piecesDrawer }: ShotPaintedPlanesOptions) {
+export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effects, stage, brushOf, costs, arena, layer, rigPictures, piecesDrawer }: ShotPaintedPlanesOptions) {
   const { motion } = shot, { width, height, margin } = stage;
   // A stage texel's point to plane px and back: the stage's origin lies `margin` up and left of the frame's.
   const fromStage = { ma: 1, mb: 0, kx: -margin, ky: -margin }, toStage = { ma: 1, mb: 0, kx: margin, ky: margin };
   // A variant isn't here: a mask reads an instanced plane through its items.
   const paintedOf = new Map(shot.planes.flatMap((plane) => (plane.kind === 'painted' ? [[plane.id, plane] as const] : [])));
   const laysKept = new WeakMap<PaintingSelectionCompiled, StampSheetsLays>(), pictures = createStampPlanePictures(owner, { stage, arena });
-  const dissolve = createShotDissolve(owner, { stage, arena });
+  const dissolve = createShotDissolve(owner, { stage, arena }), effectPass = createShotEffectPass(owner, { stage, arena });
   /** `compiled`'s sheets' lays on the shot's stage, made once a compile. */
   async function laysOf(compiled: PaintingSelectionCompiled): Promise<StampSheetsLays> {
     const known = laysKept.get(compiled);
@@ -321,14 +338,15 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
      * picture kept, or laid, its masks reading first the images they name, where the camera shows them, or what
      * `sources` rendered. Nothing of a plane hidden this frame.
      */
-    images(encoder: GPUCommandEncoder, { moments, hidden, sources, across }: ShotImagesAt): (plane: string) => ShotImage {
-      const made = new Map<string, ShotImage>(), sourceReads = new Map<string, ShotImageRead>();
+    images(encoder: GPUCommandEncoder, { moments, effects: laidEffects, hidden, sources, across }: ShotImagesAt): (plane: string) => ShotImage {
+      const made = new Map<string, ShotImage>(), sourceReads = new Map<string, ShotImageRead>(), leaves = new Map<ShotPlaneMoment, ShotImage>();
       /** What `reader`'s mask reads of `drawable`: an image's coverage where the camera shows it, or a source's. */
       const readOf = (reader: string, drawable: OccurrenceKey): ShotImageRead => {
         const on = shotOccurrencePlane(drawable), painted = paintedOf.get(on);
         if (painted && hidden.has(painted)) return SHOT_HIDDEN_READ;
         if (moments.has(on)) {
-          const read = image(on), map = across(on, reader), stageAcross = paintSimilarityAfter(toStage, paintSimilarityAfter(map, fromStage));
+          // SAFETY: `moments` holds painted planes alone, and the compile refuses a mask reading an effect plane.
+          const read = image(on) as ShotPaintedImage, map = across(on, reader), stageAcross = paintSimilarityAfter(toStage, paintSimilarityAfter(map, fromStage));
           const coverageLayer = read.moment.shares[0].plan.reads.findIndex((each) => each.drawable === drawable);
           return {
             key: shotImageReadKey(read.key, map),
@@ -343,18 +361,68 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
         if (!read) sourceReads.set(at, (read = sources(on, reader)));
         return read;
       };
-      const image = (id: string): ShotImage => {
-        const known = made.get(id);
-        if (known) return known;
-        // A plane's masks are its own, alike in every selection's plan.
-        const moment = moments.get(id)!, reads = new Map(moment.plane.masks.map(({ drawable }) => [drawable, readOf(id, drawable)]));
-        const keys = shotImageKeys(moment.shares.map(({ plan, share }) => ({ key: plan.key, weight: share.weight })), [...reads].map(([drawable, { key }]) => ({ drawable, key })));
+      /** `moment`'s image, its masks reading what `reads` names (none for an effect's input). */
+      const painted = (moment: ShotPlaneMoment, reads: ReadonlyMap<OccurrenceKey, ShotImageRead>): ShotPaintedImage => {
+        const keys = shotImageKeys(moment.shares.map(({ plan, share }) => ({ key: plan.key, weight: share.weight })), [...reads].map(([name, { key }]) => ({ name, key })));
         const shares = sharesUnder(encoder, moment, keys.shares, (drawable) => reads.get(drawable)!.coverage());
         const coverage = shotCoverageLayers(moment.shares[0].plan.reads.length);
         let sharp: StampPlanePicture | null | undefined;
-        // A dissolve's sum is made once, for whichever wants it first: a reader's mask, or the lens drawing it sharp.
+        // A dissolve's sum is made once, for whichever wants it first: a reader's mask or effect, or the lens drawing it sharp.
         const sharpSummed = () => (sharp === undefined ? (sharp = summed(encoder, moment, shares.flatMap(({ picture, weight }) => (picture ? [{ picture, weight }] : [])), coverage)) : sharp);
-        const evaluated: ShotImage = { moment, shares, key: keys.image, sharp: sharpSummed };
+        return {
+          moment, shares, key: keys.image, opaqueBack: moment.plane.opaqueBack, sharp: sharpSummed,
+          defocused: (lens, defocus) => summed(encoder, moment, defocused(encoder, lens, shares, defocus)),
+        };
+      };
+      /** An effect's input as `moment` lays it: kept by its moment, which every read of it at that moment shares. */
+      const leafImage = (moment: ShotPlaneMoment): ShotImage => {
+        let known = leaves.get(moment);
+        if (!known) leaves.set(moment, (known = painted(moment, new Map())));
+        return known;
+      };
+      /** Effect plane `laid`'s image: its effect over its reads' images, each asked for first, its output laid at its visibility. */
+      const effectImage = (laid: ShotEffectLaid): ShotImage => {
+        let leaf = 0;
+        const evaluate = (at: CompiledShotImage, visibility: number): ShotImage => {
+          if (at.kind === 'painted') return leafImage(laid.leaves[leaf++]);
+          const gpu = effects.get(at.definition)!, inputs = at.reads.map(({ input }) => evaluate(input, 1));
+          const key = shotEffectImageKey(at.key, visibility, inputs.map(({ key: inputKey }, i) => ({ key: inputKey, map: at.reads[i].map })));
+          let sharp: StampPlanePicture | null | undefined;
+          const drawn = () => {
+            if (sharp !== undefined) return sharp;
+            const pictured = inputs.map((input) => input.sharp());
+            // Each input box, plane px, through its read's map, grown, then clipped to the stage.
+            const box = shotEffectBox(at, (_, i) => {
+              const picture = pictured[i];
+              return picture && { x0: picture.box.x - margin, y0: picture.box.y - margin, x1: picture.box.x + picture.box.w - margin, y1: picture.box.y + picture.box.h - margin };
+            });
+            const texels = box && stampStageTexelsWithin(stage, box.x0, box.y0, box.x1, box.y1);
+            sharp = texels && visibility > 0
+              ? effectPass.draw(encoder, { gpu, params: at.params, reads: at.reads.map(({ map }, i) => ({ picture: pictured[i], map })), box: texels, visibility, key })
+              : null;
+            return sharp;
+          };
+          return {
+            key, opaqueBack: false, sharp: drawn,
+            defocused: (lens, defocus) => {
+              const picture = drawn();
+              return picture && pictures.blurred(encoder, lens, picture, key, defocus);
+            },
+          };
+        };
+        return evaluate(laid.plane.image, laid.visibility);
+      };
+      const image = (id: string): ShotImage => {
+        const known = made.get(id);
+        if (known) return known;
+        const effect = laidEffects.get(id);
+        let evaluated: ShotImage;
+        if (effect) evaluated = effectImage(effect);
+        else {
+          // A plane's masks are its own, alike in every selection's plan.
+          const moment = moments.get(id)!;
+          evaluated = painted(moment, new Map(moment.plane.masks.map(({ drawable }) => [drawable, readOf(id, drawable)])));
+        }
         made.set(id, evaluated);
         return evaluated;
       };
@@ -366,18 +434,20 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, stage
      * plane that lays nothing, or one faded out.
      */
     picture(encoder: GPUCommandEncoder, lens: LensCompositor, image: ShotImage, look: StampPlaneLook): LensLayer | null {
-      const { moment } = image, { plane } = moment;
       const defocus = stampPictureDefocus(look, margin);
-      const picture = defocus ? summed(encoder, moment, defocused(encoder, lens, image.shares, defocus)) : image.sharp();
+      const picture = defocus ? image.defocused(lens, defocus) : image.sharp();
       if (!picture) return null;
       // Laid whole: the picture pass took the plane's visibility into its picture already.
       return {
         picture: stampArrayView(picture.texture), layers: picture, view: look.view, shutter: look.shutter, shear: look.shear, origin: { x: picture.box.x - margin, y: picture.box.y - margin },
-        size: picture.box, clipped: !plane.opaqueBack, distance: look.distance, distances: 'layer', visibility: 1,
+        size: picture.box, clipped: !image.opaqueBack, distance: look.distance, distances: 'layer', visibility: 1,
       };
     },
 
     /** Gives up the pictures kept, once the frames reading them are submitted. */
-    dispose: () => pictures.dispose(),
+    dispose: () => {
+      pictures.dispose();
+      effectPass.dispose();
+    },
   };
 }
