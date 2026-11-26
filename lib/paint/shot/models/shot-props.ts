@@ -4,6 +4,7 @@
 // three sources are the engine's, imported; everything declared here is the painting path's own.
 // The paint skill's shots reference is the author's page for it.
 
+import type { DrawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import type { PaintShotCamera } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintNodeClock } from '#lib/paint/animation/models/paint-clock.ts';
 import type { PaintWobbleMarks, PaintMotionNode, PaintMotionPlay } from '#lib/paint/animation/models/paint-motion-compile.ts';
@@ -108,6 +109,8 @@ export type PlaneProps = PlaneCommon & ShotNodeFields & {
   readonly depth: PresentationValue<number>;
   readonly masks?: readonly PlaneMask[];
   readonly source: PresentationValue<PaintedSource> | PaintingInTime | ShotFigure | ShotEffectImage | PictureSource | ThreeSource;
+  /** The source schedule shared by drawing-varying effects in this image. */
+  readonly drawings?: DrawingSchedule;
   readonly sourceClock?: PaintNodeClock;
   /** Plays on the plane's own node, which its node fields (`pivot`, `pins`, `marks`, `glow`) write: it moves the whole plane. */
   readonly plays?: readonly ShotNodePlay[];

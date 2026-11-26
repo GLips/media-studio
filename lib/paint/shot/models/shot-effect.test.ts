@@ -6,6 +6,7 @@ import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
 import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import { compilePaintedShot, type CompiledShotEffectPlane } from './shot-compile.ts';
 import { defineShotEffect, shotDrawingStarted, shotEffectKeyAt, shotEffectTimeAt, shotPlaneImage, shotImageLeafReads, shotMomentMapped } from './shot-effect.ts';
@@ -105,29 +106,35 @@ test('slices reads each input given, the optional ones left out when not given, 
   assert.equal(compiled(shotPlace(slices({ source: hero, second: undefined }), { id: 'y', depth: 1 })).problems.length, 0);
 });
 
-test('slices rerolling each drawing keys its output by the drawing its plane shows, alike through a hold, and needs a drawing clock', () => {
+test('slices reuse cells through a hold and reroll at a cut even when both phases show index zero', () => {
+  const drawings = drawingSchedule('held', [{ at: 2 / FPS, cadence: 'held' }]);
   const { shot, problems } = compiled(
-    shotPlace(slices({ source: hero }, { reroll: 'drawing' }), { id: 'reroll', depth: 1, sourceClock: { hold: 2 } }),
-    shotPlace(slices({ source: hero }), { id: 'fixed', depth: 1, sourceClock: { hold: 2 } }),
+    shotPlace(slices({ source: hero }, { reroll: 'drawing' }), { id: 'reroll', depth: 1, drawings }),
+    shotPlace(slices({ source: hero }), { id: 'fixed', depth: 1, drawings }),
   );
   assert.deepEqual(problems, []);
   const [reroll, fixed] = ['reroll', 'fixed'].map((id) => (shot!.planes.find((plane) => plane.id === id) as CompiledShotEffectPlane).image);
-  // On twos at 24 fps: animation frames 0 and 1 show drawing 0, frame 2 drawing 1.
   const [first, held, next] = [0, 1 / FPS, 2 / FPS].map((t) => paintMoment(t));
   assert.equal(shotEffectKeyAt(reroll, first), shotEffectKeyAt(reroll, held));
   assert.notEqual(shotEffectKeyAt(reroll, first), shotEffectKeyAt(reroll, next));
-  assert.deepEqual(shotEffectTimeAt(reroll, next), { drawing: 1, seconds: 0 });
+  assert.deepEqual(shotEffectTimeAt(reroll, next), { token: drawings.at(next.frame).token, seconds: 0 });
   assert.equal(shotEffectKeyAt(fixed, first), shotEffectKeyAt(fixed, next));
+  assert.match(messages(shotPlace(slices({ source: hero }, { reroll: 'drawing' }), { id: 'x', depth: 1 })), /drawings: slices varies with each drawing/);
+  const params = { cells: 'rects', size: 12, shift: 24, share: 0.5, seed: 1 } as const;
+  const cells = (m: typeof first) => Array.from({ length: 16 }, (_, k) => shotSlicesCell({ ...params, reroll: 'drawing' }, 2, [k, 0], shotEffectTimeAt(reroll, m).token));
+  const cold = cells(next);
+  assert.notDeepEqual(cold, cells(first));
+  assert.deepEqual(cells(first), cells(held));
+  assert.deepEqual(cells(paintMoment(next.at, held.frame)), cells(held));
+  assert.deepEqual(cells(next), cold);
+});
+
+test('moment variation follows exposure seconds during a held frame', () => {
   const drift = defineShotEffect({ name: 'drift', inputs: ['source'], defaults: {}, problems: () => [], reads: () => [{ input: 'source' }], varies: () => ['moment'] });
   const drifting = (compiled(shotPlace(drift(hero), { id: 'drift', depth: 1 })).shot!.planes.find(({ id }) => id === 'drift') as CompiledShotEffectPlane).image;
   // Two exposures of one frame: a moment followed is read by its seconds, not its frame.
-  assert.deepEqual(shotEffectTimeAt(drifting, paintMoment(0.51, 0.5)), { drawing: 0, seconds: 0.51 });
+  assert.deepEqual(shotEffectTimeAt(drifting, paintMoment(0.51, 0.5)), { token: null, seconds: 0.51 });
   assert.notEqual(shotEffectKeyAt(drifting, paintMoment(0.5)), shotEffectKeyAt(drifting, paintMoment(0.51, 0.5)));
-  assert.match(messages(shotPlace(slices({ source: hero }, { reroll: 'drawing' }), { id: 'x', depth: 1 })), /sourceClock: slices varies with each drawing, and the plane declares no drawing clock/);
-  const params = { cells: 'rects', size: 12, shift: 24, share: 0.5, seed: 1 } as const;
-  const cells = (cut: 'never' | 'drawing', drawing: number) => Array.from({ length: 16 }, (_, k) => shotSlicesCell({ ...params, reroll: cut }, 2, [k, 0], drawing));
-  assert.deepEqual(cells('never', 0), cells('never', 3));
-  assert.notDeepEqual(cells('drawing', 0), cells('drawing', 1));
 });
 
 test("channel split reads its input once a channel, each through its channel's offset, its output spanning every channel's", () => {
@@ -139,15 +146,16 @@ test("channel split reads its input once a channel, each through its channel's o
 });
 
 test('a stage generator can be the sole plane and follows the declared drawing on a seek', () => {
+  const drawings = drawingSchedule({ fps: FPS / 2 });
   const noise = defineShotEffect({ name: 'noise', inputs: [], defaults: { seed: 1 }, extent: 'stage', varies: () => ['drawing'] });
-  const { shot, problems } = compilePaintedShot({ span: SPAN, camera, planes: [shotPlace(noise({ seed: 7 }), { id: 'noise', depth: 2, sourceClock: { hold: 2 } })] }, []);
+  const { shot, problems } = compilePaintedShot({ span: SPAN, camera, planes: [shotPlace(noise({ seed: 7 }), { id: 'noise', depth: 2, drawings })] }, []);
   assert.deepEqual(problems, []);
   const plane = shot!.planes[0];
   assert.ok(plane.kind === 'effect');
   assert.deepEqual([-2, 0, 2].map((f) => shotDrawingStarted(shot!, plane.sourceClock, paintMoment(f / FPS))), [false, true, true]);
   assert.deepEqual([shot!.clearBack, plane.image.params.seed, plane.image.reads.length], [false, 7, 0]);
   assert.deepEqual(shotEffectExtent(plane.image, shot!.motion, new Set()), { kind: 'everywhere' });
-  assert.deepEqual([6, 0, 7].map((f) => shotEffectTimeAt(plane.image, paintMoment(f / FPS)).drawing), [3, 0, 3]);
+  assert.deepEqual([6, 0, 7].map((f) => shotEffectTimeAt(plane.image, paintMoment(f / FPS)).token), [drawings.at(6 / FPS).token, drawings.at(0).token, drawings.at(6 / FPS).token]);
 });
 
 test('a group reads masked placed planes at the exposure, with image-only members omitted from the lens', () => {

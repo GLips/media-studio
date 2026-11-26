@@ -1,16 +1,11 @@
-// shot-slices.ts: slices, a built-in effect (shot-effect.ts): plane px cut into rows or square cells, a seeded share
-// of them each moved by whole px, and each cell showing one of the effect's inputs, so two looks of one subject tile
-// together. The cells are the plane's, not the subject's, and the seed decides them, with the drawing its plane's
-// clock shows when they reroll: a frame renders the same whatever was drawn before it. Its studio half is
-// shot-slices-gpu.ts, which draws each cell as shotSlicesCell says.
-
-import { defineShotEffect, type ShotEffectProblem } from './shot-effect.ts';
+import type { RedrawToken } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import { defineShotEffect, shotEffectRedrawSeed, type ShotEffectProblem } from './shot-effect.ts';
 
 /**
  * Slices' parameters: `cells`, rows across the plane or square cells; `size`, a row's height or a cell's side,
  * plane px; `shift`, the most whole px a moved cell moves (a row only across); `share`, how many cells move, 0..1;
  * `seed`, which cells, how far and showing which input; `reroll`, `'drawing'` to cut afresh each drawing its
- * plane's `sourceClock` shows.
+ * source schedule supplies.
  */
 export type ShotSlicesParams = {
   readonly cells: 'rows' | 'rects'; readonly size: number; readonly shift: number; readonly share: number; readonly seed: number; readonly reroll: 'never' | 'drawing';
@@ -24,7 +19,7 @@ const SEED_MOST = 2 ** 24;
 /**
  * `source` cut and moved, or several inputs tiled and moved, each cell showing one:
  * `shotPlace(slices({ source: watercolour, second: crayon }, { cells: 'rects', size: 24, shift: 16, share: 0.3 }), { id, depth })`;
- * rerolled each drawing: `shotPlace(slices({ source: hero }, { reroll: 'drawing' }), { id, depth, sourceClock: { hold: 2 } })`.
+ * rerolled each drawing: `shotPlace(slices({ source: hero }, { reroll: 'drawing' }), { id, depth, drawings })`.
  */
 export const slices = defineShotEffect({
   name: 'slices',
@@ -70,15 +65,15 @@ export const shotSlicesShareCut = (share: number) => Math.round(share * 65536);
 export const shotSlicesCellAt = ({ cells, size }: ShotSlicesParams, x: number, y: number): readonly [number, number] =>
   [cells === 'rows' ? 0 : Math.floor(x / size), Math.floor(y / size)];
 
-/** The seed slices draws drawing `drawing`'s cells from: its own, or when they reroll, its own mixed with the drawing's. */
-export const shotSlicesSeed = ({ seed, reroll }: ShotSlicesParams, drawing: number) => (reroll === 'drawing' ? hash((seed ^ hash(drawing >>> 0)) >>> 0) : seed);
+export function shotSlicesSeed({ seed, reroll }: ShotSlicesParams, token: RedrawToken | null) {
+  if (reroll === 'never') return seed;
+  if (token === null) throw new Error('Rerolling slices need a source redraw token');
+  return hash(seed ^ hash(shotEffectRedrawSeed(slices.definition.name, token)));
+}
 
-/**
- * What cell `cell` shows at drawing `drawing` (shotDrawing's, 0 unless they reroll): the index of the input it reads,
- * of `inputs` given, and how far it moves it, whole plane px. The studio half's `shotSlicesCell` is this, in WGSL.
- */
-export function shotSlicesCell(params: ShotSlicesParams, inputs: number, [cx, cy]: readonly [number, number], drawing = 0) {
-  const { cells, shift, share } = params, seed = shotSlicesSeed(params, drawing);
+/** The input and whole-pixel displacement seen at this cell address for the source token. */
+export function shotSlicesCell(params: ShotSlicesParams, inputs: number, [cx, cy]: readonly [number, number], token: RedrawToken | null = null) {
+  const { cells, shift, share } = params, seed = shotSlicesSeed(params, token);
   const base = hash((seed ^ hash((cx >>> 0) ^ hash(cy >>> 0))) >>> 0);
   const draw = (k: number) => hash((base + k) >>> 0), span = 2 * shift + 1;
   const moved = draw(0) >>> 16 < shotSlicesShareCut(share);

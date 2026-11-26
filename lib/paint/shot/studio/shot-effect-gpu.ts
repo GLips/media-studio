@@ -3,7 +3,7 @@
 // it into a picture cached under its key while the frame's encoder reads it, as its inputs are.
 //
 // Its helpers: `shotRead(i, p)`, read i's film at `p` through its map, filtered, clear past it;
-// `shotOver`, `shotFaded`, `shotFilmClear`, `shotParam(i)`, SHOT_READS; `shotDrawing()`, `shotSeconds()`
+// `shotOver`, `shotFaded`, `shotFilmClear`, `shotParam(i)`, SHOT_READS; `shotRedrawSeed()`, `shotSeconds()`
 // (ShotEffectVaries; 0 unless followed). A film is the light it adds, what it takes
 // of what's behind per channel (1 − transmittance), and light it emits.
 //
@@ -21,7 +21,7 @@ import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { CompiledPaintedShot } from '../models/shot-compile.ts';
 import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
-import { SHOT_EFFECT_READS_MOST, type CompiledShotImage, type ShotEffectDefinition, type ShotEffectParams, type ShotEffectTime } from '../models/shot-effect.ts';
+import { SHOT_EFFECT_READS_MOST, shotEffectRedrawSeed, type CompiledShotImage, type ShotEffectDefinition, type ShotEffectParams, type ShotEffectTime } from '../models/shot-effect.ts';
 
 /** The most floats an effect packs its parameters into: one uniform slot's. */
 export const SHOT_EFFECT_PARAMS_MOST = 64;
@@ -41,7 +41,7 @@ export function shotBlockMotionProblem({ current, previous, blockPx, stepPx }: S
  * An effect's studio half: its definition, the WGSL defining `fn shotEffect(p: vec2f) -> ShotFilm` (it may define
  * helpers of its own beside it), and its parameters packed as at most SHOT_EFFECT_PARAMS_MOST floats. Its WGSL
  * calls `shotRead(i, p)`, `shotOver(top, under)`, `shotFaded(film, k)`, `shotFilmClear()`, `shotParam(i)`, and
- * `shotDrawing()` / `shotSeconds()` (0 unless its definition's `varies` follows them); SHOT_READS counts its reads.
+ * `shotRedrawSeed()` / `shotSeconds()` (0 unless its definition's `varies` follows them); SHOT_READS counts its reads.
  */
 export type ShotEffectGpu<P extends ShotEffectParams = ShotEffectParams> = {
   readonly definition: ShotEffectDefinition<P>;
@@ -100,7 +100,7 @@ export function shotEffectTable(halves: readonly ShotEffectGpu[]): ShotEffectTab
   return table;
 }
 
-const SHOT_EFFECT_PASS = gpuUniformLayout('ShotEffectPass', [['origin', 'vec2u'], ['extent', 'vec2u'], ['visibility', 'f32'], ['drawing', 'i32'], ['seconds', 'f32'], ['frame', 'vec2u'], ['sizes', { vec4fArray: SHOT_EFFECT_READS_MOST / 2 }], ['motion', 'vec4f']]);
+const SHOT_EFFECT_PASS = gpuUniformLayout('ShotEffectPass', [['origin', 'vec2u'], ['extent', 'vec2u'], ['visibility', 'f32'], ['redrawSeed', 'u32'], ['seconds', 'f32'], ['frame', 'vec2u'], ['sizes', { vec4fArray: SHOT_EFFECT_READS_MOST / 2 }], ['motion', 'vec4f']]);
 const MAPS_PER_SLOT = SHOT_EFFECT_READS_MOST / 2;
 const SHOT_EFFECT_MAPS = gpuUniformLayout('ShotEffectMaps', [['values', { vec4fArray: MAPS_PER_SLOT }]]);
 const SHOT_EFFECT_PARAMS = gpuUniformLayout('ShotEffectParams', [['values', { vec4fArray: SHOT_EFFECT_PARAMS_MOST / 4 }]]);
@@ -177,7 +177,7 @@ fn shotPosterize(rgb: vec3f, levels: f32) -> vec3f {
   let steps = max(1.0, round(levels) - 1.0);
   return round(clamp(rgb, vec3f(0.0), vec3f(1.0)) * steps) / steps;
 }
-fn shotDrawing() -> i32 { return shotPass.drawing; }
+fn shotRedrawSeed() -> u32 { return shotPass.redrawSeed; }
 fn shotSeconds() -> f32 { return shotPass.seconds; }
 ${texel}
 fn shotReadTexel(i: u32, t: vec2i) -> ShotFilm {
@@ -329,7 +329,7 @@ export function createShotEffectPass(
           put('origin', [box.x, box.y]);
           put('extent', [box.w, box.h]);
           put('visibility', visibility);
-          put('drawing', time.drawing);
+          put('redrawSeed', time.token === null ? 0 : shotEffectRedrawSeed(gpu.definition.name, time.token));
           put('seconds', time.seconds);
           if (motion) put('motion', [motion.current, motion.previous, motion.blockPx, motion.stepPx]);
           put('frame', [stage.frame.width, stage.frame.height]);

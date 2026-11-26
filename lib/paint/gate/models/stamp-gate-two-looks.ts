@@ -78,15 +78,15 @@ const LOOKS_APART = 30, FRAGMENT = 20;
 const insideFigure = (x: number, y: number, grown: number) => ((x - FIGURE.x) / (FIGURE.rx + grown)) ** 2 + ((y - FIGURE.y) / (FIGURE.ry + grown)) ** 2 <= 1;
 
 /**
- * How `frame`, tiled by `params` at drawing `drawing`, stands to its looks: its px's stray from its cell's look moved,
+ * How `frame`, tiled by `params` for its source token, stands to its looks: its px's stray from its cell's look moved,
  * and its fragments past the figure's reach.
  */
-export function stampGateTiling(frame: ArrayLike<number>, params: ShotSlicesParams, looksPlaced: StampGateTwoLooksFrames['looks'], drawing = 0) {
+export function stampGateTiling(frame: ArrayLike<number>, params: ShotSlicesParams, looksPlaced: StampGateTwoLooksFrames['looks'], token: string | null = null) {
   // The footage's own colour, at the frame's corner, clear of the figure in either look.
   const footage = [0, 1, 2].map((c) => looksPlaced[0][c]);
   let stray = 0, fragments = 0;
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    const { input, shift: [sx, sy] } = shotSlicesCell(params, 2, shotSlicesCellAt(params, x + 0.5, y + 0.5), drawing);
+    const { input, shift: [sx, sy] } = shotSlicesCell(params, 2, shotSlicesCellAt(params, x + 0.5, y + 0.5), token);
     // A px moved from past the frame shows what the stage held there, which no frame of a look shows.
     if (x - sx < 0 || x - sx >= width || y - sy < 0 || y - sy >= height) continue;
     const from = (y - sy) * width + x - sx, look = looksPlaced[input];

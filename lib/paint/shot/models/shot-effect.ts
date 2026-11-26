@@ -7,6 +7,8 @@
 // keeping its inputs' pictures until it's drawn. Inputs need not be placed: each is drawn through the placement of
 // the plane holding the effect.
 
+import { redrawSeed, type RedrawToken } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import { paintIdHash } from '#lib/paint/animation/models/paint-motion-clips.ts';
 import { paintNodeTimeAt } from '#lib/paint/animation/models/paint-clock.ts';
 import { paintAnimationFrameAt } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import { paintSpanFrameRange } from '#lib/paint/animation/models/paint-span-moments.ts';
@@ -46,9 +48,8 @@ export type ShotEffectRead<I extends string = string> = {
 };
 
 /**
- * What of the moment an effect's output follows: `drawing`, the drawing its plane's `sourceClock` shows (a plane
- * declaring none is refused), so it rerolls each drawing and a hold reuses its picture; `moment`, the seconds, for
- * change running on through a hold. Its WGSL reads them as `shotDrawing()` and `shotSeconds()`; each followed keys its output.
+ * A drawing-varying shader reads its source token as a u32 seed with shotRedrawSeed().
+ * A moment-varying shader reads exposure seconds with shotSeconds(). Both inputs participate in the image key.
  */
 export type ShotEffectVaries = 'drawing' | 'moment';
 
@@ -140,8 +141,10 @@ export type CompiledShotImage = CompiledShotPaintedPlane | CompiledShotEffectIma
 /** A read compiled: the image read, its map (input plane px to output plane px), and its moment map (null: the frame's own). */
 export type CompiledShotEffectRead = { readonly input: CompiledShotImage; readonly map: PaintSimilarity; readonly moment: ((moment: PaintMoment) => PaintMoment) | null };
 
-/** What of moment an effect draws at it reads (ShotEffectVaries): its drawing, and its seconds; 0 for each it doesn't follow. */
-export type ShotEffectTime = { readonly drawing: number; readonly seconds: number };
+export const shotEffectRedrawSeed = (name: string, token: RedrawToken) => paintIdHash(redrawSeed(name, token));
+
+/** Only declared variation participates in the pass and its cache key. */
+export type ShotEffectTime = { readonly token: RedrawToken | null; readonly seconds: number };
 
 /**
  * An effect's image compiled: its definition; its parameters, defaults filled in; its reads, in order; how far its
@@ -159,14 +162,14 @@ export type CompiledShotEffectImage = {
   readonly timeAt: ((moment: PaintMoment) => ShotEffectTime) | null;
 };
 
-/** What `effect` drawn at `moment` reads of it, all 0 for an effect following none. */
-export const shotEffectTimeAt = (effect: CompiledShotEffectImage, moment: PaintMoment): ShotEffectTime => effect.timeAt?.(moment) ?? { drawing: 0, seconds: 0 };
+/** What `effect` drawn at `moment` reads of it, with a null token for an effect following no drawing. */
+export const shotEffectTimeAt = (effect: CompiledShotEffectImage, moment: PaintMoment): ShotEffectTime => effect.timeAt?.(moment) ?? { token: null, seconds: 0 };
 
 /** What of `effect`'s output's key it fixes drawn at `moment`: its own key, and what it reads of the moment, if anything. */
 export const shotEffectKeyAt = (effect: CompiledShotEffectImage, moment: PaintMoment) => {
   if (!effect.timeAt) return effect.key;
-  const { drawing, seconds } = effect.timeAt(moment);
-  return JSON.stringify([effect.key, drawing, seconds]);
+  const { token, seconds } = effect.timeAt(moment);
+  return JSON.stringify([effect.key, token, seconds]);
 };
 
 const finiteMap = ({ ma, mb, kx, ky }: PaintSimilarity) => [ma, mb, kx, ky].every(Number.isFinite) && (ma !== 0 || mb !== 0);

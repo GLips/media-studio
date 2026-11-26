@@ -1,9 +1,9 @@
 // stamp-gate-slices-reroll.ts: the gate's rerolling slices (shot/slices-reroll). The two-look figure, held, tiled by
-// slices that reroll each drawing its plane's clock shows: four drawings held two animation frames each. Its frames
+// slices that reroll each drawing its source schedule shows: four drawings held two animation frames each. Its frames
 // are drawn in turn and shuffled, on renderers of their own, and must match; a drawing's frames match each other and
 // reuse its tiles, and each drawing's tiles are its looks moved as shotSlicesCell says at that drawing.
 
-import { paintAnimationFrameAt } from '#lib/paint/painting/models/stamp-group-motion.ts';
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { shotFigure, shotPlace } from '#lib/paint/shot/models/shot-figure.ts';
 import { slices } from '#lib/paint/shot/models/shot-slices.ts';
@@ -24,16 +24,15 @@ export const STAMP_GATE_SLICES_REROLL_SHUFFLED: readonly number[] = [7, 2, 9, 0,
 /** The frame the baseline shows: the second drawing's first. */
 export const STAMP_GATE_SLICES_REROLL_AT = STAMP_GATE_SLICES_REROLL_FRAMES[3];
 
-/** The drawing frame `t` shows: its animation frame over the hold. */
-const drawingAt = (t: number) => Math.floor(paintAnimationFrameAt(t, ANIMATION_FPS) / HOLD);
+const schedule = drawingSchedule({ fps: ANIMATION_FPS / HOLD });
 
-/** The footage, and the figure's two looks tiled in square cells by slices rerolling each drawing, the plane's drawing clock holding two. */
+/** The footage, and the figure's two looks tiled in square cells by slices rerolling each drawing, on twos. */
 export function stampGateSlicesRerollShot(): StampGateShot {
   const stage = stampStage(STAMP_GATE_FIGURE_FRAME, 2);
   const [wash, gouache] = stampGateTwoLooksEvaluations().map((evaluation) => shotFigure(evaluation, 'figure', { at: 0 }));
   return {
     camera: { stage, fov: 35, lens: { bloom: 0, shutter: 'shut' }, animationFps: ANIMATION_FPS, plays: [] },
-    planes: [stampGateFootagePlane(stage), shotPlace(slices({ source: wash, second: gouache }, stampGateTiles('rects', 'drawing')), { id: 'tiles', depth: 1, sourceClock: { hold: HOLD } })],
+    planes: [stampGateFootagePlane(stage), shotPlace(slices({ source: wash, second: gouache }, stampGateTiles('rects', 'drawing')), { id: 'tiles', depth: 1, drawings: schedule })],
   };
 }
 
@@ -51,7 +50,7 @@ export type StampGateSlicesRerollFrames = {
  * as shotSlicesCell says at its drawing.
  */
 export function checkStampGateSlicesReroll({ inTurn, shuffled, looks, drawn }: StampGateSlicesRerollFrames) {
-  const frames = STAMP_GATE_SLICES_REROLL_FRAMES, drawings = frames.map(drawingAt);
+  const frames = STAMP_GATE_SLICES_REROLL_FRAMES, drawings = frames.map((t) => schedule.at(t).token);
   const order = STAMP_GATE_SLICES_REROLL_SHUFFLED.map((t) => frames.indexOf(t));
   const apart = order.map((k, i) => stampGateFrameDifference(shuffled[i], inTurn[k])), worstApart = Math.max(...apart.map(({ max }) => max));
   const held = frames.flatMap((_, k) => (k && drawings[k] === drawings[k - 1] ? [stampGateFrameDifference(inTurn[k], inTurn[k - 1]).max] : []));

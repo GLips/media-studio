@@ -22,7 +22,7 @@ fn indexedColor(luma: f32, bank: u32) -> vec3f {
 }
 fn shotEffect(p: vec2f) -> ShotFilm {
   let block = shotParam(0u);
-  let tick = bitcast<u32>(shotDrawing());
+  let tick = shotRedrawSeed();
   let cell = packet(p / vec2f(block, block * 0.63), tick);
   let band = packet(vec2f(0.0, p.y / (block * 0.14)), tick + 173u);
   let torn = band % 13u == 0u;

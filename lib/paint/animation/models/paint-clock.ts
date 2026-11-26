@@ -105,16 +105,6 @@ export function paintNodeDrawingSeconds(steps: readonly PaintSceneStep[], animat
   return steps[0].frames / animationFps;
 }
 
-/**
- * The drawing a hold on `steps` shows at `t`, counted whole from the scene's start: the same through each hold, one
- * more the next. Null where paintNodeDrawingSeconds finds no drawing clock.
- */
-export function paintNodeDrawingAt(steps: readonly PaintSceneStep[], t: PaintMoment, animationFps: number): number | null {
-  if (steps.length !== 1 || steps[0].kind !== 'hold') return null;
-  // As sceneStepTime holds it: by the frame shown, so a shutter's moments within a frame share its drawing.
-  return Math.floor(paintAnimationFrameOf(sceneSeconds(t.frame), animationFps) / steps[0].frames);
-}
-
 /** `clock` compiled under its node's steps (ancestors' outermost); check it first with paintPlayClockProblem. */
 export function compilePaintPlayClock(clock: PaintPlayClock, node: readonly PaintSceneStep[]): CompiledPaintPlayClock {
   const scene: readonly PaintSceneStep[] = clock.hold === undefined ? node : [...node, { kind: 'hold', frames: clock.hold }];

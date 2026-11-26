@@ -14,7 +14,7 @@ fn shotEffect(p: vec2f) -> ShotFilm {
   let size = shotParam(1u);
   let shift = i32(shotParam(2u));
   let cell = vec2i(select(0, i32(floor(p.x / size)), rects), i32(floor(p.y / size)));
-  let seed = select(u32(shotParam(4u)), shotSlicesHash(u32(shotParam(4u)) ^ shotSlicesHash(bitcast<u32>(shotDrawing()))), shotParam(5u) > 0.5);
+  let seed = select(u32(shotParam(4u)), shotSlicesHash(u32(shotParam(4u)) ^ shotSlicesHash(shotRedrawSeed())), shotParam(5u) > 0.5);
   let base = shotSlicesHash(seed ^ shotSlicesHash(bitcast<u32>(cell.x) ^ shotSlicesHash(bitcast<u32>(cell.y))));
   let span = u32(2 * shift + 1);
   var moved = vec2i(0);

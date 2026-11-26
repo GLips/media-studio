@@ -10,7 +10,7 @@
 
 import { buildPaintCamera, paintCameraLensBuilt, paintShotCameraOptions } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
-import { paintNodeClockProblem, paintNodeClockSteps, paintNodeDrawingAt, paintNodeDrawingSeconds, paintNodeTimeAt, type PaintNodeClock, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
+import { paintNodeClockProblem, paintNodeClockSteps, paintNodeDrawingSeconds, paintNodeTimeAt, type PaintNodeClock, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import { paintPlacementMoveProblem } from '#lib/paint/animation/models/paint-motion-clips.ts';
 import { paintSecondsText, paintSpanFrames, paintSpanMoments, paintSpanProblem } from '#lib/paint/animation/models/paint-span-moments.ts';
 import { presentationValueAt, type PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
@@ -293,10 +293,14 @@ function compileEffectImage(image: Extract<ShotImageSource, { readonly kind: 'ef
   const steps = paintNodeClockSteps(at.props.sourceClock), drawing = paintNodeDrawingSeconds(steps, at.fps);
   const countsDrawings = checked.reads.some(({ moment }) => moment && typeof moment !== 'function' && moment.drawingsEarlier > 0);
   const followsDrawing = checked.varies.includes('drawing'), followsMoment = checked.varies.includes('moment');
-  if ((countsDrawings || followsDrawing) && drawing === null) {
+  const drawings = followsDrawing ? at.props.drawings : undefined;
+  if (followsDrawing && !drawings) {
+    at.problems.push(shotError(at.props.id, 'drawings', `${definition.name} varies with each drawing: supply the source drawing schedule`));
+    return null;
+  }
+  if (countsDrawings && drawing === null) {
     // A drawing clock is declared, never found by comparing pictures: a source's pixels may hold while its pose moves.
-    const what = countsDrawings ? 'reads its input drawings earlier' : 'varies with each drawing';
-    at.problems.push(shotError(at.props.id, 'sourceClock', `${definition.name} ${what}, and the plane declares no drawing clock: give it sourceClock: { hold: n }, each drawing held n animation frames`));
+    at.problems.push(shotError(at.props.id, 'sourceClock', `${definition.name} reads its input drawings earlier, and the plane declares no drawing clock: give it sourceClock: { hold: n }, each drawing held n animation frames`));
     return null;
   }
   const momentOf = (moment: ShotEffectMoment | undefined): CompiledShotEffectRead['moment'] => {
@@ -305,10 +309,8 @@ function compileEffectImage(image: Extract<ShotImageSource, { readonly kind: 'ef
     return seconds ? (m) => momentEarlier(m, seconds) : null;
   };
   const reads = checked.reads.map((read): CompiledShotEffectRead => ({ input: inputs.get(read.input)!, map: shotEffectReadMap(read), moment: momentOf(read.moment) }));
-  const { fps } = at;
-  // A drawing followed has a drawing clock: refused above without one.
   const timeAt = followsDrawing || followsMoment
-    ? (m: PaintMoment) => ({ drawing: followsDrawing ? paintNodeDrawingAt(steps, m, fps)! : 0, seconds: followsMoment ? m.at : 0 })
+    ? (m: PaintMoment) => ({ token: drawings?.at(m.frame).token ?? null, seconds: followsMoment ? m.at : 0 })
     : null;
   return compiledShotEffect(definition, checked.params, reads, checked.grow, checked.extent, timeAt);
 }

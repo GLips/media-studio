@@ -5,12 +5,11 @@ export const signalGroundGpu = defineShotEffectGpu(signalGround, {
   uniforms: ({ seed }) => [seed],
   wgsl: /* wgsl */ `
 fn shotEffect(p: vec2f) -> ShotFilm {
-  let drawing = bitcast<u32>(shotDrawing());
+  let redraw = shotRedrawSeed();
   let seed = u32(shotParam(0u));
   let tile = shotBlock(p, vec2f(94.0, 48.0));
-  // Hold the distribution of dark and bright tiles while the pixels within them churn.
-  let field = shotNoise(tile, seed + drawing / 4u);
-  let grain = shotNoise(shotBlock(p, vec2f(3.0)), seed + drawing);
+  let field = shotNoise(tile, seed + redraw + 1u);
+  let grain = shotNoise(shotBlock(p, vec2f(3.0)), seed + redraw);
   let check = shotBlock(p, vec2f(8.0));
   let lit = select(grain > 0.81, ((check.x + check.y) & 1) == 0, field > 0.82);
   let phosphor = array<vec3f, 3>(vec3f(0.035,0.65,0.48), vec3f(0.67,0.018,0.29), vec3f(0.09,0.11,0.74));

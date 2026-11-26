@@ -19,7 +19,7 @@ fn signalRead(q: vec2f) -> ShotFilm {
 }
 fn shotEffect(p: vec2f) -> ShotFilm {
   let hit = signalHit();
-  let seed = bitcast<u32>(shotDrawing());
+  let seed = shotRedrawSeed();
   let row = shotBlock(p, vec2f(1.0, 8.0)).y;
   let band = shotNoise(vec2i(0, row), seed);
   let cell = shotBlock(p, vec2f(112.0, 52.0));

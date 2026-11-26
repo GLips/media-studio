@@ -70,23 +70,22 @@ Inputs include figures, transparent selections, paintings in time, placed planes
 - `trail(channelSplit(hand), {count: 10, every: {drawings: 1}, dx: -12, dy: -16, fade: 0.98})` stacks earlier drawings,
   each at its earlier lay plus its offset. Place behind the live figure with `sourceClock: {hold: 2}`.
   Space the poses with `every.drawings`. Use `visibility: trailStrobe(2, 0.75)` for two pulses/sec at 75% duty.
-- `slices({source, second?, third?, fourth?}, {cells: 'rows' | 'rects', size, shift, share, seed})` cuts between inputs
-  in plane px. Add `reroll: 'drawing'` and a source clock to reseed each drawing.
-- `mosh({source: hero, second: gouache}, {block: 80, throwPx: 120, age: 2, recolor: 0.65})` displaces
-  older macroblocks, stretches pixels across tear bands and swaps block palettes. Supply a held source clock.
-  Omit `second` to sample hero's past. Place `signalGround()` behind and pass its `shotPlaneImage` as `under` to shear the checker and pixel noise with the subject.
-- `signalBreak({source: shotPlaneImage('actor'), under: shotPlaneImage('room')}, {hits: [0.5, 1.5]})` tears their
-  composite on cue (scene seconds). Dropouts expose the back. Mark both members `imageOnly` and provide a drawing clock.
+- `slices({source, second?, third?, fourth?}, {cells, size, shift, share, seed})` tiles inputs in rows or squares.
+  For `reroll: 'drawing'`, place it with the source schedule, e.g. `shotPlace(image, {id, depth, drawings: score.drawings})`.
+- `mosh({source: hero, second: gouache}, {block: 80, throwPx: 120, age: 2, recolor: 0.65})` displaces older blocks,
+  stretches tear bands and swaps palettes. Supply `drawings` for packet choices and a held `sourceClock` for history.
+  Omit `second` for hero's past. Pass a placed `signalGround()` sharing `drawings` as `under` to shear its noise too.
+- `signalBreak({source: shotPlaneImage('actor'), under: shotPlaneImage('room')}, {hits: [0.5, 1.5]})` tears both on cue.
+  Mark members `imageOnly` and give the composite the actor's schedule. Dropouts expose the back.
 
-**Your own effect.** `defineShotEffect({name, inputs, defaults})` reads supplied inputs once in order.
-`reads(params,given)` can request 24 mapped reads, including earlier drawings. `grow(params)` pads the crop.
-`extent: 'stage'` shades every pixel including the margin. A generator declares `inputs: [], extent: 'stage'`,
-takes only params, and can paint the back. For a group, pass e.g. `{wall:shotPlaneImage('wall'),actor:shotPlaneImage('actor')}`
-and use `shotOver`. Read the resulting placed group with `{input:'group',moment:{drawingsEarlier:2}}` or a moment map.
-Reads include masks, visibility and camera placement at that moment, before the lens. Use timed placements for historical members whose position would otherwise come from a live DOM pin.
-`imageOnly:true` omits a nearer member from the lens. Use `extent: p => p.ground ? 'stage' : 'inputs'` for a generated backdrop.
-Declare `varies:()=>['drawing']` or `['moment']` for drawing-held or continuous noise.
-Register `defineShotEffectGpu(effect,{wgsl,uniforms?})` in PaintedShot's module-constant `effects`;
+**Your own effect.** `defineShotEffect({name, inputs, defaults})` reads inputs once in order. `reads(params,given)`
+allows 24 mapped reads. `grow(params)` pads the crop. A generator declares `inputs: [], extent: 'stage'`, takes
+only params, and shades the camera margin too. Conditional backdrops can use `extent: p => p.ground ? 'stage' : 'inputs'`.
+Compose placed inputs with `shotOver`. Historical reads (`moment:{drawingsEarlier:2}` or a moment map) include
+masks, visibility and camera placement. Historical members with live DOM pins need timed placements.
+Declare `varies: () => ['drawing']` and mix the WGSL u32 `shotRedrawSeed()` with a stable cell address.
+Declare `'moment'` for `shotSeconds()`, which follows exposure time through holds.
+Register `defineShotEffectGpu(effect,{wgsl,uniforms?})` in PaintedShot's module-constant `effects`.
 `blockMotion: () => ({current:0,previous:1,blockPx:32,stepPx:4})` enables `shotRead(1u,p-shotBlockMotion())`.
 The estimator compares nine offsets at the chosen spacing. Block size is a multiple of eight plane pixels.
 
@@ -98,8 +97,8 @@ Three receivers approximate a flat plane at their depth.
 
 **Neon.** `neon({palette: ['#ff3fa4','#3ff0ff'], spill: {reach: 48}, flicker: {seed: 3}})` turns transparent ink
 lines into tubes, matching each hue to a gas. Use `sign.place(lines, plane)` and `sign.light(wall, 'sign')`, or
-compose `sign.tubes(lines)` and `sign.flicker` individually. Add `scan: {fringe: 5, tear: 100, seed: 3}` and a held
-source clock for split edges and horizontal tears. The displaced tubes also light the wall.
+compose `sign.tubes(lines)` and `sign.flicker` individually. Add `scan: {fringe: 5, tear: 100, seed: 3}` and the source
+schedule as `drawings` for split edges and horizontal tears. The displaced tubes also light the wall.
 
 **Worked examples** live in `$(studio home)/work/projects/2026-11-clapper-effects/`.
 
