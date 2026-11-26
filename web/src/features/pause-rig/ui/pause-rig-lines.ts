@@ -25,7 +25,7 @@ export const PAUSE_RIG_LINES: readonly PauseRigLineSpec[] = [
 export const PAUSE_RIG_CONFIRM_LINES: readonly number[] = [1, 5, 6, 9];
 
 /** A stretch of a line the rig plays, in item seconds, and the pause or filler it's centred on. */
-export type PauseRigClip = { line: number; from: number; to: number; about: string; pause?: { kind: SpokenPauseKind; heard: number } };
+export type PauseRigClip = { line: number; from: number; to: number; about: string; pause?: { kind: SpokenPauseKind; from: number; heard: number } };
 
 // Seconds of the take either side of what a clip is about, as recorded.
 const CLIP_CONTEXT = 1.5;
@@ -51,7 +51,7 @@ export function pauseRigLineTimeOf({ pieces }: Pick<SpokenStretch, 'pieces'>, t:
 /** Each pause `speech` sped up or cut and each filler or stutter it took, as clips of the take around them, in order. */
 export function pauseRigClipsOf(line: number, speech: RecordedSpeech): PauseRigClip[] {
   const around = (from: number, to: number, about: string) => ({ line, from: ms(Math.max(speech.from, from - CLIP_CONTEXT)), to: ms(Math.min(speech.to, to + CLIP_CONTEXT)), about });
-  const pauses = speech.pauses.filter((p) => p.speed > 1).map((p) => Object.assign(around(p.from, p.to, `${p.kind} ${(p.to - p.from).toFixed(2)} s`), { pause: { kind: p.kind, heard: p.to - p.from } }));
+  const pauses = speech.pauses.filter((p) => p.speed > 1).map((p) => Object.assign(around(p.from, p.to, `${p.kind} ${(p.to - p.from).toFixed(2)} s`), { pause: { kind: p.kind, from: p.from, heard: p.to - p.from } }));
   const taken = speech.removals.filter((r) => r.kind !== 'pause' && !r.left).map((r) => around(r.from, r.to, `${r.kind} "${r.text}"`));
   return [...pauses, ...taken].toSorted((a, b) => a.from - b.from);
 }
@@ -71,6 +71,6 @@ export function pauseRigPickClipsOf(line: number, speech: RecordedSpeech, quiet:
     .map((p) => ({
       line, from: ms(Math.max(speech.from, playedAt(leadIn(pauseRigLineTimeOf(speech, p.from) - PICK_LEAD)))),
       to: ms(Math.min(speech.to, playedAt(pauseRigLineTimeOf(speech, p.to) + PICK_AFTER))),
-      about: `${p.kind} of ${(p.to - p.from).toFixed(2)} s`, pause: { kind: p.kind, heard: p.to - p.from },
+      about: `${p.kind} of ${(p.to - p.from).toFixed(2)} s`, pause: { kind: p.kind, from: p.from, heard: p.to - p.from },
     }));
 }

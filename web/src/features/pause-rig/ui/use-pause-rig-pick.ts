@@ -10,8 +10,8 @@ import { appendPauseRigLogFn, type PauseRigLogEntry } from '../controllers/pause
 import { PAUSE_RIG_CONFIRM_LINES, PAUSE_RIG_LINES, pauseRigLineTimeOf, type PauseRigClip } from './pause-rig-lines.ts';
 import { createPauseRigPlayer } from './pause-rig-player.ts';
 import {
-  nextPauseRigTrial, pauseRigTunedValues, pickPauseRigTrial, startPauseRigTuner,
-  type PauseRigFeel, type PauseRigPick, type PauseRigTrial, type PauseRigTunedValues, type PauseRigTuner,
+  nextPauseRigTrial, pauseRigTunedValues, pauseRigUnshownKnobs, pickPauseRigTrial, startPauseRigTuner,
+  type PauseRigFeel, type PauseRigMeasure, type PauseRigPick, type PauseRigTrial, type PauseRigTunedValues, type PauseRigTuner,
 } from './pause-rig-tuner.ts';
 
 /** Which of a turn's two versions plays, or the confirmation pass's line. */
@@ -20,7 +20,7 @@ export type PauseRigVersion = 'first' | 'second' | 'line';
 // Silence between the two versions, so each lands as its own.
 const BETWEEN_VERSIONS_MS = 700;
 // Bumped whenever a session saved before would mislead: a reload then starts afresh.
-const SESSION_KEY = 'pause-rig-pick-v3';
+const SESSION_KEY = 'pause-rig-pick-v4';
 
 type PauseRigConfirmation = { line: number; natural: boolean; note: string };
 type PauseRigSession = { tuner: PauseRigTuner; trial?: PauseRigTrial; history: PauseRigTuner[]; confirming: boolean; confirmed: PauseRigConfirmation[] };
@@ -68,10 +68,18 @@ export function usePauseRigPick({ active, clips, cut, takeOf, video, start }: Pa
 
   // A session with no turn asked draws one, and once none is left, moves on to confirming. The turn is kept, so a
   // reload asks the same.
+  const measure: PauseRigMeasure = (knob, clip, value) => {
+    const speech = cut(clip.line, { ...best, [knob]: value });
+    const pause = typeof speech === 'string' ? undefined : speech.pauses.find((p) => p.from === clip.pause?.from);
+    return pause && { plays: pause.plays, speed: pause.speed };
+  };
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- measure reads only clips' cuts at the tuner's values
+  const unshown = useMemo(() => (clips.length ? pauseRigUnshownKnobs(session.tuner, clips, measure) : []), [session.tuner, clips]);
   useEffect(() => {
     if (trial || session.confirming || clips.length === 0) return;
-    const next = nextPauseRigTrial(session.tuner, clips, Math.random(), Math.random());
+    const next = nextPauseRigTrial(session.tuner, clips, measure, Math.random(), Math.random());
     setSession((s) => (next ? { ...s, trial: next } : { ...s, confirming: true }));
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- measure reads only clips' cuts at the tuner's values
   }, [trial, session.confirming, clips, session.tuner, setSession]);
 
   const playStretch = (version: PauseRigVersion, line: number, values: PauseRigTunedValues, range: (speech: RecordedSpeech) => [number, number], then?: () => void) => {
@@ -138,7 +146,7 @@ export function usePauseRigPick({ active, clips, cut, takeOf, video, start }: Pa
   };
 
   return {
-    session, best, trial, playing, ready, heard: heardNow, confirmLine, stop, confirm, playBoth, next, draft,
+    session, best, trial, unshown, playing, ready, heard: heardNow, confirmLine, stop, confirm, playBoth, next, draft,
     /** Chooses an answer once both have played; choosing it again, or another, changes it until Next. */
     choose: (choice: PauseRigPick) => {
       if (ready && trial) amend({ pick: choice });

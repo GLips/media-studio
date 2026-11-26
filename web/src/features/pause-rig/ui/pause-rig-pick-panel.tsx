@@ -41,7 +41,7 @@ function PauseRigVersionTile({ label, version, pick }: { label: string; version:
 export function PauseRigPickPanel({ pick }: { pick: ReturnType<typeof usePauseRigPick> }) {
   const { session, playing, ready, confirmLine } = pick;
   const [confirmNote, setConfirmNote] = useState('');
-  const { done, about } = pauseRigTunerProgress(session.tuner);
+  const { done, about } = pauseRigTunerProgress(session.tuner, pick.unshown);
 
   if (session.confirming && confirmLine === undefined) {
     return <Text size="line" {...stylex.props(styles.instruction)}>All done, thank you. The values are in Details.</Text>;

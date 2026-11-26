@@ -18,6 +18,7 @@ import { colors, fonts, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { PauseRigNote } from './pause-rig-note.tsx';
 import { PauseRigPickPanel } from './pause-rig-pick-panel.tsx';
 import { PAUSE_RIG_LINES, pauseRigClipsOf, pauseRigPickClipsOf } from './pause-rig-lines.ts';
+import { PAUSE_RIG_TUNED_KNOBS } from './pause-rig-tuner.ts';
 import { usePauseRigPick } from './use-pause-rig-pick.ts';
 import { usePauseRigPlayback, type PauseRigEntry } from './use-pause-rig-playback.ts';
 // oxlint-disable-next-line import/no-unassigned-import -- DialKit's panel styles, which its components need loaded
@@ -205,6 +206,14 @@ export function PauseRigPage() {
           </Text>
           {!pick.session.confirming && <Button onClick={pick.confirmNow}>Confirm these values now</Button>}
           <Button onClick={pick.restart}>Restart from the knobs</Button>
+        </Group>
+        <Group gap="gap">
+          {PAUSE_RIG_TUNED_KNOBS.map((knob) => (
+            <Text key={knob} size="xs" {...stylex.props(styles.mono)}>
+              {knob} {pick.session.tuner.stairs[knob].value} ±{pick.session.tuner.stairs[knob].step.toFixed(3)}
+              {pick.unshown.includes(knob) && ' (skipped: no clip shows it)'}
+            </Text>
+          ))}
         </Group>
         {spec && <Text size="xs" {...stylex.props(styles.mono)}>{spec.item} {spec.from}–{spec.to} s: {spec.about}{shownClip && ` · this clip: ${shownClip.about}`}</Text>}
         {typeof speech === 'string' && <Text {...stylex.props(styles.failure)}>{speech}</Text>}
