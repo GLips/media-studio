@@ -14,6 +14,12 @@ type ProjectSeen = { lookedAt: string | null; lookedBefore: string | null; opene
 /** Before the reviewer has ever looked at a project's latest, the last day's files read as new. */
 const FIRST_LOOK_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * A look within this long of the last is the same look: the view can mount twice as it loads (a suspense retry), and
+ * a second mount mustn't move `lookedBefore` up to the first and clear every mark.
+ */
+const SAME_LOOK_MS = 60 * 1000;
+
 const NOTHING_SEEN: ProjectSeen = { lookedAt: null, lookedBefore: null, opened: {} };
 
 const keyOf = (project: string) => `studio.project-seen.${project}`;
@@ -82,7 +88,11 @@ export function useProjectNewSinceLastLook(project: string, now: number): Projec
 export function useProjectLatestLook(project: string, now: number): ProjectFileIsNewTest {
   const seen = useProjectSeen(project);
   useEffect(() => {
-    writeProjectSeen(project, (was) => ({ ...was, lookedBefore: was.lookedAt, lookedAt: new Date().toISOString() }));
+    const at = new Date();
+    writeProjectSeen(project, (was) => {
+      const sameLook = was.lookedAt !== null && at.getTime() - Date.parse(was.lookedAt) < SAME_LOOK_MS;
+      return { ...was, lookedBefore: sameLook ? was.lookedBefore : was.lookedAt, lookedAt: at.toISOString() };
+    });
   }, [project]);
   const since = seen.lookedBefore ?? firstLookOf(now);
   return (path, modified) => projectFileIsNew(modified, path, since, seen.opened);
