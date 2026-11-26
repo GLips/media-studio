@@ -11,7 +11,7 @@ export const neonTubesGpu = defineShotEffectGpu(neonTubes, {
   wgsl: /* wgsl */ `
 const NEON_LUMA = vec3f(0.2126, 0.7152, 0.0722);
 fn neonGas(i: u32) -> vec3f { return vec3f(shotParam(4u + 3u * i), shotParam(5u + 3u * i), shotParam(6u + 3u * i)); }
-// The palette colour whose hue (its channels' shares) lies nearest paint seen as a over white; the first for paint too dark to have one.
+// The palette colour whose hue (its channels' shares) lies nearest paint a; the first for paint too dark to have one.
 fn neonGasOf(a: vec3f) -> vec3f {
   let sum = a.r + a.g + a.b;
   if (sum < 0.03) { return neonGas(0u); }
@@ -39,8 +39,10 @@ fn shotEffect(p: vec2f) -> ShotFilm {
       let covers = dot(film.taken, NEON_LUMA) * reach;
       if (covers > tube) {
         tube = covers;
-        // Over white, as its line was drawn: an ink's colour is what it lets through, its own light near nothing.
-        paint = film.light + (vec3f(1.0) - film.taken);
+        // An ink's colour is what it lets through, its own light near nothing: what each channel passes beyond the
+        // most-taken one, added to its light. Body colour reads as its light alone, at any coverage.
+        let most = max(film.taken.r, max(film.taken.g, film.taken.b));
+        paint = film.light + (vec3f(most) - film.taken);
       }
     }
   }

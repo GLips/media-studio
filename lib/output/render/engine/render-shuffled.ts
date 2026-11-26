@@ -1,6 +1,7 @@
 // render-shuffled.ts: proves a span of frames draws alike in turn and shuffled. A render's tabs each draw every Nth
 // frame, and a reply slice starts mid-scene, so a frame reading anything a frame before it left behind (a cache
-// filled in order, an effect's history) differs between the two orders.
+// filled in order, an effect's history) differs between the two orders. The shuffled pass reads the solves the
+// in-turn pass stored on disk, keyed by what they paint: it checks drawing from solves, not the solving.
 
 import { copyFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';

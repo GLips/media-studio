@@ -28,8 +28,8 @@ export const NEON_PALETTE_MOST = 8;
 export type NeonTubesParams = { readonly palette: readonly number[]; readonly width: number; readonly core: number; readonly intensity: number };
 
 /**
- * `source`'s lines as neon tubes: each takes the palette colour nearest its paint's hue over white, an ink's or a
- * body colour's (the first for black or grey paint), spreads `width` px, burns white at its core and emits. Read it
+ * `source`'s lines as neon tubes: each takes the palette colour nearest its paint's hue, an ink's or a body colour's
+ * (the first for black or grey paint), spreads `width` px, burns white at its core and emits. Read it
  * in place of the figure it's made from.
  */
 export const neonTubes = defineShotEffect({

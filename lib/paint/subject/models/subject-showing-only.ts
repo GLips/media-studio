@@ -12,7 +12,7 @@ import type { Subject, SubjectPart } from './subject.ts';
 /**
  * `subject` showing only the parts `selectors` reach (a feature's selector reaches its owner part) and their
  * features; every other part, its features and its frames are hidden, and the silhouette is the kept parts' areas.
- * An `unknown-ref` or `unmatched-selector` for a selector that reaches nothing.
+ * An `unknown-ref` or `unmatched-selector` for a selector that reaches nothing; no selectors hide everything.
  */
 export function subjectShowingOnly<I extends SubjectIds>(subject: Subject<I>, selectors: readonly SubjectSelector<I>[]): SubjectResult<Subject<I>> {
   const kept = new Set<PartId>();
