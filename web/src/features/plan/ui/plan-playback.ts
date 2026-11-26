@@ -67,9 +67,7 @@ export function createPlanPlayback(): PlanPlayback {
         if (!clip.element.paused) clip.element.pause();
         continue;
       }
-      const at = clip.from + into * clip.rate;
-      if (Math.abs(clip.element.currentTime - at) > PLAN_AUDIO_DRIFT_SECONDS) clip.element.currentTime = at;
-      if (clip.element.playbackRate !== clip.rate) Object.assign(clip.element, { playbackRate: clip.rate, preservesPitch: false });
+      if (Math.abs(clip.element.currentTime - clip.from - into) > PLAN_AUDIO_DRIFT_SECONDS) clip.element.currentTime = clip.from + into;
       if (clip.element.paused) playMedia(clip.element);
     }
   };

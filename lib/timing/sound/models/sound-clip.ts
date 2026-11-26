@@ -20,8 +20,6 @@ export type SoundClipMark = {
   from: number;
   /** Seconds to play; null plays to the source's end. A looped clip gives one. */
   duration: number | null;
-  /** Source seconds played a second, pitch moving with it; 1 when absent. */
-  rate?: number;
   /** Plays the source from `from` to its end over and over, for `duration`. */
   loop: boolean;
   fromNow: number;
@@ -114,7 +112,7 @@ export function placedSoundClipsOf(reports: readonly SoundClipFrameReport[], fps
   const groups = new Map<string, { frame: number; clip: PlacedSoundClip }[]>();
   for (const { frame, clips } of reports) {
     for (const { fromNow, ...rest } of clips) {
-      const key = JSON.stringify([rest.scene, rest.id, rest.src, rest.from, rest.duration, rest.rate ?? 1, rest.loop]);
+      const key = JSON.stringify([rest.scene, rest.id, rest.src, rest.from, rest.duration, rest.loop]);
       const seen = groups.get(key) ?? [];
       seen.push({ frame, clip: { ...rest, start: frame / fps + fromNow } });
       groups.set(key, seen);

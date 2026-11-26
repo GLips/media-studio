@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { resolveStoryboard } from '#lib/timing/storyboard/models/resolve-storyboard.ts';
 import { defineStoryboard } from '#lib/timing/storyboard/models/storyboard.ts';
-import { spokenItemTimeAt, type LibraryVoiceSound, type RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
+import { spokenItemTimeAt, spokenStretchSeconds, type LibraryVoiceSound, type RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
 import { sceneTimes, videoLayoutOf } from '#lib/timing/timeline/models/video-layout.ts';
 import { libraryFootage, libraryTranscriptLines } from './library-footage.ts';
 import { LIBRARY_ITEM_FORMAT } from './library-item.ts';
@@ -142,19 +142,38 @@ const pacedItem = {
 };
 const paced = libraryFootage(pacedItem, { heardBy: 'test', tracks: { mic: { duration: 11, pauses: [], unheard: [], words: pacedSaid.map(([text, start, end]) => ({ text: String(text), start: Number(start), end: Number(end) })) } } });
 
-test('a pause mid-phrase plays shorter than one ending a sentence, the face keeps to its words, and one too long for top speed is cut in its middle', () => {
+test('a pause mid-phrase plays shorter than one ending a sentence, the face keeps to its words, and the voice keeps its pace', () => {
   const speech = paced.speech(0.4, 10.4);
   const [boundary, hesitation, long] = speech.pauses;
   assert.deepEqual([boundary.kind, hesitation.kind, long.kind], ['boundary', 'hesitation', 'hesitation']);
   assert.ok(hesitation.plays < boundary.plays && boundary.plays < 1.2, `${hesitation.plays} < ${boundary.plays} < 1.2`);
   // Wherever a word plays on the line, the face shows the item second it was said.
   for (const word of speech.heard) assert.ok(Math.abs(spokenItemTimeAt(speech, word.start) - Number(pacedSaid.find(([text]) => text === word.text)![1])) < 0.002, word.text);
-  assert.equal(long.plays, 1.6);
-  assert.deepEqual(speech.removals.map((r) => [r.kind, r.at > hesitation.at]), [['pause', true]]);
+  // One too long at top speed goes faster still rather than cut, so the face never jumps.
+  assert.ok(long.plays === 1.6 && long.speed > 3 && speech.removals.length === 0, `${long.plays} s at ${long.speed}`);
+  // The sound plays every stretch at its own pace, so it never changes pitch: each pause keeps as much of its quiet as
+  // it now lasts, cut in the quiet's middle, and the line lasts as long as the face.
+  const { pieces: sounded } = speech.sound!;
+  assert.equal(sounded.length, 4);
+  assert.ok(Math.abs(sounded.reduce((sum, p) => sum + p.duration, 0) - spokenStretchSeconds(speech)) < 0.005);
+  const inQuiet = (t: number) => pacedItem.tracks.mic.levelled.quiet.some(([start, end]) => start < t && t < end);
+  assert.ok(sounded.slice(1).every((p, k) => inQuiet(p.start) && inQuiet(sounded[k].start + sounded[k].duration)), 'every cut is in quiet');
   // A project's own pacing and classifier: every pause a boundary, at most 1.8 s.
   const own = paced.speech(0.4, 10.4, { pauses: { classify: () => 'boundary', longest: 1.8 } });
   assert.deepEqual(own.pauses.map((p) => p.kind), ['boundary', 'boundary', 'boundary']);
   assert.equal(own.pauses[2].plays, 1.8);
+});
+
+// "So" and "then" with sound between them the transcript has no word for: two quiet spans, not one.
+const hiddenItem = {
+  ...item, id: 'hidden', tracks: { mic: { ...item.tracks.mic, mediaSeconds: 4, startSeconds: 0, levelled: { file: 'proxies/mic-levelled.wav', lufs: -13, quiet: [[0, 0.5], [0.8, 1.4], [2.0, 2.8], [3.0, 4]] } } },
+};
+const hidden = libraryFootage(hiddenItem, { heardBy: 'test', tracks: { mic: { duration: 4, pauses: [], unheard: [], words: [{ text: 'So', start: 0.5, end: 0.8 }, { text: 'then', start: 2.8, end: 3.0 }] } } });
+
+test('a gap in the words with sound in it plays as recorded: only quiet is ever sped', () => {
+  const speech = hidden.speech(0.4, 3.1);
+  assert.deepEqual(speech.pieces.map((p) => p.speed ?? 1), [1]);
+  assert.deepEqual(speech.pauses, []);
 });
 
 const libraryFootageWords = (speech: RecordedSpeech) => speech.heard.map((w) => w.text);

@@ -43,8 +43,7 @@ export type PlanFlag = { kind: 'silence' | 'hold'; from: number; to: number };
 
 /** What plays: each recorded line at its second, and the grid's music from where the section starts. */
 /** A sound the plan plays: `src` from `from` seconds into it, at `atSeconds` of the video. */
-/** A sound the plan plays: `src` from `from` seconds, at video second `atSeconds` for `duration`, `rate` source seconds a second. */
-export type PlanAudio = { src: string; from: number; atSeconds: number; duration: number; rate: number; what: string };
+export type PlanAudio = { src: string; from: number; atSeconds: number; duration: number; what: string };
 
 export type PlanTiming = {
   fps: number;
@@ -106,10 +105,10 @@ export function planTimingOf({ storyboard, resolved, music }: ProjectStoryboard)
   const audio: PlanAudio[] = timeline.audio.flatMap((placed): PlanAudio[] => {
     if (placed.kind === 'voice') {
       return planSoundsOf(voice[placed.line]?.src ?? null, placed.duration)
-        .map(({ src, from, at, duration, rate }) => ({ src, from, duration, rate, atSeconds: placed.atSeconds + at, what: placed.line }));
+        .map(({ src, from, at, duration }) => ({ src, from, duration, atSeconds: placed.atSeconds + at, what: placed.line }));
     }
     const grid = storyboard.grid, track = grid && 'music' in grid ? music[grid.music] : undefined;
-    return track ? [{ src: track.src, from: 0, atSeconds: placed.atSeconds, duration: track.duration, rate: 1, what: 'music' }] : [];
+    return track ? [{ src: track.src, from: 0, atSeconds: placed.atSeconds, duration: track.duration, what: 'music' }] : [];
   });
   const moves = timeline.scenes.flatMap((s) => Object.values<{ from: number; to: number }>(s.moves));
   const events = [0, ...scenes.map((s) => s.from), ...scenes.flatMap((s) => s.cues.map((c) => c.frame)), ...lines.map((l) => l.from), timeline.end];
@@ -121,10 +120,10 @@ export function planTimingOf({ storyboard, resolved, music }: ProjectStoryboard)
  * Where a line's sound plays from, `at` seconds into the line for `duration`: its clip, or each piece of a library
  * recording it plays, butted together, as the plan's preview needs no cross-fades.
  */
-const planSoundsOf = (src: VoiceLine['src'], duration: number): { src: string; from: number; at: number; duration: number; rate: number }[] => {
+const planSoundsOf = (src: VoiceLine['src'], duration: number): { src: string; from: number; at: number; duration: number }[] => {
   if (src === null) return [];
-  if (typeof src === 'string') return [{ src, from: 0, at: 0, duration, rate: 1 }];
-  return src.pieces.map((p) => ({ src: libraryMediaUrl(src.item, src.file), from: p.start, at: p.at, duration: p.duration, rate: p.speed }));
+  if (typeof src === 'string') return [{ src, from: 0, at: 0, duration }];
+  return src.pieces.map((p) => ({ src: libraryMediaUrl(src.item, src.file), from: p.start, at: p.at, duration: p.duration }));
 };
 
 /** A voiced scene's lead before its first line, the gaps between its lines, and its tail after the last. */

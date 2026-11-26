@@ -1,6 +1,6 @@
 // pause-rig-player.ts: plays a stretch of a recorded line as a render would: its sound through the mix's own piece clips
-// (recordedPieceClips, each at its speed, with its fades and dips), and the camera following the same time map, its
-// playback rate set to the piece under the clock and put back when it drifts. The audio clock leads.
+// (recordedPieceClips, with their fades and dips), and the camera following the line's time map, its playback rate set
+// to the piece under the clock and put back when it drifts. The audio clock leads.
 import type { LibraryItem } from '#lib/footage/library/models/library-item.ts';
 import { libraryMediaTimeOf } from '#lib/footage/library/models/library-item.ts';
 import { libraryMediaUrl } from '#lib/footage/library/studio/library-media.ts';
@@ -66,14 +66,14 @@ export function createPauseRigPlayer(): PauseRigPlayer {
     for (const clip of recordedPieceClips(sound, duration)) {
       const skip = Math.max(0, from - clip.at), length = Math.min(clip.duration, to - clip.at) - skip;
       if (length <= 0) continue;
-      const source = new AudioBufferSourceNode(context, { buffer, playbackRate: clip.speed });
+      const source = new AudioBufferSourceNode(context, { buffer });
       const steps = Math.max(2, Math.ceil(length / GAIN_STEP));
       const curve = Float32Array.from({ length: steps }, (_, k) => gain * clip.gain(skip + (k / (steps - 1)) * length));
       const level = new GainNode(context, { gain: curve[0] });
       const when = startAt + clip.at + skip - from;
       level.gain.setValueCurveAtTime(curve, when, length);
       source.connect(level).connect(context.destination);
-      source.start(when, clip.start + skip * clip.speed, length * clip.speed);
+      source.start(when, clip.start + skip, length);
       nodes.push(source);
     }
     const state = { nodes, raf: 0 };

@@ -20,11 +20,11 @@ export type LibraryPausePacing = {
   boundary: number;
   /** The share of a boundary pause past `boundary` it keeps (0 to 1), so one held for effect stays longer than a plain one. */
   boundaryExcess: number;
-  /** The fastest a pause plays, as a multiple of its recorded speed. */
+  /** The fastest a pause plays, as a multiple of its recorded speed, unless it would then play longer than `longest`. */
   topSpeed: number;
   /** Seconds a pause takes to reach its speed after the word before it, and to come back before the next. */
   ramp: number;
-  /** The longest a pause plays once sped up, in seconds; a longer one has its middle cut. */
+  /** The longest a pause plays once sped up, in seconds: one longer at `topSpeed` goes faster still. */
   longest: number;
   /** What each pause is for. Default spokenPauseKindOf. */
   classify?: SpokenPauseClassifier;
@@ -106,9 +106,3 @@ export function libraryPauseSteps(length: number, plays: number, { topSpeed, ram
 
 /** How long `steps` play, in seconds. */
 export const libraryPauseStepsSeconds = (steps: readonly LibraryPauseStep[]) => steps.reduce((sum, s) => sum + s.length / s.speed, 0);
-
-/** The item seconds of quiet that play in `plays` seconds at most, ramping to `topSpeed` and back as libraryPauseSteps does. */
-export function libraryPauseReach(plays: number, { topSpeed, ramp }: Pick<LibraryPausePacing, 'topSpeed' | 'ramp'>): number {
-  const r = Math.min(ramp, plays / 2);
-  return r * (1 + topSpeed) + (plays - 2 * r) * topSpeed;
-}

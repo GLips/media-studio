@@ -1,6 +1,6 @@
 // pause-rig-pick-panel.tsx: what "1 or 2?" shows a listener, and nothing more: one instruction, Play, which version is
-// playing, the three answers (open once both versions have played), how the picked one felt, and how far along the
-// session is. The tuner's numbers live behind the page's Details.
+// playing, the three answers (open once both versions have played, changeable until Next), how the picked one felt and
+// a note, Next, and how far along the session is. The tuner's numbers live behind the page's Details.
 import { Box, Button, Group, Stack, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useState } from 'react';
@@ -8,6 +8,7 @@ import { TextInput } from '#web/shared/ui/text-input.tsx';
 import { colors, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
 import { PAUSE_RIG_CONFIRM_LINES } from './pause-rig-lines.ts';
 import { PAUSE_RIG_FEELS, PAUSE_RIG_TUNED_KNOBS, pauseRigKnobSettled, pauseRigTunerProgress } from './pause-rig-tuner.ts';
+import type { PauseRigPick } from './pause-rig-tuner.ts';
 import type { PauseRigVersion, usePauseRigPick } from './use-pause-rig-pick.ts';
 
 const styles = stylex.create({
@@ -52,7 +53,11 @@ export function PauseRigPickPanel({ pick }: { pick: ReturnType<typeof usePauseRi
   else if (pick.heard.length) playLabel = 'Play again';
   let hint = '';
   if (!ready) hint = confirming ? 'Play the line to answer.' : 'Play both to pick.';
-  else if (pick.playing === undefined && !confirming) hint = 'Click 1 or 2 to hear one again.';
+  else if (pick.playing === undefined && !confirming) hint = pick.draft.pick ? 'Next (or Enter) takes it.' : 'Click a tile to hear it again.';
+  const answer = (choice: PauseRigPick, label: string) => (
+    <Button size="md" disabled={!ready} variant={pick.draft.pick === choice ? 'filled' : 'default'} aria-pressed={pick.draft.pick === choice}
+      onClick={() => pick.choose(choice)} {...stylex.props(styles.answer)}>{label}</Button>
+  );
 
   return (
     <Stack align="center" gap="row">
@@ -83,21 +88,26 @@ export function PauseRigPickPanel({ pick }: { pick: ReturnType<typeof usePauseRi
           </Stack>
         )
         : (
-          <Group gap="inset">
-            <Button size="md" disabled={!ready} onClick={() => pick.pick('first')} {...stylex.props(styles.answer)}>1</Button>
-            <Button size="md" disabled={!ready} onClick={() => pick.pick('second')} {...stylex.props(styles.answer)}>2</Button>
-            <Button size="md" disabled={!ready} onClick={() => pick.pick('same')} {...stylex.props(styles.answer)}>Can't tell</Button>
-          </Group>
+          <Stack align="center" gap="inset">
+            <Group gap="inset">{answer('first', '1')}{answer('second', '2')}{answer('same', "Can't tell")}</Group>
+            {pick.draft.pick && pick.draft.pick !== 'same' && (
+              <Group gap="gap">
+                <Text size="xs" {...stylex.props(styles.muted)}>Optional: the one you picked felt</Text>
+                {PAUSE_RIG_FEELS.map((felt) => (
+                  <Button key={felt} variant={pick.draft.feel === felt ? 'filled' : 'default'} aria-pressed={pick.draft.feel === felt} onClick={() => pick.feel(felt)}>{FEEL_LABELS[felt]}</Button>
+                ))}
+              </Group>
+            )}
+            <Group gap="inset">
+              <TextInput w={420} placeholder="Anything to say about this clip? (optional)" value={pick.draft.note} onChange={(event) => pick.writeNote(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') pick.next();
+                }} />
+              <Button size="md" variant="filled" disabled={!pick.draft.pick} onClick={pick.next}>Next →</Button>
+            </Group>
+          </Stack>
         )}
       <Text size="xs" {...stylex.props(styles.hint)}>{hint}</Text>
-      {pick.feelable && (
-        <Group gap="gap">
-          <Text size="xs" {...stylex.props(styles.muted)}>Optional: the one you picked felt</Text>
-          {PAUSE_RIG_FEELS.map((felt) => (
-            <Button key={felt} variant={session.last?.feel === felt ? 'filled' : 'default'} onClick={() => pick.feel(felt)}>{FEEL_LABELS[felt]}</Button>
-          ))}
-        </Group>
-      )}
       <Group gap="inset">
         <Text size="xs" {...stylex.props(styles.muted)}>
           {confirming ? `Line ${session.confirmed.length + 1} of ${PAUSE_RIG_CONFIRM_LINES.length}` : `${done + 1} of about ${Math.max(about, done + 1)}`}

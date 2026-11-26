@@ -1,6 +1,7 @@
 // use-pause-rig-pick.ts: the "1 or 2?" session, kept across reloads: the tuner, the turn it asks, playing that turn's
-// two versions back to back, the pick (taken only once both have played), how the picked one felt, and then a pass
-// confirming whole lines at the values it settled on. Every answer is appended to picks.jsonl.
+// two versions back to back, the answer chosen (once both have played), how the picked one felt and a note, all taken
+// together on Next, and then a pass confirming whole lines at the values it settled on. Every answer is appended to
+// picks.jsonl, a note to notes.jsonl as well.
 import { useLocalStorage } from '@mantine/hooks';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { LibraryFootage } from '#lib/footage/library/models/library-footage.ts';
@@ -19,15 +20,12 @@ export type PauseRigVersion = 'first' | 'second' | 'line';
 // Silence between the two versions, so each lands as its own.
 const BETWEEN_VERSIONS_MS = 700;
 // Bumped whenever a session saved before would mislead: a reload then starts afresh.
-const SESSION_KEY = 'pause-rig-pick-v2';
+const SESSION_KEY = 'pause-rig-pick-v3';
 
 type PauseRigConfirmation = { line: number; natural: boolean; note: string };
-/** The turn just answered, so how the picked version felt can still be said once the next is drawn. */
-type PauseRigLastAnswer = { before: PauseRigTuner; trial: PauseRigTrial; pick: PauseRigPick; feel?: PauseRigFeel };
-type PauseRigSession = {
-  tuner: PauseRigTuner; trial?: PauseRigTrial; last?: PauseRigLastAnswer; history: PauseRigTuner[];
-  confirming: boolean; confirmed: PauseRigConfirmation[];
-};
+type PauseRigSession = { tuner: PauseRigTuner; trial?: PauseRigTrial; history: PauseRigTuner[]; confirming: boolean; confirmed: PauseRigConfirmation[] };
+/** What's said about the turn on show before Next takes it: the answer, how the picked one felt, a note. */
+type PauseRigDraft = { asking: string; pick?: PauseRigPick; feel?: PauseRigFeel; note: string };
 
 type PauseRigPickInput = {
   active: boolean;
@@ -41,7 +39,7 @@ type PauseRigPickInput = {
   start: PauseRigTunedValues;
 };
 
-const logPauseRigPick = (entry: PauseRigLogEntry) => void appendPauseRigLogFn({ data: { log: 'picks', entry: JSON.stringify({ at: new Date().toISOString(), ...entry }) } });
+const logPauseRigPick = (entry: PauseRigLogEntry, log: 'picks' | 'notes' = 'picks') => void appendPauseRigLogFn({ data: { log, entry: JSON.stringify({ at: new Date().toISOString(), ...entry }) } });
 const clipOfLog = (trial: PauseRigTrial) => {
   const spec = PAUSE_RIG_LINES[trial.clip.line];
   return { item: spec.item, from: trial.clip.from, to: trial.clip.to, about: trial.clip.about };
@@ -64,6 +62,9 @@ export function usePauseRigPick({ active, clips, cut, takeOf, video, start }: Pa
   const [heard, setHeard] = useState<{ asking: string; versions: PauseRigVersion[] }>({ asking: '', versions: [] });
   const heardNow = heard.asking === asking ? heard.versions : [];
   const ready = confirmLine === undefined ? heardNow.includes('first') && heardNow.includes('second') : heardNow.includes('line');
+  const [draftState, setDraft] = useState<PauseRigDraft>({ asking: '', note: '' });
+  const draft = draftState.asking === asking ? draftState : { asking, note: '' };
+  const amend = (change: Partial<PauseRigDraft>) => setDraft(Object.assign({}, draft, change));
 
   // A session with no turn asked draws one, and once none is left, moves on to confirming. The turn is kept, so a
   // reload asks the same.
@@ -113,24 +114,20 @@ export function usePauseRigPick({ active, clips, cut, takeOf, video, start }: Pa
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- stop reads only refs and the player
   }, [active]);
 
-  const pick = (choice: PauseRigPick) => {
-    if (!trial || !ready) return;
+  /** Takes the turn on show as drafted: the answer, moved by how the picked one felt, and its note. */
+  const next = () => {
+    const { pick: choice, feel, note } = draft;
+    if (!trial || !ready || !choice) return;
     stop();
-    const tuner = pickPauseRigTrial(session.tuner, trial, choice);
+    const felt = choice === 'same' ? undefined : feel;
+    const tuner = pickPauseRigTrial(session.tuner, trial, choice, felt);
+    const about = { knob: trial.knob, clip: clipOfLog(trial), version1: trial.first, version2: trial.second, pick: choice };
     logPauseRigPick({
-      type: trial.repeatOf === undefined ? 'pick' : 'repeat', knob: trial.knob, clip: clipOfLog(trial),
-      version1: trial.first, version2: trial.second, pick: choice, before: best, after: pauseRigTunedValues(tuner),
-      ...(trial.repeatOf !== undefined && { firstTime: session.tuner.answers[trial.repeatOf].chose }),
+      type: trial.repeatOf === undefined ? 'pick' : 'repeat', ...about, ...(felt && { feel: felt }), ...(note.trim() && { note: note.trim() }),
+      before: best, after: pauseRigTunedValues(tuner), ...(trial.repeatOf !== undefined && { firstTime: session.tuner.answers[trial.repeatOf].chose }),
     });
-    setSession((s) => ({ ...s, tuner, trial: undefined, last: { before: s.tuner, trial, pick: choice }, history: [...s.history, s.tuner] }));
-  };
-  // How the picked version felt moves the answer just given: replayed from before it, with the feel.
-  const feel = (felt: PauseRigFeel) => {
-    const { last } = session;
-    if (!last || last.pick === 'same') return;
-    const tuner = pickPauseRigTrial(last.before, last.trial, last.pick, felt);
-    logPauseRigPick({ type: 'feel', knob: last.trial.knob, clip: clipOfLog(last.trial), pick: last.pick, feel: felt, after: pauseRigTunedValues(tuner) });
-    setSession((s) => ({ ...s, tuner, trial: undefined, last: { ...last, feel: felt } }));
+    if (note.trim()) logPauseRigPick({ mode: '1 or 2', ...about, ...(felt && { feel: felt }), values: best, text: note.trim() }, 'notes');
+    setSession((s) => ({ ...s, tuner, trial: undefined, history: [...s.history, s.tuner] }));
   };
   const confirm = (natural: boolean, note: string) => {
     if (confirmLine === undefined || !ready) return;
@@ -141,9 +138,14 @@ export function usePauseRigPick({ active, clips, cut, takeOf, video, start }: Pa
   };
 
   return {
-    session, best, trial, playing, ready, heard: heardNow, confirmLine, stop, pick, feel, confirm, playBoth,
-    /** How the picked version felt can be said until the next turn starts playing. */
-    feelable: session.last !== undefined && session.last.pick !== 'same' && heardNow.length === 0 && playing === undefined,
+    session, best, trial, playing, ready, heard: heardNow, confirmLine, stop, confirm, playBoth, next, draft,
+    /** Chooses an answer once both have played; choosing it again, or another, changes it until Next. */
+    choose: (choice: PauseRigPick) => {
+      if (ready && trial) amend({ pick: choice });
+    },
+    /** How the picked one felt; the same again takes it back. */
+    feel: (felt: PauseRigFeel) => amend({ feel: draft.feel === felt ? undefined : felt }),
+    writeNote: (note: string) => amend({ note }),
     /** The line on show, and the clip of it when a turn is asked. */
     line: confirmLine ?? trial?.clip.line,
     clip: confirmLine === undefined ? trial?.clip : undefined,
@@ -155,8 +157,8 @@ export function usePauseRigPick({ active, clips, cut, takeOf, video, start }: Pa
       stop();
       play(version);
     },
-    undo: () => setSession((s) => (s.history.length ? { ...s, tuner: s.history.at(-1)!, trial: undefined, last: undefined, history: s.history.slice(0, -1), confirming: false, confirmed: [] } : s)),
-    confirmNow: () => setSession((s) => ({ ...s, trial: undefined, last: undefined, confirming: true, confirmed: [] })),
+    undo: () => setSession((s) => (s.history.length ? { ...s, tuner: s.history.at(-1)!, trial: undefined, history: s.history.slice(0, -1), confirming: false, confirmed: [] } : s)),
+    confirmNow: () => setSession((s) => ({ ...s, trial: undefined, confirming: true, confirmed: [] })),
     restart: () => setSession(fresh()),
   };
 }

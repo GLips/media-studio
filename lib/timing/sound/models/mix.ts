@@ -29,11 +29,8 @@ const DIP_RAMP = 0.005;
 const dipGain = (dips: LibraryVoiceSound['dips'], t: number) =>
   dips.reduce((gain, { start, end, gain: low }) => Math.min(gain, low + (1 - low) * Math.min(1, Math.max(0, start - t, t - end) / DIP_RAMP)), 1);
 
-/**
- * One piece of a recorded line as a clip: from `start` media seconds, at line second `at`, for `duration` line
- * seconds at `speed` media seconds a line second, at `gain`.
- */
-export type RecordedPieceClip = { start: number; at: number; duration: number; speed: number; gain: (seconds: number) => number };
+/** One piece of a recorded line as a clip: from `start` media seconds, at line second `at`, for `duration`, at `gain`. */
+export type RecordedPieceClip = { start: number; at: number; duration: number; gain: (seconds: number) => number };
 
 /**
  * A recorded line's pieces as clips. Each overlap straddles its cut, with equal-power quarter-sine gains.
@@ -50,7 +47,7 @@ export function recordedPieceClips(sound: LibraryVoiceSound, duration: number): 
       const taper = outgoing?.fadeOut ? quarterSine((length - s) / Math.min(length, outgoing.fadeOut)) : 1;
       return rise * fall * taper;
     };
-    return { start: piece.start - before * piece.speed, at, duration: length, speed: piece.speed, gain: (s) => cross(s) * edgeFadeGain(at + s, duration, sound.fade) * dipGain(sound.dips, at + s) };
+    return { start: piece.start - before, at, duration: length, gain: (s) => cross(s) * edgeFadeGain(at + s, duration, sound.fade) * dipGain(sound.dips, at + s) };
   });
 }
 

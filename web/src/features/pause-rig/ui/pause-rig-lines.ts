@@ -1,7 +1,7 @@
 // pause-rig-lines.ts: what the pause rig plays: lines from several library takes, each cut through the real cleanup, and
 // the short clips around each pause it changed or filler it took. Pure.
 import type { SpokenPauseKind } from '#lib/footage/transcript/models/spoken-pauses.ts';
-import { spokenPieceSeconds, type RecordedSpeech, type SpokenStretch } from '#lib/timing/voice/models/recorded-speech.ts';
+import { spokenItemTimeAt, spokenPieceSeconds, type RecordedSpeech, type SpokenStretch } from '#lib/timing/voice/models/recorded-speech.ts';
 
 /** A line of a take, in item seconds, and what it's in the playlist to test. */
 export type PauseRigLineSpec = { item: string; from: number; to: number; about: string };
@@ -29,8 +29,9 @@ export type PauseRigClip = { line: number; from: number; to: number; about: stri
 
 // Seconds of the take either side of what a clip is about, as recorded.
 const CLIP_CONTEXT = 1.5;
-// "1 or 2?" plays less around its pause, so a clip is two or three seconds and a pick judges that pause alone.
-const PICK_CONTEXT = 0.9;
+// "1 or 2?" plays this many seconds of the line, as played, either side of its pause, so a clip starts on the words
+// before it however the pause before those played, and a pick judges that pause alone.
+const PICK_CONTEXT = 1;
 // Pauses shorter than this play as recorded under any pacing worth asking about.
 const PICK_PAUSE = 0.4;
 // Clip edges to the millisecond, so a logged clip reads cleanly.
@@ -55,10 +56,20 @@ export function pauseRigClipsOf(line: number, speech: RecordedSpeech): PauseRigC
   return [...pauses, ...taken].toSorted((a, b) => a.from - b.from);
 }
 
-/** A clip around each pause in `speech` long enough for pacing to change, with less of the take either side. */
-export function pauseRigPickClipsOf(line: number, speech: RecordedSpeech): PauseRigClip[] {
-  return speech.pauses.filter((p) => p.to - p.from >= PICK_PAUSE).map((p) => ({
-    line, from: ms(Math.max(speech.from, p.from - PICK_CONTEXT)), to: ms(Math.min(speech.to, p.to + PICK_CONTEXT)),
-    about: `${p.kind} of ${(p.to - p.from).toFixed(2)} s`, pause: { kind: p.kind, heard: p.to - p.from },
-  }));
+/**
+ * A clip around each pause in `speech` long enough for pacing to change, from a second of the line as played before
+ * it to a second after. A pause beside a word lying wholly in `quiet` (item time) is left out: whisper wrote a word
+ * where nothing was said, leaving no speech to judge the pause by.
+ */
+export function pauseRigPickClipsOf(line: number, speech: RecordedSpeech, quiet: readonly { start: number; end: number }[]): PauseRigClip[] {
+  const words = speech.heard.map((w) => ({ start: spokenItemTimeAt(speech, w.start), end: spokenItemTimeAt(speech, w.end) }));
+  const silent = (w: { start: number; end: number } | undefined) => !w || quiet.some((q) => q.start <= w.start && w.end <= q.end);
+  const playedAt = (t: number) => spokenItemTimeAt(speech, Math.max(0, t));
+  return speech.pauses.filter((p) => p.to - p.from >= PICK_PAUSE)
+    .filter((p) => !silent(words.findLast((w) => w.start < p.from)) && !silent(words.find((w) => w.end > p.to)))
+    .map((p) => ({
+      line, from: ms(Math.max(speech.from, playedAt(pauseRigLineTimeOf(speech, p.from) - PICK_CONTEXT))),
+      to: ms(Math.min(speech.to, playedAt(pauseRigLineTimeOf(speech, p.to) + PICK_CONTEXT))),
+      about: `${p.kind} of ${(p.to - p.from).toFixed(2)} s`, pause: { kind: p.kind, heard: p.to - p.from },
+    }));
 }

@@ -1,7 +1,6 @@
 // sound-mix.ts: a video's soundtrack from its clips (sound-clip.ts), mixed in Node at 48 kHz in float. ffmpeg decodes
 // and resamples each clip; the gain is applied per sample and the clips summed here, since ffmpeg's `volume` filter
-// evaluates an expression once per audio frame, which steps like the render's frames did. A clip played at another
-// rate is read between its samples here too, so a run of clips butted end to end plays its source unbroken.
+// evaluates an expression once per audio frame, which steps like the render's frames did.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { runFfmpegAsync, runFfprobeAsync } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
@@ -24,7 +23,7 @@ export async function mixSoundClips(clips: readonly PlacedSoundClip[], { from, s
   await withStudioTemp('sound-mix', async (tmp) => {
     const decoded = new Map<string, Promise<Float32Array>>();
     const decode = (clip: PlacedSoundClip) => {
-      const key = JSON.stringify([clip.src, clip.from, clip.loop ? null : clip.duration, clip.rate ?? 1]);
+      const key = JSON.stringify([clip.src, clip.from, clip.loop ? null : clip.duration]);
       if (!decoded.has(key)) {
         const file = join(tmp, `${decoded.size}.f32`);
         decoded.set(key, queued(() => decodeClip(clip, fileOf(clip.src), file)));
@@ -59,8 +58,7 @@ function decodeQueue(width: number) {
 
 /** The clip's source as interleaved stereo floats: from `from`, for its duration, or to the end for a loop or none. */
 async function decodeClip(clip: PlacedSoundClip, file: string, tmp: string): Promise<Float32Array> {
-  // One sample over, so a clip at another rate has its last sample's neighbour to read towards.
-  const length = !clip.loop && clip.duration !== null ? ['-t', String(clip.duration * (clip.rate ?? 1) + 1 / SOUND_MIX_RATE)] : [];
+  const length = !clip.loop && clip.duration !== null ? ['-t', String(clip.duration)] : [];
   // A mono source plays at full level in both channels, as Remotion played it and the levels were set by ear against;
   // ffmpeg's own upmix would take 3 dB off each.
   // Probed without blocking, as a library file comes over the library's server, which this process runs.
@@ -78,18 +76,8 @@ function addClip(mix: Float32Array, source: Float32Array, clip: PlacedSoundClip,
   const sourceFrames = source.length / CHANNELS, mixFrames = mix.length / CHANNELS;
   const offset = Math.round((clip.start - from) * SOUND_MIX_RATE);
   const plays = clip.duration === null ? sourceFrames : Math.round(clip.duration * SOUND_MIX_RATE);
-  const gainAt = envelopeCursor(clip.gain), rate = clip.rate ?? 1;
-  if (rate !== 1) {
-    // Negative space: a looped clip at another rate isn't read; no caller asks for one.
-    const last = Math.min(plays, Math.floor((sourceFrames - 1) / rate), mixFrames - offset);
-    for (let j = Math.max(0, -offset); j < last; j++) {
-      const at = j * rate, i = Math.floor(at), f = at - i, g = gainAt(j / SOUND_MIX_RATE), s = i * CHANNELS, m = (offset + j) * CHANNELS;
-      mix[m] += (source[s] + (source[s + CHANNELS] - source[s]) * f) * g;
-      mix[m + 1] += (source[s + 1] + (source[s + 1 + CHANNELS] - source[s + 1]) * f) * g;
-    }
-    return;
-  }
   const last = Math.min(clip.loop ? plays : Math.min(plays, sourceFrames), mixFrames - offset);
+  const gainAt = envelopeCursor(clip.gain);
   for (let j = Math.max(0, -offset); j < last; j++) {
     const g = gainAt(j / SOUND_MIX_RATE), s = (j % sourceFrames) * CHANNELS, m = (offset + j) * CHANNELS;
     mix[m] += source[s] * g;

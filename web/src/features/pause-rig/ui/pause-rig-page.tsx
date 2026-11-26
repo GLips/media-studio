@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { libraryFootage } from '#lib/footage/library/models/library-footage.ts';
 import type { LibraryLineCleanup } from '#lib/footage/library/models/library-line-cut.ts';
 import { LIBRARY_PAUSE_PACING } from '#lib/footage/library/models/library-pause-pacing.ts';
-import { libraryMediaTimeOf } from '#lib/footage/library/models/library-item.ts';
+import { libraryItemTimeOf, libraryMediaTimeOf } from '#lib/footage/library/models/library-item.ts';
 import { libraryMediaUrl } from '#lib/footage/library/studio/library-media.ts';
 import { spokenStretchSeconds, type RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
 import { libraryItemViewQueryOptions } from '#web/features/library/index.ts';
@@ -64,7 +64,7 @@ const DIAL = {
 };
 
 // Keys each mode answers to, by the action they take.
-const PICK_KEYS = new Map(Object.entries({ '1': 'first', '2': 'second', '3': 'same', ' ': 'both', u: 'undo' }));
+const PICK_KEYS = new Map(Object.entries({ '1': 'first', '2': 'second', '3': 'same', ' ': 'both', Enter: 'take', u: 'undo' }));
 const PLAYLIST_KEYS = new Map(Object.entries({ ' ': 'play', r: 'replay', ArrowLeft: 'previous', ArrowRight: 'next' }));
 
 export function PauseRigPage() {
@@ -89,7 +89,12 @@ export function PauseRigPage() {
     }
   };
   const cutAll = (cleanup: LibraryLineCleanup) => PAUSE_RIG_LINES.map((_, line) => cutLine(line, cleanup));
-  const pickClips = useMemo(() => cutAll({ voicedCutFade }).flatMap((s, line) => (typeof s === 'string' ? [] : pauseRigPickClipsOf(line, s))),
+  const quietOf = (line: number) => {
+    const item = takeOf(line)?.item, track = item?.tracks[item.speech ?? 'mic'];
+    if (!track?.levelled) return [];
+    return (track.levelled.quiet ?? []).map(([start, end]) => ({ start: libraryItemTimeOf(track, start), end: libraryItemTimeOf(track, end) }));
+  };
+  const pickClips = useMemo(() => cutAll({ voicedCutFade }).flatMap((s, line) => (typeof s === 'string' ? [] : pauseRigPickClipsOf(line, s, quietOf(line)))),
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- cutAll reads only these
     [footage, voicedCutFade]);
 
@@ -115,8 +120,10 @@ export function PauseRigPage() {
 
   const act = useRef<(name: string) => void>(() => undefined);
   act.current = (name) => {
-    if (name === 'first' || name === 'second' || name === 'same') pick.pick(name);
-    if (name === 'both') pick.playBoth();
+    if (name === 'first' || name === 'second' || name === 'same') pick.choose(name);
+    // Space plays until an answer is chosen, then takes it like Enter.
+    if (name === 'take' || (name === 'both' && pick.draft.pick)) pick.next();
+    else if (name === 'both') pick.playBoth();
     if (name === 'undo') pick.undo();
     if (name === 'play') playback.toggle();
     if (name === 'replay') playback.replay();
@@ -162,7 +169,6 @@ export function PauseRigPage() {
         <Stack gap="row" {...stylex.props(styles.column)}>
           {face(true)}
           <PauseRigPickPanel pick={pick} />
-          {note}
           <Group justify="center">{detailsToggle}</Group>
         </Stack>
       </Box>

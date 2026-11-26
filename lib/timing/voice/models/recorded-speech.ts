@@ -40,13 +40,13 @@ export type SpokenJoin = { crossfade: number; fadeOut: number };
 
 /**
  * Where a line's sound is in a library item's media: `file`, each piece from its `start` (media seconds) for its
- * `duration` (line seconds) at its `speed`, at line second `at`. Each inner cut joins as `joins` says; the line fades
- * over `fade`, longer at an edge cut into sound, and dips where `dips` say.
+ * `duration`, at line second `at`, always at its own pace. Each inner cut joins as `joins` says; the line fades over
+ * `fade`, longer at an edge cut into sound, and dips where `dips` say.
  */
 export type LibraryVoiceSound = {
   item: string;
   file: string;
-  pieces: readonly { start: number; at: number; duration: number; speed: number }[];
+  pieces: readonly { start: number; at: number; duration: number }[];
   joins: readonly SpokenJoin[];
   fade: { in: number; out: number };
   dips: readonly SpokenDip[];
