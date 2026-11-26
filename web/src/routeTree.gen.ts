@@ -17,6 +17,7 @@ import { Route as MediaProjectRouteImport } from './routes/media.$project'
 import { Route as ReviewPeaksProjectRouteImport } from './routes/review-peaks.$project'
 import { Route as ReviewStillsProjectRouteImport } from './routes/review-stills.$project'
 import { Route as ProjectsProjectIndexRouteImport } from './routes/projects.$project.index'
+import { Route as ProjectsProjectLatestRouteImport } from './routes/projects.$project.latest'
 import { Route as ProjectsProjectPlanRouteImport } from './routes/projects.$project.plan'
 import { Route as ProjectsProjectArtifactsSplatRouteImport } from './routes/projects.$project.artifacts.$'
 import { Route as ProjectsProjectDecisionsTopicRouteImport } from './routes/projects.$project.decisions.$topic'
@@ -61,6 +62,11 @@ const ProjectsProjectIndexRoute = ProjectsProjectIndexRouteImport.update({
   path: '/projects/$project/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProjectsProjectLatestRoute = ProjectsProjectLatestRouteImport.update({
+  id: '/projects/$project/latest',
+  path: '/projects/$project/latest',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsProjectPlanRoute = ProjectsProjectPlanRouteImport.update({
   id: '/projects/$project/plan',
   path: '/projects/$project/plan',
@@ -87,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
   '/library/': typeof LibraryIndexRoute
+  '/projects/$project/latest': typeof ProjectsProjectLatestRoute
   '/projects/$project/plan': typeof ProjectsProjectPlanRoute
   '/projects/$project/': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
@@ -100,6 +107,7 @@ export interface FileRoutesByTo {
   '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
   '/library': typeof LibraryIndexRoute
+  '/projects/$project/latest': typeof ProjectsProjectLatestRoute
   '/projects/$project/plan': typeof ProjectsProjectPlanRoute
   '/projects/$project': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
@@ -114,6 +122,7 @@ export interface FileRoutesById {
   '/review-peaks/$project': typeof ReviewPeaksProjectRoute
   '/review-stills/$project': typeof ReviewStillsProjectRoute
   '/library/': typeof LibraryIndexRoute
+  '/projects/$project/latest': typeof ProjectsProjectLatestRoute
   '/projects/$project/plan': typeof ProjectsProjectPlanRoute
   '/projects/$project/': typeof ProjectsProjectIndexRoute
   '/projects/$project/artifacts/$': typeof ProjectsProjectArtifactsSplatRoute
@@ -129,6 +138,7 @@ export interface FileRouteTypes {
     | '/review-peaks/$project'
     | '/review-stills/$project'
     | '/library/'
+    | '/projects/$project/latest'
     | '/projects/$project/plan'
     | '/projects/$project/'
     | '/projects/$project/artifacts/$'
@@ -142,6 +152,7 @@ export interface FileRouteTypes {
     | '/review-peaks/$project'
     | '/review-stills/$project'
     | '/library'
+    | '/projects/$project/latest'
     | '/projects/$project/plan'
     | '/projects/$project'
     | '/projects/$project/artifacts/$'
@@ -155,6 +166,7 @@ export interface FileRouteTypes {
     | '/review-peaks/$project'
     | '/review-stills/$project'
     | '/library/'
+    | '/projects/$project/latest'
     | '/projects/$project/plan'
     | '/projects/$project/'
     | '/projects/$project/artifacts/$'
@@ -169,6 +181,7 @@ export interface RootRouteChildren {
   ReviewPeaksProjectRoute: typeof ReviewPeaksProjectRoute
   ReviewStillsProjectRoute: typeof ReviewStillsProjectRoute
   LibraryIndexRoute: typeof LibraryIndexRoute
+  ProjectsProjectLatestRoute: typeof ProjectsProjectLatestRoute
   ProjectsProjectPlanRoute: typeof ProjectsProjectPlanRoute
   ProjectsProjectIndexRoute: typeof ProjectsProjectIndexRoute
   ProjectsProjectArtifactsSplatRoute: typeof ProjectsProjectArtifactsSplatRoute
@@ -233,6 +246,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/projects/$project/latest': {
+      id: '/projects/$project/latest'
+      path: '/projects/$project/latest'
+      fullPath: '/projects/$project/latest'
+      preLoaderRoute: typeof ProjectsProjectLatestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projects/$project/plan': {
       id: '/projects/$project/plan'
       path: '/projects/$project/plan'
@@ -265,6 +285,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReviewPeaksProjectRoute: ReviewPeaksProjectRoute,
   ReviewStillsProjectRoute: ReviewStillsProjectRoute,
   LibraryIndexRoute: LibraryIndexRoute,
+  ProjectsProjectLatestRoute: ProjectsProjectLatestRoute,
   ProjectsProjectPlanRoute: ProjectsProjectPlanRoute,
   ProjectsProjectIndexRoute: ProjectsProjectIndexRoute,
   ProjectsProjectArtifactsSplatRoute: ProjectsProjectArtifactsSplatRoute,

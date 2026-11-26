@@ -33,6 +33,20 @@ test('a project lists what it made beyond its renders: footage with its blockout
       'music/theme-sax.mp3': { kind: 'audio', made: { as: 'music', name: 'theme-sax', seconds: 29.5, bpm: 120, lufs: -12.1, model: 'google/lyria', cost: 0.04, fitOf: null } },
       'assets/plates/couch.png': { kind: 'still', made: { as: 'asset' } },
       'out/wip/slices/scene-home.mp4': { kind: 'video', made: { as: 'scene-render', scene: 'home' } },
+      'generated/blockout-establish-c1.mp4': { kind: 'video', made: undefined },
+      'generated/music-themeSax-e5.mp3': { kind: 'audio', made: undefined },
+      'out/wip/slices/frames-0-30.mp4': { kind: 'video', made: undefined },
     });
+  });
+});
+
+test('a project lists every media file wherever it sits, leaving out working matter', async () => {
+  await withStudioTemp('project-artifacts', async (dir) => {
+    const listed = ['out/wip/clapper-wip/connected-preview.mp4', 'out/wip/clapper-wip/glove-drawings.jpg', 'scenes/shots/plate.webp',
+      'audio/takes/line-1.wav', 'out/decisions/limbs/a.mp4', 'generated/plate-1.png', 'generated/plate-2.png'];
+    const left = ['out/.review/peaks/video.png', '.cache/x.mp4', 'node_modules/pkg/logo.png', 'review/frames/f120.jpg', 'out/notes.txt',
+      'out/captions.srt', ...Array.from({ length: 12 }, (_, i) => `out/hud/mask/f-${String(i).padStart(3, '0')}.png`)];
+    for (const path of [...listed, ...left]) put(dir, path);
+    assert.deepEqual(listProjectArtifactsIn(dir).map((a) => a.path).toSorted(), listed.toSorted());
   });
 });

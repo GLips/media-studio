@@ -1,4 +1,6 @@
 export { ProjectPage } from './ui/project-page.tsx';
+export { ProjectLatestPage } from './ui/project-latest-page.tsx';
+export { markProjectFileOpened } from './controllers/project-seen.ts';
 export { ProjectsDashboardPage } from './ui/projects-dashboard-page.tsx';
 export { ProjectRowsPending } from './ui/project-rows-pending.tsx';
 export { StudioSidebarLayout } from './ui/studio-sidebar-layout.tsx';
