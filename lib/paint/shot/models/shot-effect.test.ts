@@ -8,12 +8,12 @@ import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import { compilePaintedShot, type CompiledShotEffectPlane } from './shot-compile.ts';
-import { defineShotEffect, shotImageLeafReads, shotMomentMapped } from './shot-effect.ts';
+import { defineShotEffect, shotEffectKeyAt, shotEffectTimeAt, shotImageLeafReads, shotMomentMapped } from './shot-effect.ts';
 import { shotFigure, shotPlace } from './shot-figure.ts';
 import { shotEffectImageKey } from './shot-images.ts';
 import { offsetCopies } from './shot-offset-copies.ts';
 import { channelSplit } from './shot-channel-split.ts';
-import { slices } from './shot-slices.ts';
+import { shotSlicesCell, slices } from './shot-slices.ts';
 import type { PaintedShotProps, PlaneProps } from './shot-props.ts';
 import { shotEffectExtent, shotPaintedExtent } from './shot-reach.ts';
 
@@ -102,6 +102,26 @@ test('slices reads each input given, the optional ones left out when not given, 
   assert.deepEqual(output.box, { x0: input.box.x0 - 20, y0: input.box.y0 - 20, x1: input.box.x1 + 20, y1: input.box.y1 + 20 });
   assert.match(messages(shotPlace(slices({ second: hero } as never), { id: 'x', depth: 1 })), /slices: reads source, which isn't given: give source/);
   assert.equal(compiled(shotPlace(slices({ source: hero, second: undefined }), { id: 'y', depth: 1 })).problems.length, 0);
+});
+
+test('slices rerolling each drawing keys its output by the drawing its plane shows, alike through a hold, and needs a drawing clock', () => {
+  const { shot, problems } = compiled(
+    shotPlace(slices({ source: hero }, { reroll: 'drawing' }), { id: 'reroll', depth: 1, sourceClock: { hold: 2 } }),
+    shotPlace(slices({ source: hero }), { id: 'fixed', depth: 1, sourceClock: { hold: 2 } }),
+  );
+  assert.deepEqual(problems, []);
+  const [reroll, fixed] = ['reroll', 'fixed'].map((id) => (shot!.planes.find((plane) => plane.id === id) as CompiledShotEffectPlane).image);
+  // On twos at 24 fps: animation frames 0 and 1 show drawing 0, frame 2 drawing 1.
+  const [first, held, next] = [0, 1 / FPS, 2 / FPS].map((t) => paintMoment(t));
+  assert.equal(shotEffectKeyAt(reroll, first), shotEffectKeyAt(reroll, held));
+  assert.notEqual(shotEffectKeyAt(reroll, first), shotEffectKeyAt(reroll, next));
+  assert.deepEqual(shotEffectTimeAt(reroll, next), { drawing: 1, seconds: 0 });
+  assert.equal(shotEffectKeyAt(fixed, first), shotEffectKeyAt(fixed, next));
+  assert.match(messages(shotPlace(slices({ source: hero }, { reroll: 'drawing' }), { id: 'x', depth: 1 })), /sourceClock: slices varies with each drawing, and the plane declares no drawing clock/);
+  const params = { cells: 'rects', size: 12, shift: 24, share: 0.5, seed: 1 } as const;
+  const cells = (cut: 'never' | 'drawing', drawing: number) => Array.from({ length: 16 }, (_, k) => shotSlicesCell({ ...params, reroll: cut }, 2, [k, 0], drawing));
+  assert.deepEqual(cells('never', 0), cells('never', 3));
+  assert.notDeepEqual(cells('drawing', 0), cells('drawing', 1));
 });
 
 test("channel split reads its input once a channel, each through its channel's offset, its output spanning every channel's", () => {

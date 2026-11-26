@@ -1,40 +1,47 @@
 // shot-slices.ts: slices, a built-in effect (shot-effect.ts): plane px cut into rows or square cells, a seeded share
 // of them each moved by whole px, and each cell showing one of the effect's inputs, so two looks of one subject tile
-// together. The cells are the plane's, not the subject's, and the seed alone decides them: a frame renders the same
-// whatever was drawn before it. Its studio half is shot-slices-gpu.ts, which draws each cell as shotSlicesCell says.
+// together. The cells are the plane's, not the subject's, and the seed decides them, with the drawing its plane's
+// clock shows when they reroll: a frame renders the same whatever was drawn before it. Its studio half is
+// shot-slices-gpu.ts, which draws each cell as shotSlicesCell says.
 
 import { defineShotEffect, type ShotEffectProblem } from './shot-effect.ts';
 
 /**
  * Slices' parameters: `cells`, rows across the plane or square cells; `size`, a row's height or a cell's side,
  * plane px; `shift`, the most whole px a moved cell moves (a row only across); `share`, how many cells move, 0..1;
- * `seed`, which cells, how far and showing which input.
+ * `seed`, which cells, how far and showing which input; `reroll`, `'drawing'` to cut afresh each drawing its
+ * plane's `sourceClock` shows.
  */
-export type ShotSlicesParams = { readonly cells: 'rows' | 'rects'; readonly size: number; readonly shift: number; readonly share: number; readonly seed: number };
+export type ShotSlicesParams = {
+  readonly cells: 'rows' | 'rects'; readonly size: number; readonly shift: number; readonly share: number; readonly seed: number; readonly reroll: 'never' | 'drawing';
+};
 
-const DEFAULTS: ShotSlicesParams = { cells: 'rows', size: 12, shift: 24, share: 0.5, seed: 1 };
+const DEFAULTS: ShotSlicesParams = { cells: 'rows', size: 12, shift: 24, share: 0.5, seed: 1, reroll: 'never' };
 
 /** Below this, a seed is a whole number a float uniform carries exactly. */
 const SEED_MOST = 2 ** 24;
 
 /**
  * `source` cut and moved, or several inputs tiled and moved, each cell showing one:
- * `shotPlace(slices({ source: watercolour, second: crayon }, { cells: 'rects', size: 24, shift: 16, share: 0.3 }), { id, depth })`.
+ * `shotPlace(slices({ source: watercolour, second: crayon }, { cells: 'rects', size: 24, shift: 16, share: 0.3 }), { id, depth })`;
+ * rerolled each drawing: `shotPlace(slices({ source: hero }, { reroll: 'drawing' }), { id, depth, sourceClock: { hold: 2 } })`.
  */
 export const slices = defineShotEffect({
   name: 'slices',
   inputs: ['source', 'second', 'third', 'fourth'],
   optional: ['second', 'third', 'fourth'],
   defaults: DEFAULTS,
-  problems: ({ cells, size, shift, share, seed }) => {
+  problems: ({ cells, size, shift, share, seed, reroll }) => {
     const problems: ShotEffectProblem[] = [];
     if (cells !== 'rows' && cells !== 'rects') problems.push({ field: 'cells', message: `${String(cells)} isn't rows or rects` });
     if (!(Number.isInteger(size) && size >= 1)) problems.push({ field: 'size', message: `${size} isn't a whole number of px from 1` });
     if (!(Number.isInteger(shift) && shift >= 0)) problems.push({ field: 'shift', message: `${shift} isn't a whole number of px from 0` });
     if (!(share >= 0 && share <= 1)) problems.push({ field: 'share', message: `${share} isn't within 0..1` });
     if (!(Number.isInteger(seed) && seed >= 0 && seed < SEED_MOST)) problems.push({ field: 'seed', message: `${seed} isn't a whole number from 0 below ${SEED_MOST}` });
+    if (reroll !== 'never' && reroll !== 'drawing') problems.push({ field: 'reroll', message: `${String(reroll)} isn't never or drawing` });
     return problems;
   },
+  varies: ({ reroll }) => (reroll === 'drawing' ? ['drawing'] : []),
   // Each input given, once, unmoved: the studio half moves each cell's read.
   reads: (_, given) => given.map((input) => ({ input })),
   grow: ({ shift }) => shift,
@@ -63,11 +70,15 @@ export const shotSlicesShareCut = (share: number) => Math.round(share * 65536);
 export const shotSlicesCellAt = ({ cells, size }: ShotSlicesParams, x: number, y: number): readonly [number, number] =>
   [cells === 'rows' ? 0 : Math.floor(x / size), Math.floor(y / size)];
 
+/** The seed slices draws drawing `drawing`'s cells from: its own, or when they reroll, its own mixed with the drawing's. */
+export const shotSlicesSeed = ({ seed, reroll }: ShotSlicesParams, drawing: number) => (reroll === 'drawing' ? hash((seed ^ hash(drawing >>> 0)) >>> 0) : seed);
+
 /**
- * What cell `cell` shows: the index of the input it reads, of `inputs` given, and how far it moves it, whole plane
- * px. The studio half's `shotSlicesCell` is this, in WGSL.
+ * What cell `cell` shows at drawing `drawing` (shotDrawing's, 0 unless they reroll): the index of the input it reads,
+ * of `inputs` given, and how far it moves it, whole plane px. The studio half's `shotSlicesCell` is this, in WGSL.
  */
-export function shotSlicesCell({ cells, shift, share, seed }: ShotSlicesParams, inputs: number, [cx, cy]: readonly [number, number]) {
+export function shotSlicesCell(params: ShotSlicesParams, inputs: number, [cx, cy]: readonly [number, number], drawing = 0) {
+  const { cells, shift, share } = params, seed = shotSlicesSeed(params, drawing);
   const base = hash((seed ^ hash((cx >>> 0) ^ hash(cy >>> 0))) >>> 0);
   const draw = (k: number) => hash((base + k) >>> 0), span = 2 * shift + 1;
   const moved = draw(0) >>> 16 < shotSlicesShareCut(share);

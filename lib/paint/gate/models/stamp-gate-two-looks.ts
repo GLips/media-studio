@@ -57,13 +57,13 @@ export const STAMP_GATE_TWO_LOOKS: PaintingSourceModule<typeof looks> = {
 export const stampGateTwoLooksEvaluations = () => (['wash', 'gouache'] as const).map((look) => painting(STAMP_GATE_TWO_LOOKS, { look }));
 
 /** The tiles: square cells or rows of 20 px, a third moved up to 28 px, the seed one whose moved cells cross the figure's edge. */
-const tiles = (cells: ShotSlicesParams['cells']): ShotSlicesParams => ({ cells, size: 20, shift: 28, share: 0.35, seed: 12 });
+export const stampGateTiles = (cells: ShotSlicesParams['cells'], reroll: ShotSlicesParams['reroll'] = 'never'): ShotSlicesParams => ({ cells, size: 20, shift: 28, share: 0.35, seed: 12, reroll });
 
 /** The footage, and the figure's looks tiled by slices in `cells`, neither placed; or look `look` alone, placed. */
 export function stampGateTwoLooksShot(drawn: { readonly cells: ShotSlicesParams['cells'] } | { readonly look: StampGateLook } = { cells: 'rects' }): StampGateShot {
   const stage = stampStage(STAMP_GATE_FIGURE_FRAME, 2);
   const [wash, gouache] = stampGateTwoLooksEvaluations().map((evaluation) => shotFigure(evaluation, 'figure', { at: 0 }));
-  const image = 'cells' in drawn ? slices({ source: wash, second: gouache }, tiles(drawn.cells)) : { wash, gouache }[drawn.look];
+  const image = 'cells' in drawn ? slices({ source: wash, second: gouache }, stampGateTiles(drawn.cells)) : { wash, gouache }[drawn.look];
   return { camera: { stage, fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] }, planes: [stampGateFootagePlane(stage), shotPlace(image, { id: 'tiles', depth: 1 })] };
 }
 
@@ -77,13 +77,16 @@ const LOOKS_APART = 30, FRAGMENT = 20;
 
 const insideFigure = (x: number, y: number, grown: number) => ((x - FIGURE.x) / (FIGURE.rx + grown)) ** 2 + ((y - FIGURE.y) / (FIGURE.ry + grown)) ** 2 <= 1;
 
-/** How `frame`, tiled in `cells`, stands to its looks: its px's stray from its cell's look moved, and its fragments past the figure's reach. */
-function tiling(frame: ArrayLike<number>, cells: ShotSlicesParams['cells'], looksPlaced: StampGateTwoLooksFrames['looks']) {
+/**
+ * How `frame`, tiled by `params` at drawing `drawing`, stands to its looks: its px's stray from its cell's look moved,
+ * and its fragments past the figure's reach.
+ */
+export function stampGateTiling(frame: ArrayLike<number>, params: ShotSlicesParams, looksPlaced: StampGateTwoLooksFrames['looks'], drawing = 0) {
   // The footage's own colour, at the frame's corner, clear of the figure in either look.
-  const params = tiles(cells), footage = [0, 1, 2].map((c) => looksPlaced[0][c]);
+  const footage = [0, 1, 2].map((c) => looksPlaced[0][c]);
   let stray = 0, fragments = 0;
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    const { input, shift: [sx, sy] } = shotSlicesCell(params, 2, shotSlicesCellAt(params, x + 0.5, y + 0.5));
+    const { input, shift: [sx, sy] } = shotSlicesCell(params, 2, shotSlicesCellAt(params, x + 0.5, y + 0.5), drawing);
     // A px moved from past the frame shows what the stage held there, which no frame of a look shows.
     if (x - sx < 0 || x - sx >= width || y - sy < 0 || y - sy >= height) continue;
     const from = (y - sy) * width + x - sx, look = looksPlaced[input];
@@ -113,10 +116,10 @@ export function checkStampGateTwoLooks({ rects, rows, looks: looksPlaced }: Stam
     apart += [0, 1, 2].reduce((sum, c) => sum + Math.abs(looksPlaced[0][(y * width + x) * 3 + c] - looksPlaced[1][(y * width + x) * 3 + c]), 0) / 3;
     inside++;
   }
-  const shown = looksShown(tiles('rects'));
+  const shown = looksShown(stampGateTiles('rects'));
   return [
     ...(['rects', 'rows'] as const).flatMap((cells) => {
-      const { stray, fragments } = tiling(cells === 'rects' ? rects : rows, cells, looksPlaced);
+      const { stray, fragments } = stampGateTiling(cells === 'rects' ? rects : rows, stampGateTiles(cells), looksPlaced);
       return [
         {
           id: `shot/two-looks: ${cells} are their looks, moved`, passed: stray <= TILE_SLACK,

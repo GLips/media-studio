@@ -64,13 +64,18 @@ behind it inside the shot at every frame; over a dark page, put an opaque backgr
 or another effect. Its inputs need no plane of their own; each is laid through the effect's plane's lay. Built in:
 `offsetCopies`; `channelSplit(hero, {red: [x, y], green, blue})`, each channel moved whole, so its fringe tints
 coloured footage cleanly; and `slices({source, second?, third?, fourth?}, {cells: 'rows' | 'rects', size, shift,
-share, seed})`, cells of the frame a seeded share moved, each showing one input: give two looks of one subject, neither
+share, seed, reroll?})`, cells of the frame a seeded share moved, each showing one input: give two looks of one subject, neither
 placed, for a tiled mosh; and `trail(hero, {count, every: {drawings}, fade})`, whose ghosts step back whole drawings on
 the clock its plane's `sourceClock` declares (a plane with none is refused: declare one, never guess it), each laid where
-it lay then and seen through the camera now, none before the source's first drawing. Cells lie in plane px, not on the subject, and the same seed always cuts the same. Define your own as the studio does, in two halves: `defineShotEffect({name, inputs, optional?, defaults,
-problems, reads, grow?})` (plain data: `reads(params, given)` names, of the inputs given, each read's input, a map in plane px, and a moment: `{drawingsEarlier: n}`, or a map shifting `at` and `frame` alike, as `momentEarlier` does), and
+it lay then and seen through the camera now, none before the source's first drawing. Cells lie in plane px, not on the subject, and the same seed always cuts the same; `reroll: 'drawing'` cuts afresh
+each drawing its plane's `sourceClock` shows, the same through a hold. Define your own as the studio does, in two halves: `defineShotEffect({name, inputs, optional?, defaults,
+problems, reads, grow?, varies?})` (plain data: `reads(params, given)` names, of the inputs given, each read's input, a map in plane px, and a moment: `{drawingsEarlier: n}`, or a map shifting `at` and `frame` alike, as `momentEarlier` does), and
 `defineShotEffectGpu(effect, {wgsl, uniforms})`, whose WGSL defines `fn shotEffect(p: vec2f) -> ShotFilm` over
-`shotRead(i, p)`, `shotOver`, `shotFaded` and `shotParam(i)` (`studio api defineShotEffectGpu`). Pass your halves to
+`shotRead(i, p)`, `shotOver`, `shotFaded` and `shotParam(i)` (`studio api defineShotEffectGpu`). An effect that
+changes over time says so in `varies(params)`: `['drawing']` gives its WGSL `shotDrawing()`, the drawing its plane's
+`sourceClock` shows (declare one), so it rerolls each drawing and a hold reuses its picture: seed with it, never with
+the frame; `['moment']` gives `shotSeconds()`, for change that runs on through holds, drawn anew each frame. Both read 0
+unless asked, and only what's asked keys its output. Pass your halves to
 `<PaintedShot effects={[...]}>`, a module constant. An effect plane can't be the back or take masks, and no mask reads it.
 
 ## The camera
