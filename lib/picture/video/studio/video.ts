@@ -30,7 +30,7 @@ export type SceneExpectation =
 /**
  * A scene rendered into generated footage by `studio gen video`: the scene's own render is the blockout (see
  * blockout.tsx, flat-blockout.tsx) it sends as the reference video. Once footage exists the scene plays it, until the
- * next `studio gen video` replaces it; the Studio's `blockouts` prop shows the blockout again.
+ * next `studio gen video` replaces it; the Studio's `blockouts` prop shows the blockout again. See `overlay`.
  */
 export type ScenePrevis = {
   /**
@@ -42,6 +42,12 @@ export type ScenePrevis = {
   prompt: string;
   /** Stills of the subjects, relative to the project, sent as reference images. */
   references?: readonly string[];
+  /**
+   * What's laid over the shot and never sent to the model: a title, a name card, a 3D character over a generated
+   * plate. Drawn above the blockout, and above the footage once it exists; `studio gen video` renders the blockout
+   * without it, so changing it changes neither the blockout's hash nor the footage.
+   */
+  overlay?(s: SceneClock): ReactNode;
 } & (
   | {
     /** Generate sound with the picture. Off by default: the voice and music carry a video's sound. */

@@ -214,7 +214,8 @@ function BeatClickAudio({ timeline, fps }: { timeline: VideoDef['timeline']; fps
 const previsClipFor = (clips: VideoProjectModules['previsClips'], scene: LaidScene): PrevisClip | undefined => (scene.previs ? clips[scene.id] : undefined);
 
 // A transparent video's scene paints only what it draws, so in a crossfade each fades over the page, not over white.
-function SceneLayer({ scene, t, alpha, transparent = false, clip }: { scene: LaidScene; t: number; alpha: number; transparent?: boolean; clip?: PrevisClip }) {
+// `overlay` false leaves out a previs scene's overlay: the blockout sent to the model is the shot alone.
+function SceneLayer({ scene, t, alpha, transparent = false, clip, overlay = true }: { scene: LaidScene; t: number; alpha: number; transparent?: boolean; clip?: PrevisClip; overlay?: boolean }) {
   const clock = sceneClockAt(scene, t);
   return (
     <AbsoluteFill data-scene={scene.id} data-scene-t={clock.t} style={{ background: transparent ? undefined : '#fff', opacity: alpha }}>
@@ -223,21 +224,23 @@ function SceneLayer({ scene, t, alpha, transparent = false, clip }: { scene: Lai
           {clip ? (
             <AbsoluteFill {...unmeasuredAttrs('generated clip')}><PrevisClipPlayer scene={scene} clip={clip} clock={clock} /></AbsoluteFill>
           ) : <SceneBody scene={scene} clock={clock} />}
+          {overlay && scene.previs?.overlay && <AbsoluteFill><SceneOverlay scene={scene} clock={clock} /></AbsoluteFill>}
         </SceneContext.Provider>
       </VideoTransparentContext>
     </AbsoluteFill>
   );
 }
 
-/** One previs scene's blockout alone over its previsSpan, silent: the reference video `studio gen video` sends. */
+/** One previs scene's blockout alone over its previsSpan, silent, without its overlay: the reference video `studio gen video` sends. */
 export function BlockoutSolo({ video, scene: sceneId }: BlockoutSoloProps & { video: VideoDef }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const tl = useMemo(() => laidVideoOf(video), [video]);
   const scene = tl.scenes.find((s) => s.id === sceneId)!;
   const { from } = previsSpan(tl, sceneId);
-  return <CaptionBandContext value={videoCaptionsOf(video).style.band}><SceneLayer scene={scene} t={scene.start + from + frame / fps} alpha={1} /></CaptionBandContext>;
+  return <CaptionBandContext value={videoCaptionsOf(video).style.band}><SceneLayer scene={scene} t={scene.start + from + frame / fps} alpha={1} overlay={false} /></CaptionBandContext>;
 }
 
 // A component of its own so a scene's render can call hooks.
 const SceneBody = ({ scene, clock }: { scene: LaidScene; clock: ReturnType<typeof sceneClockAt> }) => <>{scene.render(clock)}</>;
+const SceneOverlay = ({ scene, clock }: { scene: LaidScene; clock: ReturnType<typeof sceneClockAt> }) => <>{scene.previs?.overlay?.(clock)}</>;

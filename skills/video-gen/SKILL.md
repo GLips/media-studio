@@ -57,6 +57,9 @@ rest of this section is the 3D blockout's.
   closely, but frames bare subjects on the empty grid tighter than blocked. Walls, a window and a counter (big tinted
   boxes and cards, named in the prompt) hold the framing.
 - **Subjects can move**, computed from `s.t` like the look-at.
+- **What goes over the footage stays out of the blockout.** A title, a name card or a 3D character laid over the
+  generated plate goes in `previs.overlay(s)`, not `render`: it draws above the blockout and later the footage, and
+  never reaches the model, which would otherwise paint it into the shot.
 - **Length.** The footage covers the scene's whole time on screen, rounded up to whole seconds within the model's
   range; a longer scene has to be split.
 
