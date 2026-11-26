@@ -1,11 +1,11 @@
 // shot-light-spill.ts: light one plane throws onto another, as plain data. A spill is its source plane's emission as
 // it lies (visibility and flicker included), blurred by `reach`, carried into the receiver's px, where it
 // changes the receiver's colour in linear light and never its emission: a lit wall doesn't bloom. The source's own
-// glow is the lens's bloom, apart from any spill.
+// glow is the lens's bloom.
 //
 // The identity map holds a spill where the frame shows its source at rest (every plane's px are frame px then), so it
 // stays on the receiver as the camera moves, following the source's lay. A three receiver takes it in frame px
-// through this exposure's camera: a screen-space approximation. A source that doesn't emit throws no light.
+// as if flat at its depth: a screen-space approximation. A source that doesn't emit throws no light.
 
 import type { PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';

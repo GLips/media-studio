@@ -77,7 +77,7 @@ included), blurred by `reach` px. The receiver's paint reflects it (light × (1 
 covers; it never emits, so the wall doesn't bloom. The source's own glow is `lens.bloom`, tuned apart. A source that
 doesn't emit throws nothing, however bright: glow it, or make its light an effect that emits. Where it lands: where
 the frame shows the source at rest (`map` moves it), then fixed to the receiver as the camera moves, following the
-source's lay. On a three receiver it's laid in frame px through the camera, a screen-space approximation.
+source's lay. On a three receiver it's laid in frame px as if the plane were flat at its depth, a screen-space approximation.
 
 **Neon.** `const sign = neon({palette: ['#ff3fa4', '#3ff0ff'], spill: {reach: 48}, flicker: {seed: 3}})`, then
 `sign.place(shotFigure(painting, card), {id: 'sign', depth: 1.2})` and `sign.light(wall, 'sign')`. `tubes` (the

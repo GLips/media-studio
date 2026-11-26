@@ -414,9 +414,9 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
           return canvas.sourceLayers.layer(encoder, source, rendered, { look: seen, focus: lensFrame.focus, moving, back: isBack, visibility });
         };
         /**
-         * `laid`, plane `id`'s layer, lit by the light other planes throw on it: each source's image as it lies this
-         * exposure, none of one hidden or not emitting. A three render is in frame px, so a source is carried there
-         * through this exposure's camera (shot-light-spill.ts's approximation); any other in its own plane px.
+         * `laid`, plane `id`'s layer, lit by the light other planes throw on it, none from a source hidden or not
+         * emitting. A three render is in frame px, so the spill is carried there through the receiver's own view, as
+         * if flat at its depth (shot-light-spill.ts's approximation); any other takes it in its own plane px.
          */
         const lit = (id: string, laid: LensLayer): LensLayer => {
           const given = shot.spills.get(id), receiver = planeOf.get(id)!;
@@ -424,7 +424,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
           const spills = given.flatMap(({ source, reach, gain, added, map = PAINT_SIMILARITY_IDENTITY }): ShotSpillLaid[] => {
             const thrower = images.get(source), sharp = thrower?.sharp(), light = thrower && sharp && spill.light(encoder, sharp, thrower.key, reach);
             if (!light) return [];
-            return [{ light, gain, added, map: receiver.kind === 'three' ? paintSimilarityAfter(map, shotExposureView(exposure, source)) : map }];
+            return [{ light, gain, added, map: receiver.kind === 'three' ? paintSimilarityAfter(shotExposureView(exposure, id), map) : map }];
           });
           return spills.length ? spill.lay(encoder, id, laid, spills) : laid;
         };

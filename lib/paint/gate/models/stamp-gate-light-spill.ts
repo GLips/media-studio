@@ -82,8 +82,11 @@ export const STAMP_GATE_NEON = neon({ palette: ['#ff3fa4', '#3ff0ff'], tube: { w
  */
 export type StampGateLightSpillDrawn = { readonly lit: boolean; readonly bloom: number; readonly bar: boolean; readonly pan: boolean; readonly moved: boolean };
 
-/** The three screen's disc behind the tubes, frame px at rest, and its depth: past the tubes' reach, clear. */
-export const STAMP_GATE_LIGHT_SPILL_SCREEN = { x: 95, y: 60, r: 30, depth: 1.6 } as const;
+/**
+ * The three screen's disc, frame px at rest, and its depth: right of the tubes and clear of them panned or not, in
+ * their spill, which past it falls on the wall unlit.
+ */
+export const STAMP_GATE_LIGHT_SPILL_SCREEN = { x: 150, y: 60, r: 22, depth: 1.6 } as const;
 
 export const STAMP_GATE_LIGHT_SPILL_BASELINE: StampGateLightSpillDrawn = { lit: true, bloom: 4, bar: true, pan: true, moved: false };
 
@@ -150,14 +153,16 @@ function boxMean(values: ArrayLike<number>, { x0, y0, x1, y1 }: { x0: number; y0
 
 /**
  * The frames the checks read, RGB bytes, each lit and unlit: with no bar, at rest and panned, and with the tubes'
- * lay moved; with the bar at rest; with the bar at rest bloomed (the baseline's lens) and not; the three screen.
+ * lay moved; with the bar at rest; with the bar at rest bloomed (the baseline's lens) and not; the three screen at rest and panned.
  */
-export type StampGateLightSpillFrames = Readonly<Record<'rest' | 'panned' | 'moved' | 'barred' | 'bloomed' | 'screen', { readonly lit: ArrayLike<number>; readonly unlit: ArrayLike<number> }>>;
+export type StampGateLightSpillFrames = Readonly<Record<'rest' | 'panned' | 'moved' | 'barred' | 'bloomed' | 'screen' | 'screenPanned', { readonly lit: ArrayLike<number>; readonly unlit: ArrayLike<number> }>>;
 
 /** px the spill's centre may stray from where the wall, or the tubes' lay, carries it. */
 const CENTRE_SLACK = 2;
 /** Linear luma the spill must add beside the tubes, and the most it may add under the bar. */
 const LIT_LEAST = 0.01, HIDDEN_MOST = 0.0005;
+/** Linear luma the spill on the panned three disc may stray by from the rest frame's, moved as the disc moves. */
+const SCREEN_SLACK = 0.01;
 /** Linear luma the bloom's light may differ by, lit or not, at any texel: two 8-bit steps where the bloom is brightest. */
 const BLOOM_SLACK = 0.008;
 
@@ -180,6 +185,15 @@ export function checkStampGateLightSpill(frames: StampGateLightSpillFrames): Sta
   const screen = spillOf(frames.screen.lit, frames.screen.unlit), { x: cx, y: cy, r } = STAMP_GATE_LIGHT_SPILL_SCREEN;
   const onScreen = boxMean(screen, { x0: cx - 5, y0: cy + r - 8, x1: cx + 5, y1: cy + r - 4 });
   const pastScreen = Math.max(...Array.from(boxValues(screen, { x0: cx - 5, y0: cy + r + 4, x1: cx + 5, y1: cy + r + 10 }), Math.abs));
+  // Panned, the spill on the screen should be the rest frame's moved as the screen moves; moved as the tubes do, it strays.
+  const screenPanned = spillOf(frames.screenPanned.lit, frames.screenPanned.unlit), screenShift = Math.round(-PAN / STAMP_GATE_LIGHT_SPILL_SCREEN.depth);
+  // A square well inside the disc: past r/√2 its corners would leave it.
+  const half = Math.floor(r * 0.55);
+  const strayAt = (shift: number) => Math.max(...boxValues(screen, { x0: cx - half, y0: cy - half, x1: cx + half, y1: cy + half }).map((v, i) => {
+    const x = cx - half + (i % (2 * half)), y = cy - half + Math.floor(i / (2 * half));
+    return Math.abs(v - screenPanned[y * FRAME.width + x + shift]);
+  }));
+  const screenStray = strayAt(screenShift), tubesStray = strayAt(Math.round(signShift));
   const bloomStray = Math.max(...bloomed.map((v, i) => (clipped(i) ? 0 : Math.abs(v - unbloomed[i]))));
   return [
     {
@@ -201,6 +215,10 @@ export function checkStampGateLightSpill(frames: StampGateLightSpillFrames): Sta
     {
       id: 'shot/light-spill: lights a three plane where it covers', passed: onScreen >= LIT_LEAST && pastScreen <= HIDDEN_MOST,
       detail: `a three disc lit in frame px gains ${f(onScreen, 4)} of linear luma inside its rim (${LIT_LEAST} or more wanted) and ${f(pastScreen, 5)} at most just past it, where it's clear (${HIDDEN_MOST} allowed)`,
+    },
+    {
+      id: 'shot/light-spill: stays on a three plane as the camera pans', passed: screenStray <= SCREEN_SLACK && tubesStray > 2 * SCREEN_SLACK,
+      detail: `panned ${PAN} px, the spill inside the three disc, moved ${screenShift} px as the disc moves, strays ${f(screenStray, 4)} of linear luma at most (${SCREEN_SLACK} allowed); moved as the tubes move, ${f(tubesStray, 4)}`,
     },
     {
       id: 'shot/light-spill: bloom apart from spill', passed: bloomStray <= BLOOM_SLACK,

@@ -447,7 +447,7 @@ async function checkLightSpill(): Promise<StampGateWashCheck[]> {
   return checkStampGateLightSpill({
     rest: await lightSpillBoth(open, rest), panned: await lightSpillBoth(open, panned), moved: await lightSpillBoth({ ...open, moved: true }, rest),
     barred: await lightSpillBoth({ ...open, bar: true }, rest), bloomed: await lightSpillBoth({ ...STAMP_GATE_LIGHT_SPILL_BASELINE }, rest),
-    screen: await lightSpillBoth({ bloom: 0, bar: false, pan: false, moved: false }, rest, LIGHT_SPILL_SCREEN),
+    screen: await lightSpillBoth(open, rest, LIGHT_SPILL_SCREEN), screenPanned: await lightSpillBoth(open, panned, LIGHT_SPILL_SCREEN),
   });
 }
 
