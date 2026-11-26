@@ -271,6 +271,7 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
   play(tail?.from?.time ?? decayEdge(voice, keptSounds.at(-1)!));
   for (const t of keep) if (!kept.has(t)) throw new Error(`${where}'s line from ${asked} to ${askedTo} s takes nothing out at ${t} s to keep`);
 
+  if (!pieces.length) throw new Error(`${where}'s line from ${asked} to ${askedTo} s holds no whole word to play`);
   const at = [0];
   for (const p of pieces.slice(0, -1)) at.push(at.at(-1)! + (p.end - p.start) / p.speed);
   const lineTime = (t: number) => {

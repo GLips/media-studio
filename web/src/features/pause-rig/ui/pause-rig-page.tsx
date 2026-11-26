@@ -100,7 +100,17 @@ export function PauseRigPage() {
     [footage, voicedCutFade]);
 
   const video = useRef<HTMLVideoElement>(null);
-  const pick = usePauseRigPick({ active: picking, clips: pickClips, cut: (line, values) => cutLine(line, { voicedCutFade, pauses: values }), takeOf, video, start: manual });
+  const pick = usePauseRigPick({ active: picking, clips: pickClips, cut: (line, values) => cutLine(line, { voicedCutFade, pauses: values }),
+    cutAsRecorded: (line, from, to) => {
+      const take = takeOf(line);
+      if (!take) return `${PAUSE_RIG_LINES[line].item} isn't loaded`;
+      try {
+        return take.speech(from, to, { voicedCutFade, pauses: false });
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      }
+    },
+    takeOf, video, start: manual });
   const values = picking ? pick.best : manual;
 
   const key = JSON.stringify([values, voicedCutFade, dial.bypass, picking]);
@@ -203,6 +213,7 @@ export function PauseRigPage() {
           <Text size="xs" {...stylex.props(styles.mono)}>
             {pick.session.tuner.answers.length} picks · {asked ? `repeated pairs agreed ${agreed} of ${asked}` : 'no pair repeated yet'}
             {pick.trial && ` · now: ${pick.trial.knob} ${pick.trial.first} vs ${pick.trial.second} on ${pick.trial.clip.about}`}
+            {pick.leadGot !== undefined && pick.leadGot < pick.leadIn - 0.05 && ` · lead-in ${pick.leadGot.toFixed(2)} s of ${pick.leadIn} s asked: the take starts there`}
           </Text>
           {!pick.session.confirming && <Button onClick={pick.confirmNow}>Confirm these values now</Button>}
           <Button onClick={pick.restart}>Restart from the knobs</Button>

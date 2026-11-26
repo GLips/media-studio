@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { LibraryFootage } from '#lib/footage/library/models/library-footage.ts';
 import { spokenStretchSeconds, type RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
 import { appendPauseRigLogFn, type PauseRigLogEntry } from '../controllers/pause-rig-log.ts';
-import { PAUSE_RIG_CONFIRM_LINES, PAUSE_RIG_LINES, pauseRigLineTimeOf, type PauseRigClip } from './pause-rig-lines.ts';
+import { PAUSE_RIG_CONFIRM_LINES, PAUSE_RIG_LINES, pauseRigLeadStart, pauseRigLineTimeOf, pauseRigWithLeadIn, type PauseRigClip } from './pause-rig-lines.ts';
 import { createPauseRigPlayer } from './pause-rig-player.ts';
 import {
   nextPauseRigTrial, pauseRigTunedValues, pauseRigUnshownKnobs, pickPauseRigTrial, startPauseRigTuner,
@@ -19,6 +19,9 @@ export type PauseRigVersion = 'first' | 'second' | 'line';
 
 // Silence between the two versions, so each lands as its own.
 const BETWEEN_VERSIONS_MS = 700;
+// Seconds of the line as played a clip leads into its pause with, as offered and at first.
+export const PAUSE_RIG_LEAD_INS: readonly number[] = [2, 4, 6];
+const LEAD_IN_KEY = 'pause-rig-lead-in';
 // Bumped whenever a session saved before would mislead: a reload then starts afresh.
 const SESSION_KEY = 'pause-rig-pick-v4';
 
@@ -33,6 +36,8 @@ type PauseRigPickInput = {
   clips: readonly PauseRigClip[];
   /** A line cut under `values`, or why it can't be. */
   cut: (line: number, values: PauseRigTunedValues) => RecordedSpeech | string;
+  /** The take of `line` from `from` to `to` as recorded, its pauses untreated, or why it can't be. */
+  cutAsRecorded: (line: number, from: number, to: number) => RecordedSpeech | string;
   takeOf: (line: number) => LibraryFootage | undefined;
   video: RefObject<HTMLVideoElement | null>;
   /** What a restarted session starts from. */
@@ -45,7 +50,7 @@ const clipOfLog = (trial: PauseRigTrial) => {
   return { item: spec.item, from: trial.clip.from, to: trial.clip.to, about: trial.clip.about };
 };
 
-export function usePauseRigPick({ active, clips, cut, takeOf, video, start }: PauseRigPickInput) {
+export function usePauseRigPick({ active, clips, cut, cutAsRecorded, takeOf, video, start }: PauseRigPickInput) {
   const fresh = (): PauseRigSession => ({ tuner: startPauseRigTuner(start), history: [], confirming: false, confirmed: [] });
   const [session, setSession] = useLocalStorage<PauseRigSession>({ key: SESSION_KEY, defaultValue: fresh(), getInitialValueInEffect: false });
   const [playing, setPlaying] = useState<PauseRigVersion | undefined>();
@@ -82,12 +87,17 @@ export function usePauseRigPick({ active, clips, cut, takeOf, video, start }: Pa
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- measure reads only clips' cuts at the tuner's values
   }, [trial, session.confirming, clips, session.tuner, setSession]);
 
-  const playStretch = (version: PauseRigVersion, line: number, values: PauseRigTunedValues, range: (speech: RecordedSpeech) => [number, number], then?: () => void) => {
-    const take = takeOf(line), speech = cut(line, values);
-    if (!take || !video.current || typeof speech === 'string') return;
+  const [leadIn, storeLeadIn] = useLocalStorage({ key: LEAD_IN_KEY, defaultValue: 4, getInitialValueInEffect: false });
+  // Read when a clip plays, so a lead-in just chosen applies to the replay it starts.
+  const leadInNow = useRef(leadIn);
+  leadInNow.current = leadIn;
+  const [leadGot, setLeadGot] = useState<number | undefined>();
+  const playStretch = (version: PauseRigVersion, line: number, values: PauseRigTunedValues, range: (speech: RecordedSpeech) => [RecordedSpeech, number, number], then?: () => void) => {
+    const take = takeOf(line), cutSpeech = cut(line, values);
+    if (!take || !video.current || typeof cutSpeech === 'string') return;
     setPlaying(version);
     setLastPlayed(version);
-    const [from, to] = range(speech);
+    const [speech, from, to] = range(cutSpeech);
     const heardAs = asking;
     void player.play(take.item, speech, from, to, video.current, () => {
       setPlaying(undefined);
@@ -96,10 +106,17 @@ export function usePauseRigPick({ active, clips, cut, takeOf, video, start }: Pa
     });
   };
   const play = (version: PauseRigVersion, then?: () => void) => {
-    if (version === 'line' && confirmLine !== undefined) playStretch('line', confirmLine, best, (s) => [0, spokenStretchSeconds(s)]);
+    if (version === 'line' && confirmLine !== undefined) playStretch('line', confirmLine, best, (s) => [s, 0, spokenStretchSeconds(s)]);
     if (version !== 'line' && trial) {
-      const { clip } = trial;
-      playStretch(version, clip.line, { ...best, [trial.knob]: trial[version] }, (s) => [pauseRigLineTimeOf(s, clip.from), pauseRigLineTimeOf(s, clip.to)], then);
+      const { clip } = trial, take = takeOf(clip.line), pauseFrom = clip.pause?.from ?? clip.from;
+      playStretch(version, clip.line, { ...best, [trial.knob]: trial[version] }, (line) => {
+        const from = pauseRigLeadStart(take?.words ?? [], line, pauseFrom, leadInNow.current);
+        const lead = from < line.from ? cutAsRecorded(clip.line, from, line.from) : undefined;
+        const speech = lead && typeof lead !== 'string' ? pauseRigWithLeadIn(lead, line) : line;
+        const at = pauseRigLineTimeOf(speech, from);
+        setLeadGot(pauseRigLineTimeOf(speech, pauseFrom) - at);
+        return [speech, at, pauseRigLineTimeOf(speech, clip.to)];
+      }, then);
     }
   };
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -146,7 +163,13 @@ export function usePauseRigPick({ active, clips, cut, takeOf, video, start }: Pa
   };
 
   return {
-    session, best, trial, unshown, playing, ready, heard: heardNow, confirmLine, stop, confirm, playBoth, next, draft,
+    session, best, trial, unshown, playing, leadIn, leadGot,
+    /** Leads clips in with `seconds`, replaying the pair on show with it. */
+    setLeadIn: (seconds: number) => {
+      storeLeadIn(seconds);
+      leadInNow.current = seconds;
+      if (trial) playBoth();
+    }, ready, heard: heardNow, confirmLine, stop, confirm, playBoth, next, draft,
     /** Chooses an answer once both have played; choosing it again, or another, changes it until Next. */
     choose: (choice: PauseRigPick) => {
       if (ready && trial) amend({ pick: choice });

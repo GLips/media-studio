@@ -9,7 +9,7 @@ import { colors, radius, spacing, typography } from '#web/shared/ui/theme.stylex
 import { PAUSE_RIG_CONFIRM_LINES } from './pause-rig-lines.ts';
 import { PAUSE_RIG_FEELS, PAUSE_RIG_TUNED_KNOBS, pauseRigKnobSettled, pauseRigTunerProgress } from './pause-rig-tuner.ts';
 import type { PauseRigPick } from './pause-rig-tuner.ts';
-import type { PauseRigVersion, usePauseRigPick } from './use-pause-rig-pick.ts';
+import { PAUSE_RIG_LEAD_INS, type PauseRigVersion, type usePauseRigPick } from './use-pause-rig-pick.ts';
 
 const styles = stylex.create({
   instruction: { textAlign: 'center' },
@@ -117,6 +117,14 @@ export function PauseRigPickPanel({ pick }: { pick: ReturnType<typeof usePauseRi
         </Group>
         <Button variant="subtle" disabled={session.history.length === 0} onClick={pick.undo}>Undo last pick</Button>
       </Group>
+      {!confirming && (
+        <Group gap="tight">
+          <Text size="xs" {...stylex.props(styles.muted)}>Lead-in:</Text>
+          {PAUSE_RIG_LEAD_INS.map((seconds) => (
+            <Button key={seconds} size="compact-xs" variant={pick.leadIn === seconds ? 'light' : 'subtle'} aria-pressed={pick.leadIn === seconds} onClick={() => pick.setLeadIn(seconds)}>{seconds} s</Button>
+          ))}
+        </Group>
+      )}
     </Stack>
   );
 }

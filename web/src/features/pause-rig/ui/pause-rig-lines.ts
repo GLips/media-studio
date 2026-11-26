@@ -1,7 +1,7 @@
 // pause-rig-lines.ts: what the pause rig plays: lines from several library takes, each cut through the real cleanup, and
 // the short clips around each pause it changed or filler it took. Pure.
 import type { SpokenPauseKind } from '#lib/footage/transcript/models/spoken-pauses.ts';
-import { spokenItemTimeAt, spokenPieceSeconds, type RecordedSpeech, type SpokenStretch } from '#lib/timing/voice/models/recorded-speech.ts';
+import { spokenItemTimeAt, spokenPieceSeconds, spokenStretchSeconds, type RecordedSpeech, type SpokenStretch } from '#lib/timing/voice/models/recorded-speech.ts';
 
 /** A line of a take, in item seconds, and what it's in the playlist to test. */
 export type PauseRigLineSpec = { item: string; from: number; to: number; about: string };
@@ -34,6 +34,8 @@ const CLIP_CONTEXT = 1.5;
 const PICK_LEAD = 2.25, PICK_AFTER = 1;
 // Pauses shorter than this play as recorded under any pacing worth asking about.
 const PICK_PAUSE = 0.4;
+// The join from a lead-in to its line: both edges sit in quiet beside their words.
+const LEAD_IN_JOIN = { crossfade: 0.02, fadeOut: 0 };
 // Clip edges to the millisecond, so a logged clip reads cleanly.
 const ms = (t: number) => Math.round(t * 1000) / 1000;
 
@@ -46,6 +48,46 @@ export function pauseRigLineTimeOf({ pieces }: Pick<SpokenStretch, 'pieces'>, t:
     at += spokenPieceSeconds(p);
   }
   return at;
+}
+
+/**
+ * Where a clip leading `lead` seconds as played into the pause at item second `pauseFrom` starts, on item time: on
+ * the start of a word in `line`, or when the line holds too little before it, of one in the take before the line
+ * (`words`, item time), bounded only by the take's first word.
+ */
+export function pauseRigLeadStart(words: readonly { start: number; end: number }[], line: RecordedSpeech, pauseFrom: number, lead: number): number {
+  const before = pauseRigLineTimeOf(line, pauseFrom);
+  if (before >= lead) return spokenItemTimeAt(line, line.heard.findLast((w) => w.start <= before - lead)?.start ?? 0);
+  const target = line.from - (lead - before);
+  // Only words said whole before the line, so the lead-in has something to play.
+  const whole = words.filter((w) => w.end <= line.from);
+  return Math.min(line.from, (whole.findLast((w) => w.start <= target) ?? whole[0])?.start ?? line.from);
+}
+
+/**
+ * `line` with `lead`, a stretch of the same take just before it, played first: as one speech the rig's player plays
+ * through, joined in a short crossfade. Only what playing reads is joined; its removals and unheard are `line`'s.
+ */
+export function pauseRigWithLeadIn(lead: RecordedSpeech, line: RecordedSpeech): RecordedSpeech {
+  // A lead-in's out-edge pads into the quiet past the line's in-edge: it ends where the line starts instead.
+  const over = Math.max(0, lead.to - line.from);
+  const leadPieces = lead.pieces.map((p, k) => (k === lead.pieces.length - 1 ? Object.assign({}, p, { to: p.to - over }) : p));
+  const off = spokenStretchSeconds({ pieces: leadPieces }), later = (t: number) => t + off;
+  const sound = lead.sound && line.sound && {
+    ...line.sound,
+    fade: { in: lead.sound.fade.in, out: line.sound.fade.out },
+    pieces: [
+      ...lead.sound.pieces.map((p, k, all) => (k === all.length - 1 ? Object.assign({}, p, { duration: p.duration - over }) : p)),
+      ...line.sound.pieces.map((p) => Object.assign({}, p, { at: later(p.at) })),
+    ],
+    joins: [...lead.sound.joins, LEAD_IN_JOIN, ...line.sound.joins],
+    dips: [...lead.sound.dips, ...line.sound.dips.map((d) => Object.assign({}, d, { start: later(d.start), end: later(d.end) }))],
+  };
+  return {
+    ...line, from: lead.from, pieces: [...leadPieces, ...line.pieces], edges: { in: lead.edges.in, out: line.edges.out }, sound,
+    heard: [...lead.heard, ...line.heard.map((w) => Object.assign({}, w, { start: later(w.start), end: later(w.end) }))],
+    pauses: line.pauses.map((p) => Object.assign({}, p, { at: later(p.at) })),
+  };
 }
 
 /** Each pause `speech` sped up or cut and each filler or stutter it took, as clips of the take around them, in order. */
