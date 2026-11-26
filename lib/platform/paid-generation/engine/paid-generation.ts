@@ -12,8 +12,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
 import { generateElevenLabsSoundEffect } from './elevenlabs.ts';
-import { uploadS3Reference } from './s3-upload.ts';
-import { awaitOpenRouterVideoJob, downloadOpenRouterVideo, generateOpenRouterAudio, generateOpenRouterImage, submitOpenRouterVideo } from './openrouter.ts';
+import { s3UploadConfigFromEnv, uploadS3Reference } from './s3-upload.ts';
+import { awaitOpenRouterVideoJob, downloadOpenRouterVideo, generateOpenRouterAudio, generateOpenRouterImage, openRouterKeyFromEnv, submitOpenRouterVideo } from './openrouter.ts';
 import type { PaidMedia } from './paid-media.ts';
 
 /**
@@ -58,6 +58,16 @@ export type PaidGenerationProvenance = {
   plan?: string;
   generatedAt: string;
 };
+
+/**
+ * Throws unless the environment holds what an OpenRouter request needs: its key, and the upload bucket when it sends a
+ * video reference. For a caller that does slow work (a GPU render) before calling generatePaidMedia, so a missing key
+ * stops it before that work rather than after.
+ */
+export function requireOpenRouterGenerationKeys({ videoReference }: { videoReference: boolean }): void {
+  openRouterKeyFromEnv();
+  if (videoReference) s3UploadConfigFromEnv();
+}
 
 /**
  * Makes what the request asks for, or finds it already made, into `project`/generated/, and returns the absolute
@@ -125,6 +135,9 @@ export async function generatePaidMedia(project: string, request: PaidGeneration
 }
 
 const readJsonRecord = <T>(path: string): Record<string, T> => (existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {});
+
+/** Every paid generation made in `folder` (a project's), by cache key, from its generated/provenance.json. */
+export const readPaidGenerationProvenance = (folder: string) => readJsonRecord<PaidGenerationProvenance>(join(folder, 'generated', 'provenance.json'));
 
 // Re-reads the file and sets one entry, with no await between, so another run writing to the same project (a video
 // polls for minutes) never has its entries overwritten by a copy read before it wrote them.

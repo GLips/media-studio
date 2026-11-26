@@ -2,7 +2,7 @@ import { Box, Code, Group, Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Fragment, useRef, useState } from 'react';
-import { projectPageRungOf, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
+import { projectPageRungOf, type ProjectPageRung as ProjectPageRungName, type ReviewProjectRow, type ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
 import { FadeScroll } from '#web/shared/ui/fade-scroll.tsx';
 import { StudioCollectionArrangementMenu } from '#web/shared/ui/studio-collection-arrangement-menu.tsx';
 import { StudioCollectionViewToggle } from '#web/shared/ui/studio-collection-view-toggle.tsx';
@@ -12,6 +12,7 @@ import { colors, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { useStudioCollectionView, type StudioCollectionView } from '#web/shared/ui/use-studio-collection-view.ts';
 import { useProjectSummary } from '../controllers/project-queries.ts';
 import { ProjectThreadCounts } from './project-thread-counts.tsx';
+import { PROJECT_MADE_RUNG_LABELS } from '#lib/output/review/models/project-made.ts';
 import { ProjectName } from './project-name.tsx';
 import { ProjectPlace, projectFileFolderOf, projectPlaceKeyOf } from './project-place.tsx';
 import { ProjectStillsFolderRow } from './project-stills-folder-row.tsx';
@@ -31,27 +32,32 @@ type FileRow = Extract<ReviewProjectRow, { on: 'file' }>;
 
 /**
  * A run of rows shown together: `folders` labels its files by folder, as the stills and the folded work are, or with
- * `shared`, by the one folder they all sit in (the grid's loose renders under `out/`).
+ * `shared`, by the one folder they all sit in (the grid's loose renders under `out/`); `label` heads what the project
+ * made (its footage, music), whose files are named by what they are rather than their paths.
  */
-type ProjectPageRung = { key: string; rows: ReviewProjectRow[]; folders?: boolean; shared?: boolean };
+type ProjectPageRung = { key: string; rows: ReviewProjectRow[]; folders?: boolean; shared?: boolean; label?: string };
 
 const rowThreadsWaiting = ({ threads }: ReviewProjectRow) => threads.open + threads.addressed + threads.asks;
 
+/** The rungs for what the project made, in the page's order: closest to the cut first. */
+const MADE_RUNGS = ['scene-renders', 'footage', 'music', 'images'] as const;
+
 /**
  * The page's rungs, in the order work climbs them: the plan, open decisions, the project's own notes, the newest
- * animatic, the newest cut (with its transparent pair), then the stills. Every other row is older work, folded away,
- * unless a thread on it waits: that one shows after the stills.
+ * animatic, the newest cut (with its transparent pair), what the project made toward them (each under its heading),
+ * then the stills. Every other row is older work, folded away, unless a thread on it waits: that one shows after the
+ * stills.
  */
 function projectPageRungs(rows: readonly ReviewProjectRow[]): { shown: ProjectPageRung[]; folded: ReviewProjectRow[] } {
   const files = rows.filter((row): row is FileRow => row.on === 'file');
+  const onRung = (rung: ProjectPageRungName) => files.filter((row) => projectPageRungOf(row.artifact) === rung);
   // Files come newest first, so the first of a rung is its newest.
-  const newestOf = (rung: 'animatic' | 'cut') => files.find((row) => projectPageRungOf(row.artifact.path) === rung);
-  const animatic = newestOf('animatic'), cut = newestOf('cut');
+  const [animatic] = onRung('animatic'), [cut] = onRung('cut');
   const cuts = files.filter((row) => row === cut || (cut?.artifact.pair !== undefined && row.artifact.path === cut.artifact.pair));
+  const made = MADE_RUNGS.map((rung): ProjectPageRung => ({ key: rung, rows: onRung(rung), label: PROJECT_MADE_RUNG_LABELS[rung] }));
   const placed = new Set<ReviewProjectRow>([
     ...rows.filter((row) => row.on === 'plan' || row.on === 'project' || (row.on === 'decision' && row.state === 'open')),
-    ...(animatic ? [animatic] : []), ...cuts,
-    ...files.filter((row) => projectPageRungOf(row.artifact.path) === 'stills'),
+    ...(animatic ? [animatic] : []), ...cuts, ...made.flatMap((rung) => rung.rows), ...onRung('stills'),
   ]);
   const rest = rows.filter((row) => !placed.has(row));
   const shown: ProjectPageRung[] = [
@@ -60,22 +66,26 @@ function projectPageRungs(rows: readonly ReviewProjectRow[]): { shown: ProjectPa
     { key: 'project', rows: rows.filter((row) => row.on === 'project') },
     { key: 'animatic', rows: animatic ? [animatic] : [] },
     { key: 'cut', rows: cuts },
-    { key: 'stills', rows: files.filter((row) => projectPageRungOf(row.artifact.path) === 'stills'), folders: true },
+    ...made,
+    { key: 'stills', rows: onRung('stills'), folders: true },
     { key: 'waiting', rows: rest.filter((row) => rowThreadsWaiting(row) > 0) },
   ];
   return { shown: shown.filter((rung) => rung.rows.length > 0), folded: rest.filter((row) => rowThreadsWaiting(row) === 0) };
 }
 
+/** A rung with a heading of its own: a folder's, or what the project made. */
+const headedRung = (rung: ProjectPageRung) => rung.folders === true || rung.label !== undefined;
+
 /**
  * The grid's sections: what's to review (plan, decisions, the project's notes) as rows, then the loose files as one
- * grid under their shared folder, then each folder. A rung of one item would stand alone in a row of empty grid.
+ * grid under their shared folder, then each headed rung. A rung of one item would stand alone in a row of empty grid.
  */
 function projectPageGridSections(shown: readonly ProjectPageRung[]): ProjectPageRung[] {
-  const loose = shown.filter((rung) => !rung.folders).flatMap((rung) => rung.rows);
+  const loose = shown.filter((rung) => !headedRung(rung)).flatMap((rung) => rung.rows);
   return [
     { key: 'review', rows: loose.filter((row) => row.on !== 'file') },
     { key: 'files', rows: loose.filter((row) => row.on === 'file'), folders: true, shared: true },
-    ...shown.filter((rung) => rung.folders),
+    ...shown.filter(headedRung),
   ].filter((section) => section.rows.length > 0);
 }
 
@@ -116,9 +126,13 @@ function sharedFolderOf(rows: readonly ReviewProjectRow[]): string {
 }
 
 const runsOf = (rung: ProjectPageRung): ProjectPageRun[] => {
+  if (rung.label !== undefined) return [{ label: rung.label, base: '', rows: rung.rows }];
   if (rung.shared) return [folderRunOf(sharedFolderOf(rung.rows), rung.rows)];
   return rung.folders ? folderRuns(rung.rows) : [{ base: '', rows: rung.rows }];
 };
+
+/** Audio has no picture to tile, so it stays a row in the grid too. */
+const tiledInGrid = (row: ReviewProjectRow): row is FileRow => row.on === 'file' && row.artifact.kind !== 'audio';
 
 type ProjectPageRunViewProps = { readonly summary: ReviewProjectSummary; readonly now: number; readonly run: ProjectPageRun; readonly view: StudioCollectionView };
 
@@ -128,8 +142,8 @@ type ProjectPageRunViewProps = { readonly summary: ReviewProjectSummary; readonl
  */
 function ProjectPageRunView({ summary, now, run, view }: ProjectPageRunViewProps) {
   const { project } = summary, labelled = run.label !== undefined;
-  const files = run.rows.filter((row) => row.on === 'file');
-  const rowsShown = view === 'grid' ? run.rows.filter((row) => row.on !== 'file') : run.rows;
+  const files = run.rows.filter(tiledInGrid);
+  const rowsShown = view === 'grid' ? run.rows.filter((row) => !tiledInGrid(row)) : run.rows;
   return (
     <>
       {run.label && <ProjectRowGroupLabel>{run.label}</ProjectRowGroupLabel>}

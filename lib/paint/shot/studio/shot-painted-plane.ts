@@ -8,7 +8,7 @@
 // for what its masks read (an effect plane's, its reads' images), and is kept under what it read and through what
 // map (shotImageKeys).
 
-import { paintSimilarityAfter } from '#lib/paint/animation/models/paint-similarity.ts';
+import { paintSimilarityAfter, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { compilePaintingSelection, type PaintingSelectionCompiled } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { PaintingPoses } from '#lib/paint/document/models/painting-pose.ts';
 import type { LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
@@ -21,9 +21,9 @@ import { STAMP_FILMS_WHOLE } from '#lib/paint/painting/models/stamp-reveal.ts';
 import { stampStageExtent, stampStageTexelsWithin, stampWrapPeriods, type StampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { stampArrayView } from '#lib/paint/painting/studio/stamp-paint-gpu.ts';
 import type { StampPaintGpuOwner } from '#lib/paint/painting/studio/stamp-paint-gpu-owner.ts';
-import { stampPlanePictureLayers } from '#lib/paint/painting/studio/stamp-paint-plane-passes.ts';
+import { stampPlanePictureLayers, stampPlanePictureLayerCount } from '#lib/paint/painting/studio/stamp-paint-plane-passes.ts';
 import { stampPlaneGlowsOn } from '#lib/paint/painting/studio/stamp-plane-glow-pass.ts';
-import { createStampPlanePictures, type StampPlanePicture } from '#lib/paint/painting/studio/stamp-plane-picture-pass.ts';
+import { createStampPlanePictures, type StampPictureNote, type StampPlanePicture } from '#lib/paint/painting/studio/stamp-plane-picture-pass.ts';
 import { stampSheetCompositeTarget, stampSheetsLays, stampSheetsPhotographs, type StampSheetsLays } from '#lib/paint/painting/studio/stamp-sheet-composite.ts';
 import type { StampSheetFilmKept } from '#lib/paint/painting/studio/stamp-sheet-films.ts';
 import type { StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform-arena.ts';
@@ -105,6 +105,8 @@ export type ShotImage = {
   readonly defocused: (lens: LensCompositor, defocus: StampPictureDefocus) => StampPlanePicture | null;
 };
 
+export type ShotSharpImage = Pick<ShotImage, 'key' | 'sharp'>;
+
 /**
  * A painted image: its moment, and each selection's sharp picture, none for a nearer plane faded out; its `sharp`, its
  * selections summed, holds the coverage read of it in its last layers.
@@ -141,13 +143,14 @@ export type ShotImagesAt = {
   readonly hidden: ReadonlySet<CompiledShotPaintedPlane>;
   readonly sources: ShotSourceReads;
   readonly across: ShotMaskAcross;
+  readonly earlier: (id: string, at: PaintMoment, reader: string) => { image: ShotSharpImage; map: PaintSimilarity };
 };
 
 /** A painted plane hidden this frame, as a mask reads it: it lays nothing, so it covers nothing. */
 const SHOT_HIDDEN_READ: ShotImageRead = { key: 'hidden', coverage: () => null };
 
 /** An image laying nothing: an effect's read before its source begins. */
-const SHOT_IMAGE_NOTHING: ShotImage = { key: 'nothing', opaqueBack: false, sharp: () => null, defocused: () => null };
+export const SHOT_IMAGE_NOTHING: ShotImage = { key: 'nothing', opaqueBack: false, sharp: () => null, defocused: () => null };
 
 /** A variant's mask reads: it takes no mask, so it reads nothing. */
 const SHOT_READS_NOTHING = (): ShotMaskCoverage | null => null;
@@ -171,6 +174,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effec
   // A variant isn't here: a mask reads an instanced plane through its items.
   const paintedOf = new Map(shot.planes.flatMap((plane) => (plane.kind === 'painted' ? [[plane.id, plane] as const] : [])));
   const laysKept = new WeakMap<PaintingSelectionCompiled, StampSheetsLays>(), pictures = createStampPlanePictures(owner, { stage, arena });
+  const retainedSums = owner.cache.store<StampPictureNote>('picture');
   const dissolve = createShotDissolve(owner, { stage, arena }), effectPass = createShotEffectPass(owner, { stage, arena, costs });
   /** `compiled`'s sheets' lays on the shot's stage, made once a compile. */
   async function laysOf(compiled: PaintingSelectionCompiled): Promise<StampSheetsLays> {
@@ -345,7 +349,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effec
      * picture kept, or laid, its masks reading first the images they name, where the camera shows them, or what
      * `sources` rendered. Nothing of a plane hidden this frame.
      */
-    images(encoder: GPUCommandEncoder, { moments, effects: laidEffects, hidden, sources, across }: ShotImagesAt): (plane: string) => ShotImage {
+    images(encoder: GPUCommandEncoder, { moments, effects: laidEffects, hidden, sources, across, earlier }: ShotImagesAt): (plane: string) => ShotImage {
       const made = new Map<string, ShotImage>(), sourceReads = new Map<string, ShotImageRead>(), leaves = new Map<ShotPlaneMoment, ShotImage>();
       /** What `reader`'s mask reads of `drawable`: an image's coverage where the camera shows it, or a source's. */
       const readOf = (reader: string, drawable: OccurrenceKey): ShotImageRead => {
@@ -394,29 +398,33 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effec
       /** Effect plane `laid`'s image: its effect over its reads' images, each asked for first, its output laid at its visibility. */
       const effectImage = (laid: ShotEffectLaid): ShotImage => {
         let leaf = 0;
-        const evaluate = (at: CompiledShotImage, visibility: number, moment: PaintMoment): ShotImage => {
-          if (at.kind === 'plane-image') return moments.has(at.plane) || laidEffects.has(at.plane) ? image(at.plane) : SHOT_IMAGE_NOTHING;
+        const evaluate = (at: Exclude<CompiledShotImage, { kind: 'plane-image' }>, visibility: number, moment: PaintMoment): ShotSharpImage => {
           if (at.kind === 'painted') return leafImage(laid.leaves[leaf++]);
-          const gpu = effects.get(at.definition)!, inputs = at.reads.map((read) => {
-            const mapped = read.moment?.(moment) ?? moment;
-            if (read.moment && read.input.kind === 'effect' && !shotDrawingStarted(shot, laid.plane.sourceClock, mapped)) {
-              // Even a procedural background has no earlier picture. Its leaf slots still belong to this branch.
-              leaf += shotImageLeafReads(read.input).length;
-              return SHOT_IMAGE_NOTHING;
+          const gpu = effects.get(at.definition)!, inputs = at.reads.map(({ input, moment: when, map }) => {
+            const mapped = when?.(moment) ?? moment;
+            if (when && input.kind !== 'painted' && !shotDrawingStarted(shot, laid.plane.sourceClock, mapped)) {
+              leaf += shotImageLeafReads(input).length;
+              return { image: SHOT_IMAGE_NOTHING, map };
             }
-            return evaluate(read.input, 1, mapped);
+            if (input.kind !== 'plane-image') return { image: evaluate(input, 1, mapped), map };
+            if (mapped.frame !== laid.at.frame || mapped.at !== laid.at.at) {
+              const past = earlier(input.plane, mapped, laid.plane.id);
+              return { image: past.image, map: paintSimilarityAfter(map, past.map) };
+            }
+            const current = moments.has(input.plane) || laidEffects.has(input.plane) ? image(input.plane) : SHOT_IMAGE_NOTHING;
+            return { image: current, map: paintSimilarityAfter(map, across(laid.plane.id, input.plane)) };
           });
-          const maps = at.reads.map(({ input, map }) => input.kind === 'plane-image' ? paintSimilarityAfter(map, across(laid.plane.id, input.plane)) : map);
-          const key = shotEffectImageKey(shotEffectKeyAt(at, moment), visibility, inputs.map(({ key: inputKey }, i) => ({ key: inputKey, map: maps[i] })));
+          const maps = inputs.map((read) => read.map);
+          const key = shotEffectImageKey(shotEffectKeyAt(at, moment), visibility, inputs.map(({ image: input, map }) => ({ key: input.key, map })));
           let sharp: StampPlanePicture | null | undefined;
           const drawn = () => {
             if (sharp !== undefined) return sharp;
             if (visibility <= 0) return null;
             const found = effectPass.find(key, encoder);
             if (found) return (sharp = found);
-            const pictured = inputs.map((input) => input.sharp());
+            const pictured = inputs.map(({ image: input }) => input.sharp());
             // Each input box, plane px, through its read's map, grown, then clipped to the stage.
-            const box = at.definition.extent === 'stage' ? stampStageExtent(stage) : shotEffectBox(at, (_, i) => {
+            const box = at.extent === 'stage' ? stampStageExtent(stage) : shotEffectBox(at, (_, i) => {
               const picture = pictured[i];
               return picture && { x0: picture.box.x - margin, y0: picture.box.y - margin, x1: picture.box.x + picture.box.w - margin, y1: picture.box.y + picture.box.h - margin };
             }, maps);
@@ -428,15 +436,16 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effec
               : null;
             return sharp;
           };
-          return {
-            key, opaqueBack: at === laid.plane.image && laid.plane.opaqueBack, sharp: drawn,
-            defocused: (lens, defocus) => {
-              const picture = drawn();
-              return picture && pictures.blurred(encoder, lens, picture, key, defocus);
-            },
-          };
+          return { key, sharp: drawn };
         };
-        return evaluate(laid.plane.image, laid.visibility, laid.at);
+        const output = evaluate(laid.plane.image, laid.visibility, laid.at);
+        return {
+          ...output, opaqueBack: laid.plane.opaqueBack,
+          defocused: (lens, defocus) => {
+            const picture = output.sharp();
+            return picture && pictures.blurred(encoder, lens, picture, output.key, defocus);
+          },
+        };
       };
       const image = (id: string): ShotImage => {
         const known = made.get(id);
@@ -453,6 +462,30 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effec
         return evaluated;
       };
       return image;
+    },
+
+    /** Keep sharp pixels across encoder submissions. A dissolve's scratch texture is copied on its first retained read. */
+    retain(encoder: GPUCommandEncoder, image: ShotImage, releases: (() => void)[]): ShotSharpImage {
+      const { key } = image, kept = retainedSums.find(key, encoder);
+      if (kept) {
+        releases.push(retainedSums.hold(key)!);
+        return { key, sharp: () => ({ ...kept.note, texture: kept.textures[0] }) };
+      }
+      const picture = image.sharp();
+      if (!picture) return SHOT_IMAGE_NOTHING;
+      const hold = effectPass.hold(key) ?? pictures.hold(key);
+      if (hold) {
+        releases.push(hold);
+        return { key, sharp: () => picture };
+      }
+      const { texture: source, ...note } = picture, { w, h } = picture.box, layers = stampPlanePictureLayerCount(picture);
+      const { entry, release } = retainedSums.take(key, encoder, [{
+        width: w, height: h, layers, format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
+      }], note);
+      releases.push(release);
+      const [texture] = entry.textures;
+      encoder.copyTextureToTexture({ texture: source }, { texture }, [w, h, layers]);
+      return { key, sharp: () => ({ ...picture, texture }) };
     },
 
     /**
@@ -474,6 +507,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effec
     dispose: () => {
       pictures.dispose();
       effectPass.dispose();
+      retainedSums.dispose();
     },
   };
 }

@@ -16,6 +16,7 @@ import { isStudioWorkspaceRepo, projectTrackedInWorkspace } from '#lib/platform/
 import { formatReviewDecisionsMarkdown } from '../models/review-decision-markdown.ts';
 import { formatReviewThreadsMarkdown, type ReviewMarkdownOptions, type ReviewMarkdownStill } from '../models/review-markdown.ts';
 import { REVIEW_FALLBACK_FPS } from '../models/review-context.ts';
+import { reviewPathIsRender } from '../models/review-artifact.ts';
 import type { NewAnchor, NewDecision } from '../models/review-ops.ts';
 import { placeReviewThread, reviewVideoAnchorAt, type PlacedReviewThread, type ReviewPlacement, type ReviewPlacementTarget } from '../models/review-placement.ts';
 import { reviewPlanFieldText, reviewPlanNotePlacementOf, reviewPlanSignoffs, type ReviewPlanFieldChange } from '../models/review-plan.ts';
@@ -77,9 +78,13 @@ export async function placeReviewHandoff(handoff: ReviewHandoff, threads: readon
 }
 
 // A thread not shown on the hand-off's render is still placed when it stands on its own: one about the whole project,
-// or a note on another still (read on that still). Only a video note on another render (or none) is unplaced.
-const placeAway = (thread: ReviewThread, target: ReviewPlacementTarget | null): ReviewPlacement =>
-  thread.anchor.on === 'project' || thread.anchor.on === 'still' ? { shifted: false } : { unplaced: target ? `not on ${target.path}` : 'nothing is rendered yet' };
+// a note on another still, or a note on a file that isn't a render (footage, a track), each read on its own file. Only a
+// video note on another render (or none) is unplaced.
+function placeAway({ anchor }: ReviewThread, target: ReviewPlacementTarget | null): ReviewPlacement {
+  if (anchor.on === 'project' || anchor.on === 'still') return { shifted: false };
+  if (anchor.on === 'video' && !reviewPathIsRender(anchor.writtenOn.path)) return { frame: anchor.frame, ...(anchor.end !== undefined && { end: anchor.end }), shifted: false };
+  return { unplaced: target ? `not on ${target.path}` : 'nothing is rendered yet' };
+}
 
 /**
  * The plan's scenes changed since the reviewer signed them off, each with its reworded fields; the storyboard is

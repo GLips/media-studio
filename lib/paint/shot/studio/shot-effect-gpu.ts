@@ -26,6 +26,17 @@ import { SHOT_EFFECT_READS_MOST, type CompiledShotImage, type ShotEffectDefiniti
 /** The most floats an effect packs its parameters into: one uniform slot's. */
 export const SHOT_EFFECT_PARAMS_MOST = 64;
 
+/** Estimate forward motion from previous to current (logical read indices), in plane pixels.
+ * blockPx is a multiple of eight. Search tests displacements of zero and ±stepPx along each axis. */
+export type ShotBlockMotion = { readonly previous: number; readonly current: number; readonly blockPx: number; readonly stepPx: number };
+
+/** A block lies on the plane grid, and both samples must name reads actually declared by the model. */
+export function shotBlockMotionProblem({ current, previous, blockPx, stepPx }: ShotBlockMotion, reads: number): string | null {
+  if (![current, previous].every((i) => Number.isInteger(i) && i >= 0 && i < reads)) return `motion reads ${previous} and ${current} need indices within the ${reads} declared reads`;
+  if (!Number.isSafeInteger(blockPx) || blockPx < STAMP_WORKGROUP || blockPx % STAMP_WORKGROUP) return `motion blockPx must be a positive multiple of ${STAMP_WORKGROUP}`;
+  return Number.isFinite(Math.fround(stepPx)) && Math.fround(stepPx) > 0 ? null : 'motion stepPx must be positive and finite';
+}
+
 /**
  * An effect's studio half: its definition, the WGSL defining `fn shotEffect(p: vec2f) -> ShotFilm` (it may define
  * helpers of its own beside it), and its parameters packed as at most SHOT_EFFECT_PARAMS_MOST floats. Its WGSL
@@ -37,18 +48,20 @@ export type ShotEffectGpu<P extends ShotEffectParams = ShotEffectParams> = {
   readonly wgsl: string;
   // A method, so a half of any parameters stands as one of ShotEffectParams in a table.
   uniforms(params: P): readonly number[];
+  /** Enables shotBlockMotion() in the shader. Search runs once per workgroup and shares its vector across lanes. */
+  blockMotion?(params: P): ShotBlockMotion;
 };
 
 /**
  * Define `fn shotEffect(p:vec2f)->ShotFilm`. Sample mapped inputs with `shotRead(i,p+offset)` (bilinear) or
  * `shotReadNearest(i,p+offset)` (one texel). Both read clear outside. `shotNoise(shotBlock(p,size),seed)` hashes
  * integer cells into [0,1). `shotPosterize(rgb,levels)` quantizes linear RGB. `shotLuma(rgb)` measures luminance.
- * `shotFrameSize()` gives visible pixels. Optional `uniforms(params)` supplies `shotParam(i)`.
+ * `blockMotion(params)` enables `shotBlockMotion()`: sample previous at p minus its vector. `uniforms(params)` supplies `shotParam(i)`.
  */
 export function defineShotEffectGpu<P extends ShotEffectParams>(
-  effect: { readonly definition: ShotEffectDefinition<P> }, gpu: { readonly wgsl: string; readonly uniforms?: (params: P) => readonly number[] },
+  effect: { readonly definition: ShotEffectDefinition<P> }, gpu: { readonly wgsl: string; readonly uniforms?: (params: P) => readonly number[]; readonly blockMotion?: (params: P) => ShotBlockMotion },
 ): ShotEffectGpu<P> {
-  return { definition: effect.definition, wgsl: gpu.wgsl, uniforms: gpu.uniforms ?? (() => []) };
+  return { ...gpu, definition: effect.definition, uniforms: gpu.uniforms ?? (() => []) };
 }
 
 /**
@@ -64,6 +77,8 @@ export function shotEffectTableProblems(shot: CompiledPaintedShot, table: ShotEf
     else if (gpu.uniforms(image.params).length > SHOT_EFFECT_PARAMS_MOST) {
       problems.push(paintingProblem('error', plane, 'source', `${image.definition.name} packs ${gpu.uniforms(image.params).length} floats, past the ${SHOT_EFFECT_PARAMS_MOST} an effect may`));
     }
+    const motion = gpu?.blockMotion?.(image.params), problem = motion && shotBlockMotionProblem(motion, image.reads.length);
+    if (problem) problems.push(paintingProblem('error', plane, 'source', `${image.definition.name}: ${problem}`));
     for (const { input } of image.reads) visit(plane, input);
   };
   for (const plane of shot.planes) if (plane.kind === 'effect') visit(plane.id, plane.image);
@@ -85,7 +100,7 @@ export function shotEffectTable(halves: readonly ShotEffectGpu[]): ShotEffectTab
   return table;
 }
 
-const SHOT_EFFECT_PASS = gpuUniformLayout('ShotEffectPass', [['origin', 'vec2u'], ['extent', 'vec2u'], ['visibility', 'f32'], ['drawing', 'i32'], ['seconds', 'f32'], ['frame', 'vec2u'], ['sizes', { vec4fArray: SHOT_EFFECT_READS_MOST / 2 }]]);
+const SHOT_EFFECT_PASS = gpuUniformLayout('ShotEffectPass', [['origin', 'vec2u'], ['extent', 'vec2u'], ['visibility', 'f32'], ['drawing', 'i32'], ['seconds', 'f32'], ['frame', 'vec2u'], ['sizes', { vec4fArray: SHOT_EFFECT_READS_MOST / 2 }], ['motion', 'vec4f']]);
 const MAPS_PER_SLOT = SHOT_EFFECT_READS_MOST / 2;
 const SHOT_EFFECT_MAPS = gpuUniformLayout('ShotEffectMaps', [['values', { vec4fArray: MAPS_PER_SLOT }]]);
 const SHOT_EFFECT_PARAMS = gpuUniformLayout('ShotEffectParams', [['values', { vec4fArray: SHOT_EFFECT_PARAMS_MOST / 4 }]]);
@@ -188,6 +203,44 @@ fn shotRead(i: u32, p: vec2f) -> ShotFilm {
 }`;
 }
 
+/** Four patch taps match both luminance and absorption so a dark silhouette can move across a transparent ground. */
+export const SHOT_BLOCK_MOTION_WGSL = /* wgsl */ `
+var<workgroup> shotVector: vec2f;
+fn shotBlockMotion() -> vec2f { return shotVector; }
+fn shotMatchSignal(i: u32, p: vec2f) -> vec2f {
+  let film = shotReadNearest(i, p);
+  return vec2f(shotLuma(film.light), shotLuma(film.taken));
+}
+fn shotMatchBlock(start: vec2f) -> vec2f {
+  let m = shotPass.motion;
+  let center = (floor(start / m.z) + 0.5) * m.z;
+  let taps = array<vec2f,4>(vec2f(-1,-1), vec2f(1,-1), vec2f(-1,1), vec2f(1,1));
+  var now: array<vec2f,4>;
+  var best = vec2f(0.0);
+  var score = 0.0;
+  for (var i = 0u; i < 4u; i++) {
+    let p = center + taps[i] * (0.25 * m.z);
+    now[i] = shotMatchSignal(u32(m.x), p);
+    score += dot(abs(now[i] - shotMatchSignal(u32(m.y), p)), vec2f(1));
+  }
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      if ((x == 0 && y == 0) || score == 0.0) { continue; }
+      let d = vec2f(f32(x), f32(y)) * m.w;
+      var error = 0.0;
+      for (var i = 0u; i < 4u; i++) {
+        let p = center + taps[i] * (0.25 * m.z) - d;
+        error += dot(abs(now[i] - shotMatchSignal(u32(m.y), p)), vec2f(1));
+      }
+      if (error < score) { best = d; score = error; }
+    }
+  }
+  return best;
+}`;
+
+/** Extra lanes before a crop align workgroups to plane pixels, even where the margin extends into negative blocks. */
+export const shotMotionLead = (origin: number, margin: number) => (origin - margin) & (STAMP_WORKGROUP - 1);
+
 /** The pass's WGSL: `gpu`'s shading over reads emitting at `emission`, written into an output shaped `layers`, at the stage's `margin`. */
 function shotEffectWgsl(gpu: ShotEffectGpu, bindings: readonly (ReadBinding | null)[], textureCount: number, layers: StampPlanePictureLayers, margin: number) {
   return /* wgsl */ `
@@ -201,13 +254,21 @@ ${SHOT_EFFECT_MAPS.wgsl}
 @group(0) @binding(4) var<uniform> shotMaps1: ShotEffectMaps;
 ${Array.from({ length: textureCount }, (_, i) => `@group(0) @binding(${5 + i}) var read${i}: texture_2d_array<f32>;`).join('\n')}
 ${shotEffectReadingWgsl(bindings)}
+${gpu.blockMotion ? SHOT_BLOCK_MOTION_WGSL : ''}
 ${gpu.wgsl}
-@compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn shotEffectPass(@builtin(global_invocation_id) id: vec3u) {
+@compute @workgroup_size(${STAMP_WORKGROUP}, ${STAMP_WORKGROUP}) fn shotEffectPass(@builtin(global_invocation_id) invocation: vec3u, @builtin(local_invocation_index) lane: u32) {
   // Every binding used, so the pipeline's layout holds each the pass binds, whatever the effect reads.
   _ = shotParams.values[0];
   _ = shotMaps0.values[0];
   _ = shotMaps1.values[0];
 ${Array.from({ length: textureCount }, (_, i) => `  _ = textureDimensions(read${i});`).join('\n')}
+  ${gpu.blockMotion ? `let lead = vec2u((vec2i(shotPass.origin) - vec2i(${margin})) & vec2i(${STAMP_WORKGROUP - 1}));
+  if (lane == 0u) {
+    let start = vec2f(shotPass.origin) - vec2f(${margin}.0) + vec2f(invocation.xy) - vec2f(lead);
+    shotVector = shotMatchBlock(start);
+  }
+  workgroupBarrier();
+  let id = invocation.xy - lead;` : 'let id = invocation.xy;'}
   if (any(id.xy >= shotPass.extent)) { return; }
   let texel = shotPass.origin + id.xy;
   let film = shotFaded(shotEffect(vec2f(texel) + vec2f(0.5 - ${margin.toFixed(1)})), shotPass.visibility);
@@ -239,6 +300,7 @@ export function createShotEffectPass(
   const { device } = owner, { margin } = stage, outputs = owner.cache.store<StampPlanePictureLayers & { readonly box: StampPixelBox }>('picture');
   const pipelineOf = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
   return {
+    hold: outputs.hold,
     find(key: string, encoder: GPUCommandEncoder): StampPlanePicture | null {
       const found = outputs.find(key, encoder);
       if (found) costs?.count('effect hits');
@@ -255,7 +317,7 @@ export function createShotEffectPass(
         width: box.w, height: box.h, layers: stampPlanePictureLayerCount(layers), format: 'rgba16float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
       }], { ...layers, box }).textures;
       // shotEffectTableProblems held it to SHOT_EFFECT_PARAMS_MOST as the shot loaded.
-      const packed = gpu.uniforms(params);
+      const packed = gpu.uniforms(params), motion = gpu.blockMotion?.(params);
       const { textures, bindings } = shotEffectBindings(owner, encoder, reads);
       // Output plane px to the read's texels: its map undone, then into its picture's box on the stage.
       const back = reads.map(({ picture, map }) => (picture
@@ -269,6 +331,7 @@ export function createShotEffectPass(
           put('visibility', visibility);
           put('drawing', time.drawing);
           put('seconds', time.seconds);
+          if (motion) put('motion', [motion.current, motion.previous, motion.blockPx, motion.stepPx]);
           put('frame', [stage.frame.width, stage.frame.height]);
           put('sizes', Array.from({ length: SHOT_EFFECT_READS_MOST }, (_, i) => [reads[i]?.picture?.box.w ?? 0, reads[i]?.picture?.box.h ?? 0]).flat());
         }),
@@ -279,7 +342,7 @@ export function createShotEffectPass(
           return m ? [m.ma, m.mb, m.kx, m.ky] : [0, 0, 0, 0];
         }).flat()))),
         ...textures.map(stampArrayView),
-      ], box.w, box.h);
+      ], box.w + (motion ? shotMotionLead(box.x, margin) : 0), box.h + (motion ? shotMotionLead(box.y, margin) : 0));
       return { ...layers, box, texture };
     },
     dispose: () => outputs.dispose(),

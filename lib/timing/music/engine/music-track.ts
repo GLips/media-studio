@@ -16,10 +16,16 @@ import { detectMusicBeats } from '../models/music-beats.ts';
 import { planMusicArrangement, planMusicFit, spliceMusicSpans } from '../models/music-fit.ts';
 import type { MusicTrack } from '#lib/timing/sound/models/mix.ts';
 
-type Entry = Omit<MusicTrack, 'src'> & { file: string };
+/** A track as music/manifest.json keeps it: the track's measurements, and its file in music/. */
+export type MusicManifestEntry = Omit<MusicTrack, 'src'> & { file: string };
 
 // Beats are tracked, and fits planned, on mono at this rate; the fitted file keeps the source's own rate and channels.
 const ANALYSIS_RATE = 22050;
+
+/** Refuses a track name the manifest can't key as `music.<name>`. `gen` calls it before paying, not after. */
+function assertMusicTrackName(name: string, flag: '--name' | '--as'): void {
+  if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new Error(`${flag} must be lowercase words joined by dashes, not ${name}`);
+}
 
 /** The Lyria models `studio music gen` uses: a 30 s clip by default, a full-length track for music that has to go somewhere. */
 export const LYRIA_CLIP_MODEL = 'google/lyria-3-clip-preview';
@@ -30,6 +36,7 @@ export const LYRIA_PRO_MODEL = 'google/lyria-3-pro-preview';
  * the model and prompt. Returns the path of the music/index.ts it rewrote.
  */
 export async function generateProjectMusicTrack(project: string, { prompt, name, full }: { prompt: string; name: string; full: boolean }): Promise<string> {
+  assertMusicTrackName(name, '--name');
   const model = full ? LYRIA_PRO_MODEL : LYRIA_CLIP_MODEL;
   const { files: [file] } = await generatePaidMedia(project, { kind: 'audio', model, name: `music-${name}`, prompt });
   return addProjectMusicTrack(project, file, name, { model, prompt });
@@ -38,7 +45,7 @@ export async function generateProjectMusicTrack(project: string, { prompt, name,
 /** Adds `source` to the project's music as `name`, and returns the path of the music/index.ts it rewrote. */
 export function addProjectMusicTrack(project: string, source: string, name: string, generated?: MusicTrack['generated']): string {
   if (!existsSync(source)) throw new Error(`no track at ${source}`);
-  if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new Error(`--name must be lowercase words joined by dashes, not ${name}`);
+  assertMusicTrackName(name, '--name');
 
   const dir = join(project, 'music');
   mkdirSync(dir, { recursive: true });
@@ -59,7 +66,7 @@ export function addProjectMusicTrack(project: string, source: string, name: stri
   return index;
 }
 
-export type MusicFitResult = { file: string; index: string; track: Entry & { fit: NonNullable<MusicTrack['fit']> }; seamDb: number[]; worstSeamDb: number };
+export type MusicFitResult = { file: string; index: string; track: MusicManifestEntry & { fit: NonNullable<MusicTrack['fit']> }; seamDb: number[]; worstSeamDb: number };
 
 /**
  * How a fit gets its length: cut to exactly `seconds`, the seams wherever the bars sound most alike; or played as the
@@ -73,7 +80,7 @@ export type MusicFitShape = { seconds: number } | { bars: readonly number[]; tai
  * Deterministic: the same track and shape always give the same spans.
  */
 export function fitProjectMusicTrack(project: string, { name, as, shape }: { name: string; as: string; shape: MusicFitShape }): MusicFitResult {
-  if (!/^[a-z][a-z0-9-]*$/.test(as)) throw new Error(`--as must be lowercase words joined by dashes, not ${as}`);
+  assertMusicTrackName(as, '--as');
   if (as === name) throw new Error(`--as must differ from --name, so the original stays to refit from`);
   const dir = join(project, 'music');
   const manifest = readMusicManifest(dir), source = manifest[name];
@@ -104,19 +111,20 @@ export function fitProjectMusicTrack(project: string, { name, as, shape }: { nam
   return { file: path, index: writeMusicManifest(dir, { ...readMusicManifest(dir), [as]: track }), track, seamDb: plan.seamDb, worstSeamDb: plan.worstSeamDb };
 }
 
-function readMusicManifest(dir: string): Record<string, Entry> {
+/** The tracks in a project's music/ folder (`dir`), by name; none when it has no music yet. */
+export function readMusicManifest(dir: string): Record<string, MusicManifestEntry> {
   const path = join(dir, 'manifest.json');
   return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
 }
 
-function writeMusicManifest(dir: string, manifest: Record<string, Entry>): string {
+function writeMusicManifest(dir: string, manifest: Record<string, MusicManifestEntry>): string {
   writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
   const index = join(dir, 'index.ts');
   writeFileSync(index, musicModule(manifest));
   return index;
 }
 
-function musicModule(tracks: Record<string, Entry>) {
+function musicModule(tracks: Record<string, MusicManifestEntry>) {
   const names = Object.keys(tracks);
   const imports = names.map((n, i) => `import track${i} from './${tracks[n].file}';`).join('\n');
   const entries = names.map((n, i) => {

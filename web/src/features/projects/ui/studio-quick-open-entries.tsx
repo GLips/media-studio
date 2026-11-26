@@ -1,5 +1,5 @@
 import { useParams, useRouter } from '@tanstack/react-router';
-import { Film, Folder, ImageIcon, ScrollText, Split } from 'lucide-react';
+import { AudioLines, Film, Folder, ImageIcon, ScrollText, Split } from 'lucide-react';
 import type { ReviewProjectSummary } from '#lib/output/review/models/review-dashboard.ts';
 import { useLibraryQuickOpenEntries } from '#web/features/library/index.ts';
 import type { QuickOpenEntriesBody, QuickOpenEntriesSource, QuickOpenEntry } from '#web/shared/ui/quick-open-entries.tsx';
@@ -19,7 +19,7 @@ function quickOpenEntriesOf({ project, rows }: ReviewProjectSummary, router: Stu
     switch (row.on) {
       case 'file': return [{
         key: `${project}/${row.artifact.path}`, label: row.artifact.path, context: project, near,
-        glyph: row.artifact.kind === 'video' ? <Film size={GLYPH_SIZE} /> : <ImageIcon size={GLYPH_SIZE} />,
+        glyph: { video: <Film size={GLYPH_SIZE} />, still: <ImageIcon size={GLYPH_SIZE} />, audio: <AudioLines size={GLYPH_SIZE} /> }[row.artifact.kind],
         href: router.buildLocation({ to: '/projects/$project/artifacts/$', params: { project, _splat: row.artifact.path } }).href,
       }];
       case 'decision': return [{

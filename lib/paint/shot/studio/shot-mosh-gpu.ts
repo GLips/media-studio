@@ -3,7 +3,7 @@ import { SHOT_SLICES_HASH_WGSL } from '../models/shot-slices.ts';
 import { defineShotEffectGpu } from './shot-effect-gpu.ts';
 
 export const moshGpu = defineShotEffectGpu(mosh, {
-  uniforms: ({ block, throwPx, seed, recolor }) => [block, throwPx, seed, recolor],
+  uniforms: ({ block, throwPx, seed, recolor, mint }) => [block, throwPx, seed, recolor, Number(mint)],
   wgsl: /* wgsl */ `
 ${SHOT_SLICES_HASH_WGSL}
 fn packet(grid: vec2f, salt: u32) -> u32 {
@@ -19,15 +19,6 @@ fn indexedColor(luma: f32, bank: u32) -> vec3f {
   if (luma < 0.028) { return inks[0]; }
   if (luma > 0.75) { return inks[5]; }
   return inks[1u + (u32(sqrt(luma) * 5.0) + bank) % 4u];
-}
-fn signalGround(p: vec2f, cell: u32, tick: u32) -> ShotFilm {
-  let ground = shotRead(2u, p);
-  let grain = packet(floor(p / 3.0), tick);
-  let checker = (u32(abs(floor(p.x / 8.0) + floor(p.y / 8.0))) & 1u) == 0u;
-  let lit = select(unit(grain) > 0.83, checker, cell % 7u == 0u);
-  let black = vec3f(0.005,0.008,0.025) * (0.6 + unit(cell));
-  let rgb = select(black, indexedColor(0.14, grain % 4u) * (0.06 + 0.28 * unit(cell)), lit);
-  return ShotFilm(rgb * ground.taken, ground.taken, vec3f(0.0));
 }
 fn shotEffect(p: vec2f) -> ShotFilm {
   let block = shotParam(0u);
@@ -48,20 +39,20 @@ fn shotEffect(p: vec2f) -> ShotFilm {
     q = (floor(q / pitch) + 0.5) * pitch;
   }
   // Before the delayed drawing exists these blocks drop out, revealing the ground.
-  let film = shotRead(select(0u, 1u, shifted), q);
+  let film = shotReadNearest(select(0u, 1u, shifted), q);
   let cover = max(film.taken.r, max(film.taken.g, film.taken.b));
   var output = film;
   if (cover > 0.0 && unit(shotSlicesHash(cell + 1u)) < shotParam(3u)) {
     let rgb = (film.light + vec3f(cover) - film.taken) / cover;
-    let luma = max(0.0, dot(rgb, vec3f(0.2126, 0.7152, 0.0722)));
+    let luma = max(0.0, shotLuma(rgb));
     var color = indexedColor(luma, cell % 4u);
-    if (SHOT_READS == 3u && cell % 5u < 4u) {
+    if (shotParam(4u) > 0.5 && cell % 5u < 4u) {
       let mint = select(vec3f(0.02,0.44,0.41), vec3f(0.31,0.98,0.70), luma > 0.2);
       color = select(vec3f(0.008,0.007,0.034), mint, luma > 0.028);
     }
     output = ShotFilm(color * cover, vec3f(cover), film.emission);
   }
-  if (SHOT_READS == 3u) { return shotOver(output, signalGround(p, cell, tick)); }
+  if (SHOT_READS == 3u) { return shotOver(output, shotReadNearest(2u, q)); }
   return output;
 }`,
 });

@@ -110,7 +110,7 @@ function useReviewStagePointer(screen: ReviewScreenValue, tool: ReviewDrawTool, 
 }
 
 /** The stage's own state (the draw tool, the proof ground) and its keys, wired to the screen. Answers whether `\` is held. */
-function useReviewStageControls(screen: ReviewScreenValue, other: ReviewComparedVersion | undefined) {
+function useReviewStageControls(screen: ReviewScreenValue, other: Pick<ReviewComparedVersion, 'hash'> | undefined) {
   const { search, setSearch, mode, setMode, draft, setGuides } = screen;
   const [tool, setTool] = useState<ReviewDrawTool>('arrow');
   const compareAs = (cmp: 'wipe' | 'side') => () => setSearch(other && search.cmp !== cmp ? { vs: other.hash, cmp } : { cmp: undefined });

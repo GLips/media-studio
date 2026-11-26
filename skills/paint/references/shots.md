@@ -63,7 +63,7 @@ mode, `isolation`, a z-index on a positioned element, a clip path or mask): it's
 behind it inside the shot at every frame; over a dark page, put an opaque background behind it inside the shot.
 
 **Effects.** Place an effect with `shotPlace(image, plane)`. Its inputs share that lay and need no planes.
-Use a figure, transparent selection, painting in time or another effect. Effect planes can't be the back or use masks.
+Inputs include figures, transparent selections, paintings in time, placed planes and effects. Mask a member before reading it. A stage effect can be the back.
 
 - `offsetCopies(hero, {count, dx, dy, fade})` stacks today's pose. `channelSplit(hero, {red: [5,0], blue: [-5,0]})`
   separates colour, coverage and emission together.
@@ -72,20 +72,23 @@ Use a figure, transparent selection, painting in time or another effect. Effect 
   Space the poses with `every.drawings`. Use `visibility: trailStrobe(2, 0.75)` for two pulses/sec at 75% duty.
 - `slices({source, second?, third?, fourth?}, {cells: 'rows' | 'rects', size, shift, share, seed})` cuts between inputs
   in plane px. Add `reroll: 'drawing'` and a source clock to reseed each drawing.
-- `mosh({source: hero, second: gouache, ground: paper}, {block: 80, throwPx: 120, age: 2, recolor: 0.65})` displaces
+- `mosh({source: hero, second: gouache}, {block: 80, throwPx: 120, age: 2, recolor: 0.65})` displaces
   older macroblocks, stretches pixels across tear bands and swaps block palettes. Supply a held source clock.
-  Omit `second` to sample hero's past. Give `ground` a frame-covering card selected on transparent ground for dark checker and pixel noise,
-  or omit it for clear gaps.
+  Omit `second` to sample hero's past. Place `signalGround()` behind and pass its `shotPlaneImage` as `under` to shear the checker and pixel noise with the subject.
+- `signalBreak({source: shotPlaneImage('actor'), under: shotPlaneImage('room')}, {hits: [0.5, 1.5]})` tears their
+  composite on cue (scene seconds). Dropouts expose the back. Mark both members `imageOnly` and provide a drawing clock.
 
 **Your own effect.** `defineShotEffect({name, inputs, defaults})` reads supplied inputs once in order.
 `reads(params,given)` can request 24 mapped reads, including earlier drawings. `grow(params)` pads the crop.
 `extent: 'stage'` shades every pixel including the margin. A generator declares `inputs: [], extent: 'stage'`,
 takes only params, and can paint the back. For a group, pass e.g. `{wall:shotPlaneImage('wall'),actor:shotPlaneImage('actor')}`
-and use `shotOver`. These read paintings or effects through the camera, masked and sharp, at this exposure.
-`imageOnly:true` omits a nearer member from the lens. Pass sources directly for earlier moments.
+and use `shotOver`. Read the resulting placed group with `{input:'group',moment:{drawingsEarlier:2}}` or a moment map.
+Reads include masks, visibility and camera placement at that moment, before the lens. Use timed placements for historical members whose position would otherwise come from a live DOM pin.
+`imageOnly:true` omits a nearer member from the lens. Use `extent: p => p.ground ? 'stage' : 'inputs'` for a generated backdrop.
 Declare `varies:()=>['drawing']` or `['moment']` for drawing-held or continuous noise.
 Register `defineShotEffectGpu(effect,{wgsl,uniforms?})` in PaintedShot's module-constant `effects`;
-`studio api defineShotEffectGpu` lists sampling, block, noise and color helpers.
+`blockMotion: () => ({current:0,previous:1,blockPx:32,stepPx:4})` enables `shotRead(1u,p-shotBlockMotion())`.
+The estimator compares nine offsets at the chosen spacing. Block size is a multiple of eight plane pixels.
 
 **Light spill.** Declare `emits: true` for an effect generating emission. The lens blooms it.
 `illuminate(wall, lightSpill('sign', {reach, gain, added, map}))` reflects the sign's emission, including flicker, onto

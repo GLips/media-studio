@@ -8,6 +8,7 @@ import { StudioNameGroupHead } from '#web/shared/ui/studio-name-group-head.tsx';
 import { STUDIO_TILE_CAPTION_MIN_WIDTH } from '#web/shared/ui/studio-tile-caption.tsx';
 import { useStudioCollectionArrangement } from '#web/shared/ui/use-studio-collection-arrangement.ts';
 import { spacing } from '#web/shared/ui/theme.stylex.ts';
+import { projectMadeTitleOf } from '#lib/output/review/models/project-made.ts';
 import { projectThumbnailKeyOf, type ProjectTileCell } from './project-thumbnail.tsx';
 import { ProjectTile } from './project-tile.tsx';
 
@@ -76,7 +77,7 @@ type ProjectTileGridProps = {
   readonly project: string;
   readonly rows: readonly FileRow[];
   readonly now: number;
-  /** The heading over it (`out/stills/`), which its tiles' names leave out. */
+  /** The heading over it (`out/stills/`), which its tiles' names leave out. A made file is named by what it is. */
   readonly base: string;
 };
 
@@ -89,7 +90,10 @@ export function ProjectTileGrid({ project, rows, now, base }: ProjectTileGridPro
   const { group, sort } = useStudioCollectionArrangement();
   const [, setLearned] = useState(0);
   const keys = rows.map((row) => projectThumbnailKeyOf(row.thumbnail));
-  const names = rows.map((row) => (row.artifact.path.startsWith(base) ? row.artifact.path.slice(base.length) : row.artifact.path));
+  const names = rows.map(({ artifact: { path, made } }) => {
+    if (made) return projectMadeTitleOf(made, path);
+    return path.startsWith(base) ? path.slice(base.length) : path;
+  });
   const aspects = keys.map((key) => learnedPictureAspects.get(key));
   const onAspectOf = (key: string) => (learnt: number) => {
     if (learnedPictureAspects.get(key) === learnt) return;

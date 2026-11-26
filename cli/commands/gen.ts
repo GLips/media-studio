@@ -27,6 +27,11 @@ const video = defineCommand({
   },
   async run({ args }) {
     const { renderPrevisClip } = await import('#lib/output/render/engine/previs-render.ts');
+    // Before the session opens: it waits its turn on the shared GPU, which a run without its keys shouldn't.
+    if (!args.dry) {
+      const { requireOpenRouterGenerationKeys } = await import('#lib/platform/paid-generation/engine/paid-generation.ts');
+      requireOpenRouterGenerationKeys({ videoReference: true });
+    }
     const session = await openStudioRenderSession(args.project);
     const { blockout, clip, prompt, stale, estimates } = await renderPrevisClip(session, args.scene, { model: args.model, dry: Boolean(args.dry) });
     if (args.dry) console.error(`prompt:\n${prompt}\n\ncost:\n${estimates.join('\n')}`);

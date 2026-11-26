@@ -1,5 +1,6 @@
 import { Box } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
+import { AudioLines } from 'lucide-react';
 import { useState, type ReactNode, type SyntheticEvent } from 'react';
 import type { ReviewProjectThumbnail } from '#lib/output/review/models/review-dashboard.ts';
 import { projectFileUrl, reviewStillUrl } from '#web/shared/media-urls.ts';
@@ -29,8 +30,11 @@ const styles = stylex.create({
   hidden: { opacity: 0 },
 });
 
+/** A thumbnail that is a picture: audio has none, and shows its kind's glyph instead. */
+type PictureThumbnail = Exclude<ReviewProjectThumbnail, { kind: 'audio' }>;
+
 /** A still's own bytes, or a video's frame cut by the review server and pinned to the bytes it was summarized from. */
-function thumbnailUrl(project: string, thumbnail: ReviewProjectThumbnail): string {
+function thumbnailUrl(project: string, thumbnail: PictureThumbnail): string {
   if (thumbnail.kind === 'still') return projectFileUrl(project, thumbnail.path);
   const { path, hash, frame, fps } = thumbnail;
   return reviewStillUrl({ project, path, render: { hash } }, frame, fps);
@@ -56,12 +60,13 @@ export const projectThumbnailKeyOf = (thumbnail: ReviewProjectThumbnail) => (thu
  * (a slice too short for its guessed frame). A decision or the plan shows its glyph in the same box, so rows line up.
  */
 export function ProjectThumbnail({ project, thumbnail, glyph, tile }: ProjectThumbnailProps) {
+  if (thumbnail?.kind === 'audio') return <Box aria-hidden {...stylex.props(styles.frame, styles.glyph)}><AudioLines size={14} /></Box>;
   if (!thumbnail) return <Box aria-hidden {...stylex.props(styles.frame, styles.glyph)}>{glyph}</Box>;
   // Keyed by what it shows, so a new render's frame starts from its skeleton rather than the last one's state.
   return <ProjectPicture key={projectThumbnailKeyOf(thumbnail)} project={project} thumbnail={thumbnail} tile={tile} />;
 }
 
-type ProjectPictureProps = { readonly project: string; readonly thumbnail: ReviewProjectThumbnail; readonly tile: ProjectTileCell | undefined };
+type ProjectPictureProps = { readonly project: string; readonly thumbnail: PictureThumbnail; readonly tile: ProjectTileCell | undefined };
 
 function ProjectPicture({ project, thumbnail, tile }: ProjectPictureProps) {
   const [state, setState] = useState<'pending' | 'shown' | 'failed'>('pending');

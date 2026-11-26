@@ -93,7 +93,7 @@ export function shotPaintedExtent(plane: CompiledShotPaintedPlane, motion: Compi
  * the shot's moments.
  */
 export function shotEffectExtent(image: CompiledShotEffectImage, motion: CompiledShotMotion, rigged: ReadonlySet<OccurrenceKey>): StampPlaneExtent {
-  if (image.definition.extent === 'stage') return { kind: 'everywhere' };
+  if (image.extent === 'stage') return { kind: 'everywhere' };
   const inputs = image.reads.map(({ input }): StampPlaneExtent => {
     if (input.kind === 'plane-image') return { kind: 'everywhere' };
     return input.kind === 'effect' ? shotEffectExtent(input, motion, rigged) : shotPaintedExtent(input, motion, rigged);
