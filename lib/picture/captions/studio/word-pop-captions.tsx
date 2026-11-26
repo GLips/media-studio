@@ -24,8 +24,19 @@ export const wordPopCaptionBand: CaptionBandRule = ({ width, height }) => {
 
 const WORD_POP_RULE: CaptionPagingRule = { maxChars: 18, maxLines: 2, maxSeconds: 2.5, pauseBreak: 0.35, holdGap: 0.4, leadIn: 0, hang: 0.3 };
 
-export function wordPopCaptions({ band = wordPopCaptionBand, rule }: { band?: CaptionBandRule; rule?: Partial<CaptionPagingRule> } = {}): CaptionStyle {
-  return { name: 'word pops', rule: { ...WORD_POP_RULE, ...rule }, sidecarRule: READABLE_CAPTION_RULE, band, measure: archivoCaptionMeasure, Caption: WordPopCaption };
+/** A rounded plate behind a page, so the words hold over a busy picture; `true` is the house dark plate. */
+export type WordPopCaptionPlate = boolean | { color: string };
+
+const HOUSE_PLATE = 'rgba(12, 14, 20, 0.78)';
+
+/**
+ * Word-pop captions. `plate` sets a rounded background behind each page, for a picture busy enough to lose the words
+ * (a screen recording); without it the words stand on their outline alone.
+ */
+export function wordPopCaptions({ band = wordPopCaptionBand, rule, plate = false }: { band?: CaptionBandRule; rule?: Partial<CaptionPagingRule>; plate?: WordPopCaptionPlate } = {}): CaptionStyle {
+  const plateColor = plate === true ? HOUSE_PLATE : (plate || undefined)?.color;
+  const Caption = (props: CaptionRenderProps) => <WordPopCaption {...props} plateColor={plateColor} />;
+  return { name: 'word pops', rule: { ...WORD_POP_RULE, ...rule }, sidecarRule: READABLE_CAPTION_RULE, band, measure: archivoCaptionMeasure, Caption };
 }
 
 // Archivo's own metrics, so a line breaks where it would set: a keycap is a blank as wide as its mono key and padding.
@@ -41,7 +52,7 @@ function archivoCaptionMeasure({ scale, maxWidth }: CaptionBand): CaptionMeasure
   };
 }
 
-function WordPopCaption({ state: { page, held }, band: { bottom, maxWidth, scale }, t }: CaptionRenderProps) {
+function WordPopCaption({ state: { page, held }, band: { bottom, maxWidth, scale }, t, plateColor }: CaptionRenderProps & { plateColor?: string }) {
   useStudioFontsReady();
   const out = held.after ? 1 : 1 - seg(t, page.end - OUT, page.end, motionCurves.dissolve);
   const size = SIZE * scale;
@@ -55,6 +66,8 @@ function WordPopCaption({ state: { page, held }, band: { bottom, maxWidth, scale
         // An outline under the fill, so white type holds over a white page as well as a dark one.
         WebkitTextStroke: `${0.07 * size}px rgba(10, 14, 22, 0.9)`, paintOrder: 'stroke fill',
         textShadow: `0 ${4 * scale}px ${18 * scale}px rgba(0, 0, 0, 0.45)`,
+        // The plate pads outside the band's width, so a line breaks where it would without one.
+        ...(plateColor && { background: plateColor, padding: `${0.18 * size}px ${0.36 * size}px`, borderRadius: 0.32 * size, boxSizing: 'content-box' as const }),
       }}
     >
       {page.lines.map((line, j) => (

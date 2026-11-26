@@ -35,7 +35,7 @@ export { captionFreeRect, captionSafeArea, pillCaptionBand, type CaptionBand, ty
 export { READABLE_CAPTION_RULE, type CaptionPagingRule } from '#lib/picture/captions/models/caption-pages.ts';
 export { useCaptionSafeArea, type CaptionRenderProps, type CaptionStyle } from '#lib/picture/captions/studio/caption-style.tsx';
 export { CaptionKeycap, pillCaptions } from '#lib/picture/captions/studio/pill-captions.tsx';
-export { wordPopCaptionBand, wordPopCaptions } from '#lib/picture/captions/studio/word-pop-captions.tsx';
+export { type WordPopCaptionPlate, wordPopCaptionBand, wordPopCaptions } from '#lib/picture/captions/studio/word-pop-captions.tsx';
 export { FilmGrain, Vignette } from '#lib/picture/film/studio/grade.tsx';
 export { ClickToBlur, ConfirmDialog, DrawPath, EndCard, GlassCard, MotionTitle, NativeMenu, ODOMETER_DIGIT_EM, Odometer, Phone, SPLIT_LABEL_STRIP, SectionCard, SplitCompare, WordReveal, phoneView, splitLeftRect, splitRightRect, wordRevealFinish, type OdometerMode, type OdometerProps, type SplitSide, type WordRevealTiming } from '#lib/picture/kit/studio/kit.tsx';
 export { backOutEase, clamp, latchCurve, lerp, motionCurves, motionDurations, off, on, perceptualSpring, powerOutEase, seg, sineInOutEase, stagger, staggerFinish, type CurveRoles, type EaseFn, type PerceptualSpring, type SettlingCurve, type StaggerFrom, type StaggerTiming } from '#lib/picture/motion/models/motion.ts';
