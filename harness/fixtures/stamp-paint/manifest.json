@@ -398,11 +398,11 @@
     },
     "shot/slices-reroll": {
       "file": "shot/slices-reroll.png",
-      "output": "db87135b12eda6069e762ed8cdeb0314d7a840a1b25f7cf0db9bd6c27770e173",
+      "output": "57f938384908af92435cfe6685b90baf05b7b04366ac2b956a89c34d921cfe71",
       "inputs": "4ecab55d1c34e25cac345e4508b7cea3cb61057eeafd5273fc8dd03f3b3a7d69",
-      "reason": "vid-227: new baseline, two looks tiled by slices rerolling each drawing",
+      "reason": "vid-238 slice 3: slices seed their cells from the source's redraw token, so a drawing picks different cells than the old per-effect seed",
       "accepted": "2026-11-26",
-      "acceptedOver": "1d547e9b",
+      "acceptedOver": "92ca413e",
       "adapter": "apple metal-3"
     },
     "shot/trail": {
