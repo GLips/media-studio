@@ -181,6 +181,7 @@ export { type SubjectPaintingDiagnostic, type SubjectPaintingReport } from '#lib
 export { subjectAreaRegion, subjectPathSubpaths } from '#lib/paint/subject-painting/models/subject-document-geometry.ts';
 export { SUBJECT_FIGURE_CARD_FADE, SUBJECT_GROUND_SLOT, subjectFigureCard } from '#lib/paint/subject-painting/models/subject-figure-card.ts';
 export { subjectAreasUnion } from '#lib/paint/subject/models/subject-area-union.ts';
+export { subjectShowingOnly } from '#lib/paint/subject/models/subject-showing-only.ts';
 export {
   WATERCOLOR_SUBJECT_DEFAULTS, watercolorSubjectPainter,
   type SubjectPigment, type WatercolorSubjectBinding, type WatercolorSubjectBrushes, type WatercolorSubjectOptions, type WatercolorSubjectSlot,
