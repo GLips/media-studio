@@ -4,6 +4,8 @@
 // sheet, cut by an alphaOf mask to the heron's wing, to all but it, to the whole heron, or to the disc, under a camera
 // at rest, panned, or panning, its shutter shut or the film's. What the checks measure of their frames is here.
 
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import { scheduledSource } from '#lib/paint/shot/models/shot-props.ts';
 import { paintShotViewAt } from '#lib/paint/animation/models/paint-camera-depths.ts';
 import { paintKeyed } from '#lib/paint/animation/models/paint-keyed.ts';
 import { PAINT_CAMERA_REST, paintCameraPlay, paintPlaneSimilarity, paintStageCentre } from '#lib/paint/animation/models/paint-camera.ts';
@@ -107,7 +109,7 @@ export type StampGateMaskedShot = {
   readonly disc?: 'picture' | 'spot' | ThreeSource;
   /** The disc's plane's visibility; 1 when left out. */
   readonly discVisibility?: number;
-  /** How many frames the disc's source holds each moment it reads (its `sourceClock`); unheld when left out. */
+  /** How many frames the disc's source holds each moment it reads; unheld when left out. */
   readonly discHold?: number;
   /** The tint cut to the heron's wing, to all but it, to the whole heron group, or to the disc; uncut; or left out. */
   readonly tint: 'wing' | 'not wing' | 'heron' | 'disc' | 'uncut' | 'none';
@@ -137,7 +139,7 @@ export function stampGateMaskedShot({ heron, disc, discVisibility, discHold, tin
     planes.push({ kind: 'instanced', id: 'disc', depths, variants, instances: ({ at }) => [spotAt(at)], ...discShown });
   } else if (disc) {
     const source = disc === 'picture' ? { kind: 'picture', extent: { kind: 'everywhere' }, pictureAt: ({ at }: PaintMoment) => Promise.resolve(stampGateMaskDisc(at, stage.margin)) } as const : disc;
-    planes.push({ id: 'disc', depth: STAMP_GATE_MASKS_DISC.depth, source, ...(discHold && { sourceClock: { hold: discHold } }), ...discShown });
+    planes.push({ id: 'disc', depth: STAMP_GATE_MASKS_DISC.depth, source: discHold ? scheduledSource(source, drawingSchedule({ fps: 24 / discHold })) : source, ...discShown });
   }
   const read = { wing: 'heron/wing', 'not wing': 'heron/wing', heron: 'heron/heron', disc: 'disc' } as const, tinted = { id: 'tint', depth: tintDepth, source: layersOf(evaluation, ['tint']) };
   if (tint === 'uncut') planes.push(tinted);

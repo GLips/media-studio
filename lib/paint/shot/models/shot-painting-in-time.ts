@@ -5,9 +5,10 @@
 // report.
 //
 // Negative space: a painted texture and an instanced plane's variants take no painting in time. A plane's `clock`
-// holds its presentation, not its source: `sourceClock` holds the moments this samples.
+// holds its presentation, not its source: the source schedule holds the moments this samples.
 
-import { paintNodeTimeAt, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
+import type { DrawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import { sourceMoment } from './shot-props.ts';
 import { paintSecondsText, paintSpanFrameRange } from '#lib/paint/animation/models/paint-span-moments.ts';
 import { presentationValueAt, type PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import type { NodeKey } from '#lib/paint/document/models/painting-document.ts';
@@ -88,11 +89,11 @@ export type ShotKeyDrawings = {
   readonly keys: readonly ShotKeyDrawing[]; readonly ends: readonly PaintedSourceEnd[];
 };
 
-/** The moments a source held by `sourceClock` reads over `span`'s frames, each once, in time order. */
-export function shotSourceMoments(span: SceneShownSpan, sourceClock: readonly PaintSceneStep[], animationFps: number): PaintMoment[] {
+/** The moments a source held by the source schedule reads over `span`'s frames, each once, in time order. */
+export function shotSourceMoments(span: SceneShownSpan, drawings: DrawingSchedule | undefined): PaintMoment[] {
   const { first, end } = paintSpanFrameRange(span), moments = new Map<string, PaintMoment>();
   for (let k = first; k < end; k++) {
-    const held = paintNodeTimeAt(sourceClock, paintMoment(k / span.fps), animationFps);
+    const held = sourceMoment(drawings, paintMoment(k / span.fps));
     moments.set(`${held.at} ${held.frame}`, held);
   }
   return [...moments.values()].toSorted((a, b) => a.at - b.at);
@@ -260,7 +261,7 @@ const keySelection = (source: PaintingInTime, evaluation: PaintingEvaluation, at
   layersOf(evaluation, source.layers, { ...(source.ground && { ground: source.ground }), ...(at !== undefined && { at }) });
 
 /**
- * What a plane painting `plan` shows at `moment`, its source clock's: the stretch between keys its values lie nearest
+ * What a plane painting `plan` shows at `moment`, its scheduled moment: the stretch between keys its values lie nearest
  * (keyStretchAt) dissolved by how far they've come along it; a key alone before a cut, past the last, or where both
  * ends draw alike.
  */

@@ -3,6 +3,8 @@
 // over footage: the hand now and three ghosts a drawing apart, each fainter, while the camera pans. Its frames are
 // drawn in turn and shuffled, on renderers of their own, and must match.
 
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import { scheduledSource } from '#lib/paint/shot/models/shot-props.ts';
 import { paintKeyed } from '#lib/paint/animation/models/paint-keyed.ts';
 import { paintCameraPlay } from '#lib/paint/animation/models/paint-camera.ts';
 import type { LayerGroup, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
@@ -69,15 +71,16 @@ export const STAMP_GATE_TRAIL_HAND: PaintingSourceModule<typeof handProperties> 
 };
 
 /** The pose the hand holds at moment `m` (as its plane's drawing clock holds it): one a drawing, the last held on. */
-const poseAt = ({ at }: PaintMoment) => Math.min(POSES - 1, Math.max(0, Math.floor((at * ANIMATION_FPS) / HOLD + 1e-6)));
+const drawings = drawingSchedule({ fps: ANIMATION_FPS / HOLD });
+const poseAt = ({ at }: PaintMoment) => Math.min(POSES - 1, Math.max(0, drawings.at(at).index));
 
 /** The hand's figure, posed at each moment. */
-const hand = () => shotFigure((m) => painting(STAMP_GATE_TRAIL_HAND, { pose: poseAt(m) }), 'hand');
+const hand = () => scheduledSource(shotFigure((m) => painting(STAMP_GATE_TRAIL_HAND, { pose: poseAt(m) }), 'hand'), drawings);
 
 /** The footage, and the hand drawn by trail (`trailed`) or placed alone, its source on its drawing clock, the camera panning. */
 export function stampGateTrailShot(trailed = true): StampGateShot {
   // The stage holds what the pan brings in.
-  const stage = stampStage(FRAME, PAN + 2), placing = { id: 'hand', depth: 1, sourceClock: { hold: HOLD } } as const;
+  const stage = stampStage(FRAME, PAN + 2), placing = { id: 'hand', depth: 1 } as const;
   const pan = paintKeyed([{ at: 0, value: { pan: { x: 0, y: 0 } } }, { at: STAMP_GATE_TRAIL_AT, value: { pan: { x: PAN, y: 0 } } }]);
   return {
     camera: { stage, fov: 35, lens: { bloom: 0, shutter: 'shut' }, animationFps: ANIMATION_FPS, plays: [paintCameraPlay({ kind: 'move', value: pan }, { clock: { at: 0 }, origin: 'the camera pans' })] },
@@ -87,7 +90,7 @@ export function stampGateTrailShot(trailed = true): StampGateShot {
 
 /** The drawings frame `t` shows, the hand's and its ghosts': the drawing then and the three before it, none before the first. */
 const drawingsShown = (t: number) => {
-  const now = Math.floor((t * ANIMATION_FPS) / HOLD + 1e-6);
+  const now = drawings.at(t).index;
   return [now, now - 1, now - 2, now - 3].filter((drawing) => drawing >= 0);
 };
 

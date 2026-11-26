@@ -6,6 +6,8 @@
 // (stamp-gate-shot-approach.ts). Poses and drops are tables by scene second, so a baseline's inputs name them. What
 // the cases measure of their frames is here, pure.
 
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import { scheduledSource } from '#lib/paint/shot/models/shot-props.ts';
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
 import type { LayerNode, Mix, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
@@ -208,7 +210,7 @@ const FOOT_POSES: StampGatePoseTable = [
  * What a one-sheet shot's plane says beyond its rigs: `heard` hears each pose read, by group; `entries`, its
  * occurrences' other fields; and the plane's own fields in place of its defaults (its source, `evaluation`'s layers).
  */
-type OneSheetPlane = { readonly heard?: (group: string) => void; readonly entries?: Readonly<Record<string, OccurrenceProps>> } & Partial<Pick<PlaneProps, 'source' | 'lay' | 'clock' | 'sourceClock'>>;
+type OneSheetPlane = { readonly heard?: (group: string) => void; readonly entries?: Readonly<Record<string, OccurrenceProps>> } & Partial<Pick<PlaneProps, 'source' | 'lay' | 'clock'>>;
 
 /**
  * A shot of one painted plane `plane` over `evaluation`'s `layers`, a still camera on its document, its `rigs` posed by
@@ -334,7 +336,7 @@ export function stampGateWarmShot(): StampGateShot {
   const evaluation = painting(STAMP_GATE_WET_CONTACT);
   return {
     ...oneSheetShot('pond', evaluation, ['shallows', 'heron'], { heron: FOOT_RIG }, WARM_FOOT_POSES, {
-      clock: { hold: 3 }, sourceClock: { hold: 6 }, source: ({ at }: PaintMoment) => layersOf(evaluation, ['shallows', 'heron'], { at }),
+      clock: { hold: 3 }, source: scheduledSource(({ at }: PaintMoment) => layersOf(evaluation, ['shallows', 'heron'], { at }), drawingSchedule({ fps: PAINT_ANIMATION_FPS / 6 })),
     }),
     warm: STAMP_GATE_WARM,
   };

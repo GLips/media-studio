@@ -10,7 +10,7 @@
 
 import { buildPaintCamera, paintCameraLensBuilt, paintShotCameraOptions } from '#lib/paint/animation/models/paint-camera-build.ts';
 import type { PaintCamera } from '#lib/paint/animation/models/paint-camera.ts';
-import { paintNodeClockProblem, paintNodeClockSteps, paintNodeDrawingSeconds, paintNodeTimeAt, type PaintNodeClock, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
+import { paintNodeClockProblem, paintNodeClockSteps } from '#lib/paint/animation/models/paint-clock.ts';
 import { paintPlacementMoveProblem } from '#lib/paint/animation/models/paint-motion-clips.ts';
 import { paintSecondsText, paintSpanFrames, paintSpanMoments, paintSpanProblem } from '#lib/paint/animation/models/paint-span-moments.ts';
 import { presentationValueAt, type PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
@@ -24,7 +24,7 @@ import { paintMoment, type PaintMoment, type StampGroupLay } from '#lib/paint/pa
 import { momentEarlier } from '#lib/picture/lens/models/lens-shutter.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import { shotPlacedImageProblems } from './shot-images.ts';
-import { compiledShotEffect, shotEffectChecked, shotEffectReadMap, shotImageLeaves, type CompiledShotEffectImage, type CompiledShotEffectRead, type CompiledShotImage, type ShotEffectMoment, type ShotImageSource } from './shot-effect.ts';
+import { compiledShotEffect, shotEffectChecked, shotEffectReadMap, shotDrawingStarted, shotImageLeaves, type CompiledShotEffectImage, type CompiledShotEffectRead, type CompiledShotImage, type ShotImageSource } from './shot-effect.ts';
 import { shotFigureProblems } from './shot-figure.ts';
 import { shotLightSpillProblems, type ShotLightSpill } from './shot-light-spill.ts';
 import { shotPlaneMomentAt } from './shot-frame-plan.ts';
@@ -39,6 +39,8 @@ import { shotCanvasDepthProblems, shotPlaneDepthRange, shotPlaneDepths } from '.
 import { planShotKeyDrawings, shotKeyDrawingsAt, shotSourceMoments, type ShotKeyDrawings } from './shot-painting-in-time.ts';
 import { shotCoveredPlanes, shotPlacementProblems, shotStillBackProblem } from './shot-placement.ts';
 import { shotDrawableOrder } from './shot-plan.ts';
+import type { DrawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import { sourceDrawings, sourceMoment } from './shot-props.ts';
 import type { CoverFrame, InstancedPlaneProps, OccurrenceKey, OccurrenceRig, PaintedShotProps, PictureSource, PlaneMask, PlaneProps, ScreenPin, ThreeSource } from './shot-props.ts';
 import { shotCameraPlanes } from './shot-reach.ts';
 import { compileShotRig, shotPlaneRigEndProblems, shotRigShowsGroup, type CompiledShotRig } from './shot-rigs.ts';
@@ -66,12 +68,12 @@ type ShotPlaneCommon = { readonly id: string; readonly depth: PresentationValue<
 export type ShotPlanePlacement = ShotPlaneCommon & { readonly lay: ShotPlaneLay; readonly opaqueBack: boolean };
 
 /**
- * A painted image compiled, its image half: its source, read at `sourceClock`'s moment; a painting in time's plan
+ * A painted image compiled, its image half: its source, read at its scheduled moment; a painting in time's plan
  * (`keyDrawings`), which its source then reads; its first evaluation's `ends` (a plan's every drawing), the size and
  * ground all paint and their occurrences; its masks.
  */
 export type CompiledShotPaintedImage = {
-  readonly source: PresentationValue<PaintedSource>; readonly keyDrawings: ShotKeyDrawings | null; readonly sourceClock: readonly PaintSceneStep[];
+  readonly source: PresentationValue<PaintedSource>; readonly keyDrawings: ShotKeyDrawings | null; readonly drawings: DrawingSchedule | undefined;
   readonly ends: readonly PaintedSourceEnd[]; readonly paints: ShotPlanePaints; readonly occurrences: readonly ShotOccurrence[]; readonly masks: readonly PlaneMask[];
   /** The figure card group it holds when its source is a figure (shot-figure.ts), its silhouette's; null for any other selection. */
   readonly figure: GroupKey | null;
@@ -88,10 +90,10 @@ export type CompiledShotPaintedPlane = ShotPlanePlacement & CompiledShotPaintedI
  * A plane placing an effect's image (shot-effect.ts): its placement, which its inputs are drawn through, and the
  * occurrences they show, each key once, which its entries name.
  */
-export type CompiledShotEffectPlane = ShotPlanePlacement & { readonly kind: 'effect'; readonly sourceClock: readonly PaintSceneStep[]; readonly image: CompiledShotEffectImage; readonly occurrences: readonly ShotOccurrence[] };
+export type CompiledShotEffectPlane = ShotPlanePlacement & { readonly kind: 'effect'; readonly drawings: DrawingSchedule | undefined; readonly image: CompiledShotEffectImage; readonly occurrences: readonly ShotOccurrence[] };
 
-/** A picture or three plane compiled: its source, posed or pictured at `sourceClock`'s moment; a three plane at one depth. */
-export type CompiledShotSourcePlane = ShotPlaneCommon & { readonly sourceClock: readonly PaintSceneStep[] } & (
+/** A picture or three plane compiled: its source, posed or pictured at its scheduled moment; a three plane at one depth. */
+export type CompiledShotSourcePlane = ShotPlaneCommon & { readonly drawings: DrawingSchedule | undefined } & (
   | { readonly kind: 'picture'; readonly source: PictureSource }
   | { readonly kind: 'three'; readonly source: ThreeSource; readonly depth: number }
 );
@@ -186,11 +188,8 @@ function planePropsProblems(plane: PaintedShotProps['planes'][number], canvases:
   }
   if (canvases.length && plane.canvas === undefined) problems.push(shotError(plane.id, 'canvas', `names no canvas, and the shot draws in ${canvases.join(', ')}: every plane names one`));
   if (plane.canvas !== undefined && !canvases.includes(plane.canvas)) problems.push(shotError(plane.id, 'canvas', `names ${plane.canvas}, which isn't one of the shot's canvases${canvases.length ? ` (${canvases.join(', ')})` : ': it has none'}`));
-  const clocks: readonly (readonly [string, PaintNodeClock | undefined])[] = plane.kind === 'instanced' ? [['clock', plane.clock]] : [['clock', plane.clock], ['sourceClock', plane.sourceClock]];
-  for (const [field, clock] of clocks) {
-    const problem = clock && paintNodeClockProblem(clock);
-    if (problem) problems.push(shotError(plane.id, field, problem));
-  }
+  const problem = plane.clock && paintNodeClockProblem(plane.clock);
+  if (problem) problems.push(shotError(plane.id, 'clock', problem));
   return problems;
 }
 
@@ -221,13 +220,12 @@ function movingLayProblems(plane: ShotPlanePlacement, motion: CompiledShotMotion
  * behind the first canvas, it's clear film. An effect's input isn't `placed`: it takes its plane's lay, not its masks.
  */
 function compilePaintedPlane(
-  props: PlaneProps, given: PresentationValue<PaintedSource> | ShotKeyDrawings, common: ShotPlaneCommon, farthest: boolean, page: ShotPage, fps: number,
+  props: PlaneProps, given: PresentationValue<PaintedSource> | ShotKeyDrawings, common: ShotPlaneCommon, farthest: boolean, page: ShotPage, drawings: DrawingSchedule | undefined,
   problems: PaintingProblem[], field = 'source', figure: GroupKey | null = null, placed = true,
 ): CompiledShotPaintedPlane | null {
-  const sourceClock = paintNodeClockSteps(props.sourceClock);
   const keyDrawings = typeof given !== 'function' && given.kind === 'key-drawings' ? given : null;
   const source: PresentationValue<PaintedSource> = typeof given === 'function' || given.kind !== 'key-drawings' ? given : (moment) => shotKeyDrawingsAt(given, moment);
-  const first = presentationValueAt(source, paintNodeTimeAt(sourceClock, paintMoment(0), fps));
+  const first = presentationValueAt(source, sourceMoment(drawings, paintMoment(0)));
   const sourceProblems = paintedSourceProblems(props.id, first, field);
   problems.push(...sourceProblems);
   if (sourceProblems.length) return null;
@@ -239,14 +237,14 @@ function compilePaintedPlane(
     problems.push(shotError(props.id, 'source.ground', 'is the back, laid on its paper wherever the frame shows: its ground is transparent only over HTML before the first canvas'));
   }
   return {
-    ...common, kind: 'painted', placed, source, keyDrawings, sourceClock, lay: compilePlaneLay(props), opaqueBack: farthest && !clear, ends, paints,
+    ...common, kind: 'painted', placed, source, keyDrawings, drawings, lay: compilePlaneLay(props), opaqueBack: farthest && !clear, ends, paints,
     occurrences: shotPlaneOccurrences(props.id, first), masks: placed ? props.masks ?? [] : [], figure,
   };
 }
 
 /** What compiling a plane's image reads beside its source: the plane as written, its common fields, the page, fps and span's source moments. */
 type ShotImageCompiling = {
-  readonly props: PlaneProps; readonly common: ShotPlaneCommon; readonly page: ShotPage; readonly fps: number; readonly span: PaintedShotProps['span'];
+  readonly props: PlaneProps; readonly common: ShotPlaneCommon; readonly page: ShotPage; readonly scheduleOf: (source: PlaneProps['source'] | ShotImageSource) => DrawingSchedule | undefined; readonly span: PaintedShotProps['span'];
   readonly problems: PaintingProblem[]; readonly warnings: PaintingProblem[];
 };
 
@@ -257,20 +255,20 @@ type ShotImageCompiling = {
  * transmittance from.
  */
 function compileEffectInput(source: ShotImageSource, field: string, reader: string, at: ShotImageCompiling): CompiledShotImage | null {
-  const { props, common, page, fps, problems } = at;
+  const { props, common, page, problems } = at;
   if (typeof source !== 'function' && source.kind === 'plane-image') return source;
   if (typeof source !== 'function' && source.kind === 'effect') return compileEffectImage(source, field, at);
   const figure = typeof source !== 'function' && source.kind === 'figure' ? source.card : null;
   const painted = typeof source !== 'function' && source.kind === 'figure' ? source.source : source;
   let given: PresentationValue<PaintedSource> | ShotKeyDrawings;
   if (typeof painted !== 'function' && painted.kind === 'in-time') {
-    const planned = planShotKeyDrawings(props.id, painted, shotSourceMoments(at.span, paintNodeClockSteps(props.sourceClock), fps));
+    const planned = planShotKeyDrawings(props.id, painted, shotSourceMoments(at.span, at.scheduleOf(source)));
     problems.push(...planned.problems.filter(({ severity }) => severity === 'error'));
     at.warnings.push(...planned.problems.filter(({ severity }) => severity === 'warning'));
     if (!planned.plan) return null;
     given = planned.plan;
   } else given = painted;
-  const leaf = compilePaintedPlane(props, given, common, false, page, fps, problems, field, figure, false);
+  const leaf = compilePaintedPlane(props, given, common, false, page, at.scheduleOf(source), problems, field, figure, false);
   if (leaf && leaf.paints.ground !== 'transparent') {
     problems.push(shotError(props.id, field, `lays its paper ground, and ${reader} reads colour and transmittance: select it with ground: 'transparent', as a figure lies`));
     return null;
@@ -290,25 +288,26 @@ function compileEffectImage(image: Extract<ShotImageSource, { readonly kind: 'ef
     return given === undefined ? [] : [[name, compileEffectInput(given, paintingField(field, `inputs.${name}`), definition.name, at)] as const];
   }));
   if (checked.problems.length || [...inputs.values()].some((input) => input === null)) return null;
-  const steps = paintNodeClockSteps(at.props.sourceClock), drawing = paintNodeDrawingSeconds(steps, at.fps);
-  const countsDrawings = checked.reads.some(({ moment }) => moment && typeof moment !== 'function' && moment.drawingsEarlier > 0);
   const followsDrawing = checked.varies.includes('drawing'), followsMoment = checked.varies.includes('moment');
-  const drawings = followsDrawing ? at.props.drawings : undefined;
+  const drawings = followsDrawing ? at.scheduleOf(image) : undefined;
   if (followsDrawing && !drawings) {
     at.problems.push(shotError(at.props.id, 'drawings', `${definition.name} varies with each drawing: supply the source drawing schedule`));
     return null;
   }
-  if (countsDrawings && drawing === null) {
-    // A drawing clock is declared, never found by comparing pictures: a source's pixels may hold while its pose moves.
-    at.problems.push(shotError(at.props.id, 'sourceClock', `${definition.name} reads its input drawings earlier, and the plane declares no drawing clock: give it sourceClock: { hold: n }, each drawing held n animation frames`));
-    return null;
-  }
-  const momentOf = (moment: ShotEffectMoment | undefined): CompiledShotEffectRead['moment'] => {
-    if (moment === undefined || typeof moment === 'function') return moment ?? null;
-    const seconds = moment.drawingsEarlier * drawing!;
-    return seconds ? (m) => momentEarlier(m, seconds) : null;
-  };
-  const reads = checked.reads.map((read): CompiledShotEffectRead => ({ input: inputs.get(read.input)!, map: shotEffectReadMap(read), moment: momentOf(read.moment) }));
+  const reads = checked.reads.map((read): CompiledShotEffectRead => {
+    const input = inputs.get(read.input)!, schedule = at.scheduleOf(image.inputs[read.input]);
+    const when = read.moment;
+    let moment = typeof when === 'function' ? when : null;
+    if (when && typeof when !== 'function' && when.drawingsEarlier) {
+      if (!schedule) at.problems.push(shotError(at.props.id, 'drawings', `${definition.name} reads earlier drawings of ${read.input}: schedule its source`));
+      else moment = m => momentEarlier(m, m.frame - schedule.earlier(m.frame, when.drawingsEarlier));
+    }
+    const bounded = moment && ((m: PaintMoment) => {
+      const mapped = moment(m);
+      return shotDrawingStarted(at, schedule, mapped) ? mapped : paintMoment(-Infinity);
+    });
+    return { input, map: shotEffectReadMap(read), moment: bounded };
+  });
   const timeAt = followsDrawing || followsMoment
     ? (m: PaintMoment) => ({ token: drawings?.at(m.frame).token ?? null, seconds: followsMoment ? m.at : 0 })
     : null;
@@ -329,7 +328,7 @@ function compileEffectPlane(image: Extract<ShotImageSource, { readonly kind: 'ef
   if (lay && typeof lay !== 'function' && 'kind' in lay) problems.push(shotError(props.id, 'lay', `places ${image.definition.name}'s output, and a ${lay.kind} lays only a painted plane: lay it by a lay or a value in time`));
   if (!compiled || filmBack || props.masks?.length || (lay && typeof lay !== 'function' && 'kind' in lay)) return null;
   const occurrences = new Map(shotImageLeaves(compiled).flatMap(({ occurrences: shown }) => shown.map((occurrence) => [occurrence.key, occurrence] as const)));
-  return { ...common, kind: 'effect', sourceClock: paintNodeClockSteps(props.sourceClock), lay: compilePlaneLay(props), opaqueBack: farthest && !at.page.htmlBehind, image: compiled, occurrences: [...occurrences.values()] };
+  return { ...common, kind: 'effect', drawings: at.scheduleOf(image), lay: compilePlaneLay(props), opaqueBack: farthest && !at.page.htmlBehind, image: compiled, occurrences: [...occurrences.values()] };
 }
 
 /**
@@ -412,6 +411,20 @@ export function compilePaintedShot(
   }
   if (problems.length) return answer(null, problems);
   const written = new Map(props.planes.flatMap((plane) => (plane.kind === 'instanced' ? [] : [[plane.id, plane] as const])));
+  function scheduleOf(source: PlaneProps['source'] | ShotImageSource, visited = new Set<string>()): DrawingSchedule | undefined {
+    if (typeof source !== 'function' && source.kind === 'plane-image') {
+      const target = written.get(source.plane);
+      if (!target || visited.has(source.plane)) return undefined;
+      visited.add(source.plane);
+      return scheduleOf(target.source, visited);
+    }
+    if (typeof source !== 'function' && source.kind === 'effect') {
+      const primary = source.definition.inputs.map(name => source.inputs[name]).find(input => input !== undefined);
+      if (primary) return scheduleOf(primary, visited);
+    }
+    if (typeof source !== 'function' && source.kind === 'figure') return sourceDrawings(source) ?? sourceDrawings(source.source);
+    return sourceDrawings(source);
+  }
   if (!written.size) return answer(null, [shotError('shot', 'planes', 'has no planes: a shot draws its back at least')]);
   const cameraOptions = paintShotCameraOptions(props.camera, props.span, []);
   const frames = paintSpanFrames(props.span, paintCameraLensBuilt(cameraOptions.lens)), moments = paintSpanMoments(frames);
@@ -423,23 +436,23 @@ export function compilePaintedShot(
     const plane = written.get(drawable.plane)!, canvas = canvasOf(plane.canvas);
     const common = { id: plane.id, depth: planeDepths.values.get(plane.id)!, canvas };
     if (typeof plane.source !== 'function' && plane.source.kind === 'effect') {
-      const effect = compileEffectPlane(plane.source, index === 0, { props: plane, common, page, fps, span: props.span, problems, warnings });
+      const effect = compileEffectPlane(plane.source, index === 0, { props: plane, common, page, scheduleOf, span: props.span, problems, warnings });
       return effect ? [effect] : [];
     }
     // A figure places the selection it holds, as that selection on the plane would (shot-figure.ts).
     const given = plane.source, figure = typeof given !== 'function' && given.kind === 'figure' ? given : null;
-    const source = typeof given !== 'function' && given.kind === 'figure' ? given.source : given, sourceClock = paintNodeClockSteps(plane.sourceClock);
-    if (typeof source !== 'function' && source.kind === 'picture') return [{ ...common, sourceClock, kind: 'picture', source }];
+    const source = typeof given !== 'function' && given.kind === 'figure' ? given.source : given, drawings = scheduleOf(given);
+    if (typeof source !== 'function' && source.kind === 'picture') return [{ ...common, drawings, kind: 'picture', source }];
     // planePropsProblems refuses a three plane's depth in time.
-    if (typeof source !== 'function' && source.kind === 'three') return typeof common.depth === 'number' ? [{ ...common, depth: common.depth, sourceClock, kind: 'three', source }] : [];
+    if (typeof source !== 'function' && source.kind === 'three') return typeof common.depth === 'number' ? [{ ...common, depth: common.depth, drawings, kind: 'three', source }] : [];
     if (typeof source !== 'function' && source.kind === 'in-time') {
-      const planned = planShotKeyDrawings(plane.id, source, shotSourceMoments(props.span, sourceClock, fps));
+      const planned = planShotKeyDrawings(plane.id, source, shotSourceMoments(props.span, drawings));
       problems.push(...planned.problems.filter(({ severity }) => severity === 'error'));
       warnings.push(...planned.problems.filter(({ severity }) => severity === 'warning'));
-      const painted = planned.plan && compilePaintedPlane(plane, planned.plan, common, index === 0, page, fps, problems, 'source', figure?.card ?? null);
+      const painted = planned.plan && compilePaintedPlane(plane, planned.plan, common, index === 0, page, drawings, problems, 'source', figure?.card ?? null);
       return painted ? [painted] : [];
     }
-    const painted = compilePaintedPlane(plane, source, common, index === 0, page, fps, problems, 'source', figure?.card ?? null);
+    const painted = compilePaintedPlane(plane, source, common, index === 0, page, drawings, problems, 'source', figure?.card ?? null);
     return painted ? [painted] : [];
   });
   const [back] = planes, clearBack = !!back && (back.kind === 'painted' || back.kind === 'effect' ? !back.opaqueBack : back.kind !== 'picture' || back.source.extent.kind !== 'everywhere');
@@ -454,7 +467,7 @@ export function compilePaintedShot(
     const common = { id: plane.id, depth: plane.depths.far, canvas: canvasOf(plane.canvas) };
     // Each variant compiles as a painted plane does, under its instanced plane's id (CompiledShotVariant says why).
     const variants = Object.entries(plane.variants).map(([name, source]) =>
-      [name, compilePaintedPlane({ id: plane.id, depth: plane.depths.far, source }, source, common, false, page, fps, problems, `variants.${name}`)] as const);
+      [name, compilePaintedPlane({ id: plane.id, depth: plane.depths.far, source }, source, common, false, page, sourceDrawings(source), problems, `variants.${name}`)] as const);
     const made = compileShotInstancedPlane(plane, common.canvas, backDepth, props.camera.stage, variants, problems);
     return made ? [made] : [];
   }) : [];

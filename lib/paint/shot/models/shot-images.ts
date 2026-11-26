@@ -10,7 +10,7 @@ import type { PaintSimilarity } from '#lib/paint/animation/models/paint-similari
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { CompiledPaintedShot, CompiledShotPlane } from './shot-compile.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
-import { shotDrawingStarted, shotMomentMapped, shotPlacedReads } from './shot-effect.ts';
+import { shotMomentMapped, shotPlacedReads } from './shot-effect.ts';
 import { shotOccurrencePlane } from './shot-occurrences.ts';
 
 /**
@@ -96,21 +96,17 @@ export const shotPlacedReadKey = (id: string, m: PaintMoment) => JSON.stringify(
 /** The off-exposure images needed by roots, dependencies first. Each request keeps the reference exposure's aperture. */
 export function shotHistoryPlanner(shot: CompiledPaintedShot) {
   const dependencies = new Map(shot.planes.flatMap((plane) => plane.kind === 'effect'
-    ? [[plane.id, { clock: plane.sourceClock, reads: shotPlacedReads(plane.image) }] as const] : []));
-  const temporal = [...dependencies.values()].some(({ reads }) => reads.some(({ moments }) => moments.length));
+    ? [[plane.id, shotPlacedReads(plane.image)] as const] : []));
+  const temporal = [...dependencies.values()].some(reads => reads.some(({ moments }) => moments.length));
   return (roots: Iterable<string>, exposure: PaintMoment) => {
     const plan = new Map<string, { id: string; at: PaintMoment }>(), visited = new Set<string>();
     const visit = (id: string, at: PaintMoment) => {
       const own = dependencies.get(id), key = shotPlacedReadKey(id, at);
       if (!own || visited.has(key)) return;
       visited.add(key);
-      for (const read of own.reads) {
-        let mapped = at;
-        const started = read.moments.every((map) => {
-          mapped = map(mapped);
-          return shotDrawingStarted(shot, own.clock, mapped);
-        });
-        if (!started) continue;
+      for (const read of own) {
+        const mapped = shotMomentMapped(read.moments, at);
+        if (!Number.isFinite(mapped.frame)) continue;
         visit(read.plane, mapped);
         if (mapped.at !== at.at || mapped.frame !== at.frame) plan.set(shotPlacedReadKey(read.plane, mapped), { id: read.plane, at: mapped });
       }

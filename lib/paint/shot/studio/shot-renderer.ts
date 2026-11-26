@@ -7,7 +7,7 @@
 // drawable where this exposure's camera shows it: through the reader's view, then, for a painted or picture plane,
 // the drawable's view undone.
 
-import { paintNodeTimeAt } from '#lib/paint/animation/models/paint-clock.ts';
+import { sourceMoment } from '../models/shot-props.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityAfter, paintSimilarityInverse, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import { paintViewAcross } from '#lib/paint/animation/models/paint-camera-depths.ts';
 import { paintSpanDrawnProblem } from '#lib/paint/animation/models/paint-span-moments.ts';
@@ -142,13 +142,12 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     for (const thing of made.splice(0).toReversed()) thing.dispose();
   };
   try {
-    const sourceFps = shot.motion.animationFps;
-    // A source plane's source reads the frame's moment held by its source clock: a three scene posed, a picture asked.
+    // A source plane's source reads the frame's moment held by its source schedule: a three scene posed, a picture asked.
     const threeSources = shot.planes.flatMap((plane) => (plane.kind === 'three' ? [{
       id: plane.id,
       build: (tools: Parameters<typeof plane.source.build>[0]) => {
         const built = plane.source.build(tools);
-        return { ...built, poseAt: (moment: PaintMoment) => built.poseAt(paintNodeTimeAt(plane.sourceClock, moment, sourceFps)) };
+        return { ...built, poseAt: (moment: PaintMoment) => built.poseAt(sourceMoment(plane.drawings, moment)) };
       },
     }] : []));
     // Only three sources read painted textures, so a shot without one draws none.
@@ -157,7 +156,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     const three = textures && (await loadPaintedThreeSources(owner, camera, shot.light, threeSources, { handles: textures.handles, update: (t) => { progress?.extend?.(textures.handles.length); return textures.solveAt(t, progress); } }));
     if (three) made.push(three);
     const pictures = loadStampPictureSources(webgpu, new Map(shot.planes.flatMap((plane) => (plane.kind === 'picture'
-      ? [[plane.id, (moment: PaintMoment) => plane.source.pictureAt(paintNodeTimeAt(plane.sourceClock, moment, sourceFps))] as const]
+      ? [[plane.id, (moment: PaintMoment) => plane.source.pictureAt(sourceMoment(plane.drawings, moment))] as const]
       : []))));
     made.push(pictures);
     const sources = new Map<string, StampLensSource>([...(three?.sources ?? []), ...pictures.sources]);
@@ -192,7 +191,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
      * map it to, none before its source begins.
      */
     const solvedAts = (plane: CompiledShotPaintedPlane, frame: PaintMoment): PaintMoment[] =>
-      plane.placed ? [frame] : (readsByLeaf.get(plane) ?? []).flatMap((read) => shotLeafReadMoment(shot, read, frame) ?? []);
+      plane.placed ? [frame] : (readsByLeaf.get(plane) ?? []).flatMap((read) => shotLeafReadMoment(read, frame) ?? []);
 
     /**
      * Where `shown` (shotSolvablesShown's) are solved for frame moment `frame`, each once, laid as `pinned` lays a pinned
@@ -307,7 +306,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
       });
       await gpuEachInTurn(effectPlanes, async (plane) => {
         if (only && !only.has(plane.id)) return;
-        const reads = effectReads.get(plane)!, laid = new Map<string, ShotPlaneMoment>(), readAts = reads.map((read) => shotLeafReadMoment(shot, read, frame));
+        const reads = effectReads.get(plane)!, laid = new Map<string, ShotPlaneMoment>(), readAts = reads.map((read) => shotLeafReadMoment(read, frame));
         if (!reads.every(({ leaf }, i) => !readAts[i] || solvedAt(leaf, readAts[i]))) return;
         const leaves = await gpuEachInTurn(reads, async ({ leaf, moments: maps }, i) => {
           const readAt = readAts[i];

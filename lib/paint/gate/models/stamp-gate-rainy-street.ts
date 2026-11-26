@@ -4,6 +4,8 @@
 // each pose; the lamp's reflection cut to the puddle and fading in; the rain; and the camera pushing in. The walk,
 // lamp and ramps are tables by scene second, so a baseline's inputs name them.
 
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import { scheduledSource } from '#lib/paint/shot/models/shot-props.ts';
 import { paintCameraPlay } from '#lib/paint/animation/models/paint-camera.ts';
 import { paintKeyed } from '#lib/paint/animation/models/paint-keyed.ts';
 import type { PaintPlacementMove } from '#lib/paint/animation/models/paint-pins.ts';
@@ -196,7 +198,7 @@ export function stampGateRainyStreetShot(): StampGateShot {
         source: ({ at }: PaintMoment) => dissolve(layersOf(dusk, ['sky']), layersOf(night, ['sky']), seg(at, RAMPS.night.from, RAMPS.night.to, motionCurves.linear)),
       },
       {
-        id: 'street', depth: DEPTHS.street, sourceClock: { hold: 6 }, source: ({ at }: PaintMoment) => layersOf(streetAt(at >= LAMP_ON), STREET_LAYERS, { at }),
+        id: 'street', depth: DEPTHS.street, source: scheduledSource(({ at }: PaintMoment) => layersOf(streetAt(at >= LAMP_ON), STREET_LAYERS, { at }), drawingSchedule({ fps: PAINT_ANIMATION_FPS / 6 })),
         occurrences: {
           walker: { plays: [{ clip: { kind: 'place', value: paintKeyed(WALK.map(({ at, ...value }) => ({ at, value }))) }, clock: { at: 0 }, origin: 'the walker crosses the puddle' }] },
         },

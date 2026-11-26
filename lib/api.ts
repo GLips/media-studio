@@ -269,6 +269,7 @@ export { layersOf, type LayerSelection, type SelectionGround } from '#lib/paint/
 export { dissolve, type Dissolve, type PaintedSource } from '#lib/paint/shot/models/shot-selection.ts';
 export { paintingInTime, type PaintingInTime, type PaintingInTimeOptions, type PaintingInTimeValues } from '#lib/paint/shot/models/shot-painting-in-time.ts';
 // A figure card's subtree as an image a plane places, its silhouette read beside it (the paint skill's shots).
+export { scheduledSource } from '#lib/paint/shot/models/shot-props.ts';
 export { shotFigure, shotFigureInTime, shotFigureSilhouette, shotPlace, type ShotFigure } from '#lib/paint/shot/models/shot-figure.ts';
 // Effects: a definition's models half and its studio half, made alike by the built-ins and a project's own.
 export {

@@ -78,8 +78,8 @@ export function shotSolvablesShown(shot: CompiledPaintedShot, moments: readonly 
 export function shotWarmShown(
   shot: CompiledPaintedShot, plane: CompiledShotPaintedPlane, frames: readonly PaintMoment[], mode: LensMode, read: ShotRigRead,
 ): { frames: PaintMoment[]; hidden: number } {
-  const clocks = shotPlaneClocks(shot.motion, plane), fps = shot.motion.animationFps, { shutter } = shot.camera.lens;
+  const clocks = shotPlaneClocks(shot.motion, plane), { shutter } = shot.camera.lens;
   const shows = frames.filter((frame) => shotPlaneShows(shot, plane, shotExposureMoments(shutter, frame.at, mode).map(({ at }) => at), read));
-  const solved = shotWarmCombinations(shows, clocks, fps);
-  return { frames: solved, hidden: shows.length === frames.length ? 0 : shotWarmCombinations(frames, clocks, fps).length - solved.length };
+  const solved = shotWarmCombinations(shows, clocks);
+  return { frames: solved, hidden: shows.length === frames.length ? 0 : shotWarmCombinations(frames, clocks).length - solved.length };
 }

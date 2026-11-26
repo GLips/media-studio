@@ -7,16 +7,14 @@
 // keeping its inputs' pictures until it's drawn. Inputs need not be placed: each is drawn through the placement of
 // the plane holding the effect.
 
-import { redrawSeed, type RedrawToken } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import { redrawSeed, type DrawingSchedule, type RedrawToken } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import { paintIdHash } from '#lib/paint/animation/models/paint-motion-clips.ts';
-import { paintNodeTimeAt } from '#lib/paint/animation/models/paint-clock.ts';
-import { paintAnimationFrameAt } from '#lib/paint/painting/models/stamp-group-motion.ts';
 import { paintSpanFrameRange } from '#lib/paint/animation/models/paint-span-moments.ts';
 import { PAINT_SIMILARITY_IDENTITY, paintSimilarityBox, type PaintSimilarity } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import { paintingBoxUnion } from '#lib/paint/document/models/painting-footprint.ts';
 import { paintingField, paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
-import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampBoxGrown, type StampBox } from '#lib/paint/painting/models/stamp-region.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
 import type { ShotFigure } from './shot-figure.ts';
@@ -31,7 +29,7 @@ export type ShotEffectParams = Readonly<Record<string, ShotEffectParamValue>>;
 
 /**
  * When a read reads its input, from the frame's moment: `{ drawingsEarlier: n }`, n drawings back on the clock its
- * plane's `sourceClock` declares (refused on a plane declaring none); or a map of the moment, which reads the past by
+ * source declares; or a map of the moment, which reads the past by
  * momentEarlier's convention, shifting both `at` and `frame`, and gives the same moment for the same moment.
  */
 export type ShotEffectMoment = { readonly drawingsEarlier: number } | ((moment: PaintMoment) => PaintMoment);
@@ -273,28 +271,27 @@ export function shotImageLeafReads(image: CompiledShotImage): ShotImageLeafRead[
 
 /** The moment `moments` (shotImageLeafReads', outermost first) read frame moment `t` at. */
 export const shotMomentMapped = (moments: readonly ((moment: PaintMoment) => PaintMoment)[], t: PaintMoment): PaintMoment =>
-  moments.reduce((at, map) => map(at), t);
+  moments.reduce((at, map) => Number.isFinite(at.frame) ? map(at) : at, t);
 
 /**
  * The moment a leaf read (shotImageLeafReads') reads at frame moment `t`, or null before its source begins: when
- * the drawing its source shows then, through its `sourceClock`, is older than the one it shows at the shot's first
+ * the drawing its source shows then, through its schedule, is older than the one it shows at the shot's first
  * frame. So no ghost reads a drawing the shot never showed.
  */
 export function shotLeafReadMoment(
-  shot: Pick<CompiledPaintedShot, 'span' | 'motion'>, { leaf, moments }: ShotImageLeafRead, t: PaintMoment,
+  { moments }: ShotImageLeafRead, t: PaintMoment,
 ): PaintMoment | null {
   const mapped = shotMomentMapped(moments, t);
-  return !moments.length || shotDrawingStarted(shot, leaf.sourceClock, mapped) ? mapped : null;
+  return Number.isFinite(mapped.frame) ? mapped : null;
 }
 
-/** A read at a mapped moment can show a drawing only once its source clock reaches the shot's first drawing. */
+/** A read at a mapped moment can show a drawing only once its source schedule reaches the shot's first drawing. */
 export function shotDrawingStarted(
-  shot: Pick<CompiledPaintedShot, 'span' | 'motion'>, clock: CompiledShotPaintedPlane['sourceClock'], mapped: PaintMoment,
+  shot: Pick<CompiledPaintedShot, 'span'>, drawings: DrawingSchedule | undefined, mapped: PaintMoment,
 ): boolean {
-  // A moment mapped back by seconds can land a rounding error short of the animation grid.
-  const fps = shot.motion.animationFps, drawn = (m: PaintMoment) => paintAnimationFrameAt(paintNodeTimeAt(clock, m, fps).frame, fps);
-  const { first } = paintSpanFrameRange(shot.span);
-  return drawn(mapped) >= drawn(paintMoment(first / shot.span.fps));
+  const { first } = paintSpanFrameRange(shot.span), start = first / shot.span.fps;
+  if (!Number.isFinite(mapped.frame)) return false;
+  return (drawings?.at(mapped.frame).time ?? mapped.frame) >= (drawings?.at(start).time ?? start) - 1e-6;
 }
 
 /** Each placed input and the enclosing read maps in evaluation order. */

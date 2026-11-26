@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { paintNodeClockStep } from '#lib/paint/animation/models/paint-clock.ts';
+import { paintNodeClockStep, paintNodeTimeAt, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import { shotWarmCombinations, shotWarmFrames, shotWarmPastScene, shotWarmProblems } from './shot-warm.ts';
 
 test("a warm reads the render frames in its span, only those its scene shows", () => {
@@ -18,7 +18,7 @@ test("a warm reads the render frames in its span, only those its scene shows", (
 
 test("a painted plane's warm solves each pairing of its clocks' moments once, a source and a movement held apart", () => {
   const frames = shotWarmFrames({ from: 0.1, to: 0.3 }, 30), twos = paintNodeClockStep({ hold: 2 }), threes = paintNodeClockStep({ hold: 3 });
-  const solvedAt = (clocks: Parameters<typeof shotWarmCombinations>[1]) => shotWarmCombinations(frames, clocks, 24).map(({ at }) => Math.round(at * 30));
+  const solvedAt = (clocks: readonly (readonly PaintSceneStep[])[]) => shotWarmCombinations(frames, m => clocks.map(steps => paintNodeTimeAt(steps, m, 24))).map(({ at }) => Math.round(at * 30));
   // Its source on twos, its movement unheld: it moves every frame.
   assert.deepEqual(solvedAt([[twos], []]), [3, 4, 5, 6, 7, 8, 9]);
   // Its source on twos and its movement on threes: a frame pairing both as one before it solves nothing new.

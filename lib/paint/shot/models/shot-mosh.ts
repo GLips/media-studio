@@ -3,7 +3,7 @@ import { defineShotEffect, type ShotEffectProblem, type ShotEffectRead } from '.
 
 const DEFAULTS = { block: 64, throwPx: 112, age: 2, seed: 7, recolor: 0.6, mint: false };
 
-/** Block size and horizontal throw in plane px. Age counts earlier drawings of the plane's source clock. */
+/** Block size and horizontal throw in plane px. Age counts earlier drawings of the source schedule. */
 export const mosh = defineShotEffect({
   name: 'mosh',
   inputs: ['source', 'second', 'under'],

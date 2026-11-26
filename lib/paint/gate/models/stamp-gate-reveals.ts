@@ -6,6 +6,8 @@
 // hidden foot: the wet-contact heron hidden whole. The reeds: a rig drawn as pieces, revealed. The page
 // (studio/stamp-gate-reveals-page.ts) draws them; what its checks measure is here.
 
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import { scheduledSource } from '#lib/paint/shot/models/shot-props.ts';
 import type { PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
 import type { PaintingDocument, LayerNode, Reveal } from '#lib/paint/document/models/painting-document.ts';
 import type { PropertySchema, PropertyValues } from '#lib/paint/document/models/painting-properties.ts';
@@ -317,7 +319,7 @@ export function stampGateRevealedReedsShot(source: PresentationValue<PaintedSour
 export function stampGateRevealShot(source: PresentationValue<PaintedSource>, hold?: number, occurrences?: PlaneProps['occurrences']): StampGateShot {
   return {
     camera: { stage: stampStage(SIZE, 2), fov: 35, lens: { bloom: 0, shutter: 'shut' }, plays: [] },
-    planes: [{ id: 'sheet', depth: 1, source, ...(hold !== undefined && { sourceClock: { hold } }), occurrences }],
+    planes: [{ id: 'sheet', depth: 1, source: hold === undefined ? source : scheduledSource(source, drawingSchedule({ fps: 24 / hold })), occurrences }],
   };
 }
 

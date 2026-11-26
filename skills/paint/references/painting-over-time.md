@@ -1,5 +1,10 @@
 # Painting over time
 
+Use `scheduledSource(source, score.drawings)`. Look cues start drawings immediately. Palette cues preserve pose and token. Without a score, `drawingSchedule({fps: 12})` draws on twos at 24 fps. `drawingSchedule('held', [{at: cue, cadence: 'held'}])` holds until a cue, then redraws once. Omit the cut to hold throughout.
+
+A derived look can redraw just the contour with `replace: { contour: c => c.with({ redraw: score.drawings }) }`. Its other steps keep their marks.
+
+
 Paint that changes on screen: a wash painted as you watch, finished paint revealed along a path, a property moving
 through a shot, a figure that bends. Planes, the camera and keyed values are in `${CLAUDE_PLUGIN_ROOT}/skills/paint/references/shots.md`.
 
@@ -42,7 +47,7 @@ Pick by what should change:
   application `on: 'dry'`. An application waiting on `on` holds back everything after it on the sheet: fix its `at`
   to let other work land meanwhile.
 - **Show it partway**: `layersOf(p, keys, {at: moment.at})` shows the clocked applications landed by then, each step
-  finished. Each distinct prefix is a solve: hold the plane's `sourceClock` to bound them, dissolve between prefixes
+  finished. Each distinct prefix is a solve: schedule the paint source to bound them, dissolve between prefixes
   to smooth the jump, and `warm` the span.
 - **A drop landing in a wash**: on the wash's sheet, a water stamp `at` its landing (a bloom if wanted), then its paint
   as the next application without `on`. A drop falling on another plane never joins the wash by overlapping it.
@@ -91,7 +96,7 @@ the water and the solve never see it, so editing one re-solves nothing.
   look: a band too narrow trims the edge. A band wider than the spacing of its rows shows its neighbours early.
   `paintingRevealBandPx` is the upper bound, for where carried wet paint visibly walks past the stroke.
 - A straight edge needs no band: a linear field along it leaves the film its own fringe (an underline over HTML).
-- A reveal is part of the sampled painting, so a held `sourceClock` steps it. For a smooth reveal over stepped
+- A reveal is part of the sampled painting, so a held source schedule steps it. For a smooth reveal over stepped
   properties, leave the source unheld, quantise the properties, and pass the continuous `moment.at`.
 
 ## A painting in time
@@ -135,7 +140,7 @@ about `crease?` radians through its pivot), with a `pivot`. `back?`, one of its 
 
 | Look | Write | Watch for |
 |---|---|---|
-| a wash painted on screen | a clocked wash on a sheet at a `dryingScale`; source `(m) => layersOf(p, keys, {at: m.at})`; `sourceClock: {hold: 2}`; `warm` | each step shows finished; dissolve between prefixes to smooth the jump |
+| a wash painted on screen | a clocked wash on a sheet at a `dryingScale`; source `(m) => layersOf(p, keys, {at: m.at})`; wrap the source in `scheduledSource(source, drawings)`; `warm` | each step shows finished; dissolve between prefixes to smooth the jump |
 | a drawing appearing stroke by stroke | a direct wash with `clock` and an `at` per application | or a strokes reveal over the finished drawing, which pens each stroke along its length |
 | ink drawn on the beat | the ink layer's strokes reveal, a stroke per beat from the cue, paths shared with the application | the overlap limit; band held to the pen's width in a test |
 | a flood rising, a moon filling, a petal blotching in | a field reveal: linear, radial, noise with a linear delay | past its ends a linear field holds |

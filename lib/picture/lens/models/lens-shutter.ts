@@ -37,7 +37,7 @@ export const shutterMomentAt = (t: number, shutter: number, share: number, start
 /**
  * The past's one convention, for every sampler reading a thing as it was: moment `moment` `seconds` earlier moves the
  * time seen and the frame shown back together, so a drawing held on its frame moves back with it. Samples of the past
- * stand whole drawings apart on the source's own clock (paintNodeDrawingSeconds), never a distance guessed from pixels.
+ * stand whole drawings apart on the source's own clock, never a distance guessed from pixels.
  */
 export const momentEarlier = <M extends { readonly at: number; readonly frame: number }>(moment: M, seconds: number): M =>
   ({ ...moment, at: moment.at - seconds, frame: moment.frame - seconds });

@@ -19,7 +19,7 @@ const SEED_MOST = 2 ** 24;
 /**
  * `source` cut and moved, or several inputs tiled and moved, each cell showing one:
  * `shotPlace(slices({ source: watercolour, second: crayon }, { cells: 'rects', size: 24, shift: 16, share: 0.3 }), { id, depth })`;
- * rerolled each drawing: `shotPlace(slices({ source: hero }, { reroll: 'drawing' }), { id, depth, drawings })`.
+ * rerolled each drawing: `shotPlace(slices({ source: scheduledSource(hero, drawings) }, { reroll: 'drawing' }), { id, depth })`.
  */
 export const slices = defineShotEffect({
   name: 'slices',

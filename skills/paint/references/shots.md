@@ -43,11 +43,11 @@ PaintedShotProps {camera, span, light?, planes, paintedTextures?, warm?}
 | Concept | Write | Notes |
 |---|---|---|
 | visibility | an entry's `visibility`, 0..1 or a value in time | a group fades all it holds as one; an own sheet's owner fades its card with it; the back takes none |
-| hold | `clock: {hold: n}` holds presentation and motion; `sourceClock: {hold: n}` holds what `source` reads | each reads its clock's moment floored to the hold's grid; the camera still moves through the shutter |
+| hold | `clock: {hold: n}` holds presentation and motion; `scheduledSource(source, drawings)` samples the pose | the camera and unscheduled presentation still move through the shutter |
 | masks | `masks: [{kind: 'alphaOf', drawable: '<plane>' or '<plane>/<key>', invert?}]` on a painted plane | cuts by another drawable's coverage where the frame shows it, through parallax; no mask reads its own plane through any chain; to leave a layer unmasked, put it on a second plane at the same depth |
 | instances | `{kind: 'instanced', depths, variants, instances(m)}` | each variant solved once and shared by every item; paint a variant on a document tight round its paint; one key per item's lifetime, so the shutter blurs it along its own travel |
 | figure | `shotPlace(shotFigure(painting, card), plane)` | `subjectFigureCard`'s group alone, as an image; `shotFigureSilhouette` reads its outline |
-| effect | `shotPlace(offsetCopies(hero, {count, dx, dy, fade}), plane)`; `shotPlace(trail(hero, {count, every: {drawings}, fade}), {..., sourceClock: {hold: n}})` | an image made from others: below |
+| effect | `shotPlace(offsetCopies(hero, {count, dx, dy, fade}), plane)`; `shotPlace(trail(hero, {count, every: {drawings}, fade}), plane)` | an image made from others: below |
 | light spill | `illuminate(wall, lightSpill('sign', {reach, gain?, added?, map?}))` | light a plane throws on another: below |
 | neon | `neon({palette, tube?, spill?, flicker?})` | parts: `tubes(figure)`, `flicker`, `place(figure, plane)`, `light(wall, id)` |
 | dissolve | `dissolve(a, b, k)`, nestable | blends pictures, never pigment or shapes; every end one document size on one ground |
@@ -68,15 +68,15 @@ Inputs include figures, transparent selections, paintings in time, placed planes
 - `offsetCopies(hero, {count, dx, dy, fade})` stacks today's pose. `channelSplit(hero, {red: [5,0], blue: [-5,0]})`
   separates colour, coverage and emission together.
 - `trail(channelSplit(hand), {count: 10, every: {drawings: 1}, dx: -12, dy: -16, fade: 0.98})` stacks earlier drawings,
-  each at its earlier lay plus its offset. Place behind the live figure with `sourceClock: {hold: 2}`.
+  each at its earlier lay plus its offset.
   Space the poses with `every.drawings`. Use `visibility: trailStrobe(2, 0.75)` for two pulses/sec at 75% duty.
 - `slices({source, second?, third?, fourth?}, {cells, size, shift, share, seed})` tiles inputs in rows or squares.
-  For `reroll: 'drawing'`, place it with the source schedule, e.g. `shotPlace(image, {id, depth, drawings: score.drawings})`.
+  For `reroll: 'drawing'`, use `source: scheduledSource(hero, score.drawings)`.
 - `mosh({source: hero, second: gouache}, {block: 80, throwPx: 120, age: 2, recolor: 0.65})` displaces older blocks,
-  stretches tear bands and swaps palettes. Supply `drawings` for packet choices and a held `sourceClock` for history.
+  stretches tear bands and swaps palettes. Schedule the figure once for packet choices and history.
   Omit `second` for hero's past. Pass a placed `signalGround()` sharing `drawings` as `under` to shear its noise too.
 - `signalBreak({source: shotPlaneImage('actor'), under: shotPlaneImage('room')}, {hits: [0.5, 1.5]})` tears both on cue.
-  Mark members `imageOnly` and give the composite the actor's schedule. Dropouts expose the back.
+  Mark members `imageOnly`. The composite inherits the actor’s schedule. Dropouts expose the back.
 
 **Your own effect.** `defineShotEffect({name, inputs, defaults})` reads inputs once in order. `reads(params,given)`
 allows 24 mapped reads. `grow(params)` pads the crop. A generator declares `inputs: [], extent: 'stage'`, takes
@@ -97,15 +97,14 @@ Three receivers approximate a flat plane at their depth.
 
 **Neon.** `neon({palette: ['#ff3fa4','#3ff0ff'], spill: {reach: 48}, flicker: {seed: 3}})` turns transparent ink
 lines into tubes, matching each hue to a gas. Use `sign.place(lines, plane)` and `sign.light(wall, 'sign')`, or
-compose `sign.tubes(lines)` and `sign.flicker` individually. Add `scan: {fringe: 5, tear: 100, seed: 3}` and the source
-schedule as `drawings` for split edges and horizontal tears. The displaced tubes also light the wall.
+compose `sign.tubes(lines)` and `sign.flicker` individually. Schedule the ink source and add `scan: {fringe: 5, tear: 100, seed: 3}` for split edges and tears. The displaced tubes also light the wall.
 
 **Worked examples** live in `$(studio home)/work/projects/2026-11-clapper-effects/`.
 
 ## The camera
 
 - `stage: stampStage(frame, margin)`: margin whole, even, at least 2; more for defocus or a lay carrying paint past
-  the frame. `fov` vertical degrees. `animationFps` (24) is the grid holds count on: give it the span's `fps`
+  the frame. `fov` vertical degrees. `animationFps` (24) sets the motion grid: give it the span's `fps`
   (`sceneSecondsOf(clock).span.fps`, the storyboard's, 30 by default), or a hold of 3 lasts 4, 4, 4, 3 frames, a stutter.
 - `lens: {bloom, shutter?}`: bloom is frame px of sigma; the shutter left out is the film's, half a frame open (1/60 s
   at 30 fps); `'shut'` draws every frame sharp, on purpose.

@@ -6,7 +6,6 @@
 // Negative space: no shutter ends. An instanced plane's items read them, but its variants are finished selections
 // solved once, so the moments its items move through solve nothing.
 
-import { paintNodeTimeAt, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import type { PaintedShotProps } from './shot-props.ts';
@@ -42,13 +41,10 @@ export function shotWarmFrames({ from, to }: ShotWarm, fps: number, sceneDur: nu
  * The frames of `frames` a painted plane's warm solves, in order: each the first to pair its moments on `clocks` (the
  * plane's, as shotPlaneClocks gives them) as it does. A later frame pairing them alike solves alike, and is skipped.
  */
-export function shotWarmCombinations(frames: readonly PaintMoment[], clocks: readonly (readonly PaintSceneStep[])[], animationFps: number): PaintMoment[] {
+export function shotWarmCombinations(frames: readonly PaintMoment[], moments: (frame: PaintMoment) => readonly PaintMoment[]): PaintMoment[] {
   const paired = new Set<string>();
   return frames.filter((frame) => {
-    const key = clocks.map((steps) => {
-      const held = paintNodeTimeAt(steps, frame, animationFps);
-      return `${held.at} ${held.frame}`;
-    }).join('|');
+    const key = moments(frame).map(held => `${held.at} ${held.frame}`).join('|');
     if (paired.has(key)) return false;
     paired.add(key);
     return true;

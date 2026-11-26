@@ -1,3 +1,4 @@
+import type { DrawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import type { LayerNode, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
 import type { ShotEffectImage } from '#lib/paint/shot/models/shot-effect.ts';
 import { requireSubjectEvidence, type SubjectWithEvidence } from '#lib/paint/subject/models/subject-check.ts';
@@ -5,8 +6,8 @@ import { SubjectDiagnosticError } from '#lib/paint/subject/models/subject-diagno
 import type { SubjectEvidenceKind } from '#lib/paint/subject/models/subject-evidence.ts';
 import type { Subject } from '#lib/paint/subject/models/subject.ts';
 
-/** Reserved for the drawing schedule. A named cue or the drawing itself may request fresh marks. */
-export type LookRedraw = 'constant' | 'drawing' | { readonly cue: string };
+/** The schedule supplying mark tokens to the layers this step draws. */
+export type LookRedraw = DrawingSchedule;
 
 type DrawSettings = { readonly redraw?: LookRedraw };
 type LookDraw<N extends string, P extends object> = {

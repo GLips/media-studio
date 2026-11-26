@@ -6,7 +6,8 @@
 // them. Boil wobble moves finished paint: marks are solved without it, and the lay takes it in first, so a lattice
 // carries the solved film where the wobble puts it. A rigged group's wobble goes inside its rig.
 
-import { paintNodeTimeAt, type PaintSceneStep } from '#lib/paint/animation/models/paint-clock.ts';
+import { sourceMoment } from './shot-props.ts';
+import { paintNodeTimeAt } from '#lib/paint/animation/models/paint-clock.ts';
 import type { PaintDeform } from '#lib/paint/animation/models/paint-deform.ts';
 import { paintGlowProblem } from '#lib/paint/animation/models/paint-motion-compile.ts';
 import { paintLevelDeformsAt, paintLevelPlacementAt, paintNodeWobbleAt } from '#lib/paint/animation/models/paint-motion-frame.ts';
@@ -101,13 +102,13 @@ export const shotOccurrenceNamed = ({ motion, rigs, visibility, masks }: ShotNam
   motion.nodes.has(key) || rigs.has(key) || visibility.has(key) || masks.read.has(key);
 
 /**
- * The selections plane `plane` of `shot` blends at frame moment `t`, read at its source clock's moment, each weighted.
+ * The selections plane `plane` of `shot` blends at frame moment `t`, read at its scheduled moment, each weighted.
  * A callback's answer is checked as its load checked the first: throws on its problems, on dropping an occurrence
  * the shot names (shotOccurrenceNamed), and on gaining one inside a named group. A painting in time was checked
  * as it loaded.
  */
 export function shotPlaneSharesAt(shot: ShotNaming, plane: CompiledShotPaintedPlane, t: PaintMoment): PaintedSourceShare[] {
-  const moment = paintNodeTimeAt(plane.sourceClock, t, shot.motion.animationFps), source = presentationValueAt(plane.source, moment);
+  const moment = sourceMoment(plane.drawings, t), source = presentationValueAt(plane.source, moment);
   if (typeof plane.source !== 'function' || plane.keyDrawings) return paintedSourceShares(source);
   const at = `shot plane ${plane.id}'s source at ${moment.at} s`, problems = paintedSourceProblems(plane.id, source), ends = paintedSourceEnds(source);
   if (!problems.length) problems.push(...paintedPlaneBlendProblems(plane.id, ends, plane.paints));
@@ -123,12 +124,12 @@ export function shotPlaneSharesAt(shot: ShotNaming, plane: CompiledShotPaintedPl
 }
 
 /**
- * The clocks whose held moments plane `plane`'s solve reads, outermost steps first: its source clock, and its own,
+ * The clocks whose held moments plane `plane`'s solve reads, outermost steps first: its source schedule and presentation clock,
  * which its lay, rigs and nodes read. Frames reading the same moment on each solve alike. Its nodes' and plays' clocks
  * run inside its own (shot-motion.ts), so their moments follow from its clock's and add no pairing.
  */
-export function shotPlaneClocks(motion: CompiledShotMotion, plane: CompiledShotPaintedPlane): (readonly PaintSceneStep[])[] {
-  return [plane.sourceClock, motion.planeClocks.get(plane.id) ?? []];
+export function shotPlaneClocks(motion: CompiledShotMotion, plane: CompiledShotPaintedPlane) {
+  return (frame: PaintMoment) => [sourceMoment(plane.drawings, frame), shotPlaneMomentAt(motion, plane.id, frame)];
 }
 
 /**

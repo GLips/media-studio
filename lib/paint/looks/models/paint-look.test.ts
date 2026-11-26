@@ -1,3 +1,4 @@
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { compilePaintingSelection } from '#lib/paint/document/models/painting-document-compile.ts';
@@ -82,4 +83,19 @@ test('graph diagnostics identify the broken connection before painting', () => {
   assert.throws(() => graph(line.steps, ['missing']), /show reads unknown step 'missing'/);
   assert.throws(() => graph(line.steps, ['contour']), /show reads 'contour' \(draw\), expected place/);
   assert.throws(() => graph([{ name: 'page', kind: 'process', definition: trail.definition, params: {}, inputs: { source: 'place' }, space: 'stage' }, { name: 'place', kind: 'place', image: 'page' }]), /cycle: page -> place -> page/);
+});
+
+test('a contour redraw at a cue keeps sibling layers and resolves identically on reverse seeks', () => {
+  const schedule = drawingSchedule({ fps: 12 }, [{ at: 0.05, cadence: 'held' }]);
+  const boiling = deriveLook(line, { replace: { contour: c => c.with({ redraw: schedule }) } });
+  const [plane] = lookPlanes(boiling, tile, { widthPx: 180, heightPx: 180 }, id => ({ id, depth: 1 }));
+  const figure = plane.source;
+  assert.ok(typeof figure !== 'function' && figure.kind === 'figure');
+  const sample = figure.source;
+  assert.ok(typeof sample === 'function');
+  const marks = (t: number) => [...sample({ frame: t, at: t }).redraw!];
+  const times = [0, 0.02, 0.05, 1];
+  const expected = times.map(t => [['tile.contour.part:body', schedule.at(t).token]]);
+  assert.deepEqual(times.map(marks), expected);
+  assert.deepEqual(times.toReversed().map(marks).toReversed(), expected);
 });

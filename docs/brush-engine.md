@@ -648,7 +648,7 @@ clear film, its canvas a glaze too: `clearBack`) and must stay there while it is
 shot's element, fills it, no wrapper between them transformed, filtered or contained, and none between a glaze and its
 shot making a stacking context, which would multiply it over that group alone; and where each pinned element (its
 `data-pin` named by the pin) lies. `shot-compile.ts` checks the props as they load, every problem at once: planes far
-to near, each painted plane's occurrences from its first evaluation (read through its `sourceClock`), the planes'
+to near, each painted plane's occurrences from its first evaluation (read through its source schedule), the planes'
 entries, their rigs, visibility and motion, and the masks over them, and the camera built over each plane's reach (`shot-reach.ts`), every value
 sampled over the shot's span; then it warns of motion that may read badly there (`shot-motion-warnings.ts`). A plane laid on the
 frame is unchecked in that build and laid through the built camera after it, the inverse of its plane view at the
@@ -705,7 +705,7 @@ text, so an end resumes another's checkpoint only where both paint and pose agre
 cel apart wherever any rest cel differs, and a warm covers both ends. A pieces rig finds its skin in each end and
 draws each share of the blend into a target of its own, since three.js renders at once and one submit lays every
 share. Picture and three planes, StampPainting's sources too, are laid through `stamp-lens-source-layers.ts`, each read at its
-`sourceClock`'s moment (a picture's `pictureAt`, a three scene's `poseAt`) and faded by its visibility, the lens
+scheduled moment (a picture's `pictureAt`, a three scene's `poseAt`) and faded by its visibility, the lens
 layer's `visibility` (`lens-compositor.ts`). Three planes read the shot's
 painted textures (`studio/shot-painted-textures.ts`): made by `createShotPaintedTextures` before
 `loadPaintedThreeSources` when the shot has a three plane and released after it, drawn at each frame's moment once

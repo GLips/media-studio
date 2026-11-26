@@ -24,6 +24,24 @@ import type { ShotFigure } from './shot-figure.ts';
 import type { PaintingInTime } from './shot-painting-in-time.ts';
 import type { PaintedSource } from './shot-selection.ts';
 
+const schedule = Symbol('source drawings');
+type Scheduled = { readonly [schedule]?: DrawingSchedule };
+
+/** Attach a seekable drawing schedule to a source before placing or processing it. */
+export function scheduledSource<T extends PlaneProps['source']>(source: T, drawings: DrawingSchedule): T & Scheduled;
+export function scheduledSource(source: PlaneProps['source'], drawings: DrawingSchedule) {
+  if (typeof source !== 'function' && source.kind === 'effect' && Object.keys(source.inputs).length) {
+    throw new Error(`${source.definition.name} inherits its primary input's schedule: schedule the source`);
+  }
+  const value = typeof source === 'function' ? (m: PaintMoment) => source(m) : { ...source };
+  return Object.assign(value, { [schedule]: drawings });
+}
+
+export const sourceDrawings = (source: object & Scheduled) => source[schedule];
+
+export const sourceMoment = (drawings: DrawingSchedule | undefined, moment: PaintMoment): PaintMoment =>
+  drawings ? { at: drawings.poseAt(moment.frame, moment.at), frame: drawings.at(moment.frame).time } : moment;
+
 /** The engine's picture plane source: a picture handed in at each moment, held within `extent`. */
 export type PictureSource = { readonly kind: 'picture'; readonly extent: StampPlaneExtent; readonly pictureAt: StampPictureAt };
 
@@ -79,7 +97,7 @@ type PlaneCommon = {
   readonly id: string;
   /**
    * Holds the moment the plane's presentation and motion read (its lay, masks, instances, visibility, and every
-   * motion node on it, its own included): `{ hold: 2 }` moves on twos. The camera still moves; a source reads `sourceClock`.
+   * motion node on it, its own included): `{ hold: 2 }` moves on twos. The camera still moves.
    */
   readonly clock?: PaintNodeClock;
   /**
@@ -91,11 +109,6 @@ type PlaneCommon = {
   readonly visibility?: PresentationValue<number>;
 };
 
-/**
- * A plane. `sourceClock` holds the moment its `source` reads: a callback's (prefix, properties, dissolve weights), a
- * painting in time's values, a picture's `pictureAt`, a three scene's `poseAt`. `{ hold: 6 }` repaints on sixes while
- * `clock` runs on. Both start from the frame's moment.
- */
 export type PlaneProps = PlaneCommon & ShotNodeFields & {
   readonly kind?: undefined;
   /** Supply this plane's painted image to readers without drawing it separately in the lens. */
@@ -109,9 +122,6 @@ export type PlaneProps = PlaneCommon & ShotNodeFields & {
   readonly depth: PresentationValue<number>;
   readonly masks?: readonly PlaneMask[];
   readonly source: PresentationValue<PaintedSource> | PaintingInTime | ShotFigure | ShotEffectImage | PictureSource | ThreeSource;
-  /** The source schedule shared by drawing-varying effects in this image. */
-  readonly drawings?: DrawingSchedule;
-  readonly sourceClock?: PaintNodeClock;
   /** Plays on the plane's own node, which its node fields (`pivot`, `pins`, `marks`, `glow`) write: it moves the whole plane. */
   readonly plays?: readonly ShotNodePlay[];
   /** What each layer or group the plane shows does, by its key. */

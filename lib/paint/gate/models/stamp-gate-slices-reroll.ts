@@ -3,6 +3,7 @@
 // are drawn in turn and shuffled, on renderers of their own, and must match; a drawing's frames match each other and
 // reuse its tiles, and each drawing's tiles are its looks moved as shotSlicesCell says at that drawing.
 
+import { scheduledSource } from '#lib/paint/shot/models/shot-props.ts';
 import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import { shotFigure, shotPlace } from '#lib/paint/shot/models/shot-figure.ts';
@@ -32,7 +33,7 @@ export function stampGateSlicesRerollShot(): StampGateShot {
   const [wash, gouache] = stampGateTwoLooksEvaluations().map((evaluation) => shotFigure(evaluation, 'figure', { at: 0 }));
   return {
     camera: { stage, fov: 35, lens: { bloom: 0, shutter: 'shut' }, animationFps: ANIMATION_FPS, plays: [] },
-    planes: [stampGateFootagePlane(stage), shotPlace(slices({ source: wash, second: gouache }, stampGateTiles('rects', 'drawing')), { id: 'tiles', depth: 1, drawings: schedule })],
+    planes: [stampGateFootagePlane(stage), shotPlace(slices({ source: scheduledSource(wash, schedule), second: gouache }, stampGateTiles('rects', 'drawing')), { id: 'tiles', depth: 1 })],
   };
 }
 

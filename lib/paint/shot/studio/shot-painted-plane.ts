@@ -31,7 +31,7 @@ import type { LensCompositor, LensLayer } from '#lib/picture/lens/studio/lens-co
 import type { PaintRigPicture } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import type { CompiledPaintedShot, CompiledShotEffectPlane, CompiledShotPaintedPlane, PaintedShotPaintOptions } from '../models/shot-compile.ts';
-import { shotDrawingStarted, shotImageLeafReads, shotEffectBox, shotEffectKeyAt, shotEffectTimeAt, type CompiledShotImage } from '../models/shot-effect.ts';
+import { shotImageLeafReads, shotEffectBox, shotEffectKeyAt, shotEffectTimeAt, type CompiledShotImage } from '../models/shot-effect.ts';
 import { shotPlanePosesAt, shotPlaneSharesAt, shotRigGroupPivot, type ShotFrameRigs, type ShotRigRead } from '../models/shot-frame-plan.ts';
 import { shotEffectImageKey, shotImageKeys, shotImageReadKey } from '../models/shot-images.ts';
 import type { ShotMaskAcross } from '../models/shot-masks.ts';
@@ -402,7 +402,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effec
           if (at.kind === 'painted') return leafImage(laid.leaves[leaf++]);
           const gpu = effects.get(at.definition)!, inputs = at.reads.map(({ input, moment: when, map }) => {
             const mapped = when?.(moment) ?? moment;
-            if (when && input.kind !== 'painted' && !shotDrawingStarted(shot, laid.plane.sourceClock, mapped)) {
+            if (input.kind !== 'painted' && !Number.isFinite(mapped.frame)) {
               leaf += shotImageLeafReads(input).length;
               return { image: SHOT_IMAGE_NOTHING, map };
             }

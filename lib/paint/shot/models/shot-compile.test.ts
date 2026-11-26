@@ -1,3 +1,5 @@
+import { drawingSchedule } from '#lib/timing/drawings/models/drawing-schedule.ts';
+import { scheduledSource } from './shot-props.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Layer, PaintingDocument } from '#lib/paint/document/models/painting-document.ts';
@@ -9,7 +11,7 @@ import { paintKeyed } from '#lib/paint/animation/models/paint-keyed.ts';
 import type { PaintPlacementMove } from '#lib/paint/animation/models/paint-pins.ts';
 import { paintSimilarityApply, paintSimilarityAfter, paintSimilarityInverse, paintSimilarityOf } from '#lib/paint/animation/models/paint-similarity.ts';
 import type { PresentationValue } from '#lib/paint/animation/models/paint-value.ts';
-import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
+import { paintMoment, type PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import { compilePaintedShot } from './shot-compile.ts';
@@ -80,11 +82,11 @@ test('motion hangs each occurrence node from its nearest enclosing node, a paint
   assert.deepEqual(Object.fromEntries(nearest), { 'front/sky': 'front', 'front/heron': 'front/heron', 'front/body': 'front/heron', 'front/neck': 'front/neck' });
 });
 
-test("a plane's source clock holds what its source reads apart from what its clock holds, each answer checked, and a warm pairs them", () => {
+test("a source schedule holds what its source reads apart from what its clock holds, each answer checked, and a warm pairs them", () => {
   const { shot } = compilePaintedShot({
     camera, span: SPAN,
     planes: [{
-      id: 'front', depth: 1, clock: { hold: 4 }, sourceClock: { hold: 6 }, source: ({ at }) => layersOf(pond, at < 1 ? ['sky', 'heron'] : ['sky', 'egret'], { at }),
+      id: 'front', depth: 1, clock: { hold: 4 }, source: scheduledSource(({ at }: PaintMoment) => layersOf(pond, at < 1 ? ['sky', 'heron'] : ['sky', 'egret'], { at }), drawingSchedule({ fps: FPS / 6 })),
       occurrences: { heron: { clock: { hold: 3 } } },
     }],
   }, []);
@@ -95,7 +97,7 @@ test("a plane's source clock holds what its source reads apart from what its clo
   assert.throws(() => shotPlaneSharesAt(shot!, front, paintMoment(1)), /egret/);
   // Over its first half second it solves where either clock moves on: sixes and fours. The heron's threes run inside
   // the plane's fours, so they split nothing more.
-  const warmed = shotWarmCombinations(shotWarmFrames({ from: 0, to: 0.5 }, FPS), shotPlaneClocks(shot!.motion, front), FPS);
+  const warmed = shotWarmCombinations(shotWarmFrames({ from: 0, to: 0.5 }, FPS), shotPlaneClocks(shot!.motion, front));
   assert.deepEqual(warmed.map(({ at }) => Math.round(at * FPS)), [0, 4, 6, 8, 12]);
 });
 
@@ -136,10 +138,10 @@ const puddle = painting({
   },
 });
 
-test("a dissolving plane shows both its ends' occurrences, weighed by k on its source clock, and refuses two document sizes, two grounds and an end without its rigged group, each at its end", () => {
+test("a dissolving plane shows both its ends' occurrences, weighed by k on its source schedule, and refuses two document sizes, two grounds and an end without its rigged group, each at its end", () => {
   const sky = layersOf(pond, ['sky']), heron = layersOf(pond, ['heron']);
   const { shot } = compilePaintedShot({
-    camera, span: SPAN, planes: [{ id: 'front', depth: 1, sourceClock: { hold: 6 }, source: ({ at }) => dissolve(sky, dissolve(heron, sky, 0.5), Math.min(1, at)) }],
+    camera, span: SPAN, planes: [{ id: 'front', depth: 1, source: scheduledSource(({ at }: PaintMoment) => dissolve(sky, dissolve(heron, sky, 0.5), Math.min(1, at)), drawingSchedule({ fps: FPS / 6 })) }],
   }, []);
   const [front] = shot!.planes;
   assert.ok(front.kind === 'painted');

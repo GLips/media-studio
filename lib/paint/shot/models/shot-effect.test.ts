@@ -1,3 +1,4 @@
+import { scheduledSource } from './shot-props.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { PAINT_SIMILARITY_IDENTITY } from '#lib/paint/animation/models/paint-similarity.ts';
@@ -109,8 +110,8 @@ test('slices reads each input given, the optional ones left out when not given, 
 test('slices reuse cells through a hold and reroll at a cut even when both phases show index zero', () => {
   const drawings = drawingSchedule('held', [{ at: 2 / FPS, cadence: 'held' }]);
   const { shot, problems } = compiled(
-    shotPlace(slices({ source: hero }, { reroll: 'drawing' }), { id: 'reroll', depth: 1, drawings }),
-    shotPlace(slices({ source: hero }), { id: 'fixed', depth: 1, drawings }),
+    shotPlace(slices({ source: scheduledSource(hero, drawings) }, { reroll: 'drawing' }), { id: 'reroll', depth: 1 }),
+    shotPlace(slices({ source: scheduledSource(hero, drawings) }), { id: 'fixed', depth: 1 }),
   );
   assert.deepEqual(problems, []);
   const [reroll, fixed] = ['reroll', 'fixed'].map((id) => (shot!.planes.find((plane) => plane.id === id) as CompiledShotEffectPlane).image);
@@ -148,11 +149,11 @@ test("channel split reads its input once a channel, each through its channel's o
 test('a stage generator can be the sole plane and follows the declared drawing on a seek', () => {
   const drawings = drawingSchedule({ fps: FPS / 2 });
   const noise = defineShotEffect({ name: 'noise', inputs: [], defaults: { seed: 1 }, extent: 'stage', varies: () => ['drawing'] });
-  const { shot, problems } = compilePaintedShot({ span: SPAN, camera, planes: [shotPlace(noise({ seed: 7 }), { id: 'noise', depth: 2, drawings })] }, []);
+  const { shot, problems } = compilePaintedShot({ span: SPAN, camera, planes: [shotPlace(scheduledSource(noise({ seed: 7 }), drawings), { id: 'noise', depth: 2 })] }, []);
   assert.deepEqual(problems, []);
   const plane = shot!.planes[0];
   assert.ok(plane.kind === 'effect');
-  assert.deepEqual([-2, 0, 2].map((f) => shotDrawingStarted(shot!, plane.sourceClock, paintMoment(f / FPS))), [false, true, true]);
+  assert.deepEqual([-2, 0, 2].map((f) => shotDrawingStarted(shot!, plane.drawings, paintMoment(f / FPS))), [false, true, true]);
   assert.deepEqual([shot!.clearBack, plane.image.params.seed, plane.image.reads.length], [false, 7, 0]);
   assert.deepEqual(shotEffectExtent(plane.image, shot!.motion, new Set()), { kind: 'everywhere' });
   assert.deepEqual([6, 0, 7].map((f) => shotEffectTimeAt(plane.image, paintMoment(f / FPS)).token), [drawings.at(6 / FPS).token, drawings.at(0).token, drawings.at(6 / FPS).token]);
@@ -189,7 +190,7 @@ test('an earlier group read diagnoses a member whose position needs live DOM mea
 test('twenty earlier drawings compile as ordered reads sharing a single painted leaf', () => {
   const stack = defineShotEffect({ name: 'stack', inputs: ['source'], defaults: {}, reads: () =>
     Array.from({ length: 21 }, (_, drawingsEarlier) => ({ input: 'source', moment: { drawingsEarlier } })) });
-  const { shot, problems } = compiled(shotPlace(stack(hero), { id: 'stack', depth: 1, sourceClock: { hold: 1 } }));
+  const { shot, problems } = compiled(shotPlace(stack(scheduledSource(hero, drawingSchedule({ fps: FPS }))), { id: 'stack', depth: 1 }));
   assert.deepEqual(problems, []);
   const plane = shot!.planes.find(({ id }) => id === 'stack');
   assert.ok(plane?.kind === 'effect');
@@ -201,12 +202,12 @@ test('twenty earlier drawings compile as ordered reads sharing a single painted 
 test('a historical group resolves its own delayed members first, once per plane, frame and shutter time', () => {
   const old = defineShotEffect({ name: 'older', inputs: ['source'], defaults: {},
     reads: () => [{ input: 'source', moment: { drawingsEarlier: 1 } }, { input: 'source', moment: { drawingsEarlier: 1 } }] });
-  const held = { depth: 1, sourceClock: { hold: 3 } };
-  const { shot, problems } = compiled(
+  const held = { depth: 1 };
+  const { shot, problems } = compilePaintedShot({ camera, span: SPAN, planes: [{ ...back, source: scheduledSource(back.source, drawingSchedule({ fps: FPS / 3 })) },
     shotPlace(hero, { id: 'hand', depth: 1, imageOnly: true }),
     shotPlace(chase({ lead: shotPlaneImage('street'), follow: shotPlaneImage('hand') }), { ...held, id: 'group', imageOnly: true }),
     shotPlace(old(shotPlaneImage('group')), { ...held, id: 'mosh' }),
-  );
+  ] }, []);
   assert.deepEqual(problems, []);
   assert.deepEqual(shotImageReach(shot!.planes, 'mosh', paintMoment(0.75)), new Set(['mosh']));
   assert.deepEqual(shotImageReach(shot!.planes, 'group', paintMoment(0.5)), new Set(['group', 'street']));
@@ -224,4 +225,18 @@ test('a generated ground can turn a cropped effect into a stage effect on the sa
   const { shot, problems } = compiled(shotPlace(signal(hero), { id: 'ink', depth: 1 }), shotPlace(signal(hero, { ground: true }), { id: 'screen', depth: 1 }));
   assert.deepEqual(problems, []);
   assert.deepEqual(shot!.planes.flatMap((p) => p.kind === 'effect' ? [p.image.extent] : []), ['inputs', 'stage']);
+});
+
+test('each historical read follows the schedule of its own placed input', () => {
+  const oldPair = defineShotEffect({ name: 'oldPair', inputs: ['left', 'right'], defaults: {},
+    reads: () => (['left', 'right'] as const).map(input => ({ input, moment: { drawingsEarlier: 1 } }) as const) });
+  const { shot, problems } = compiled(
+    shotPlace(scheduledSource(hero, drawingSchedule({ fps: 4 })), { id: 'left', depth: 1 }),
+    shotPlace(scheduledSource(hero, drawingSchedule({ fps: 8 })), { id: 'right', depth: 1 }),
+    shotPlace(oldPair({ left: shotPlaneImage('left'), right: shotPlaneImage('right') }), { id: 'pair', depth: 1 }),
+  );
+  assert.deepEqual(problems, []);
+  assert.deepEqual(shotHistoryPlanner(shot!)(['pair'], paintMoment(0.5)), [
+    { id: 'left', at: paintMoment(0.25) }, { id: 'right', at: paintMoment(0.375) },
+  ]);
 });

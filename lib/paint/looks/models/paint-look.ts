@@ -80,7 +80,7 @@ export function printLook(look: Plan<LookStep> & { readonly knobs: Bindings }): 
   return [look.name, ...look.steps.map((step) => {
     if (step.kind === 'draw') {
       const changed = step.changed.length ? ` changed: ${step.changed.join(', ')}` : '';
-      return `${step.name}  draw  ${step.description} (local) ${JSON.stringify({ ...step.params, redraw: step.params.redraw ?? 'inherited' })}${changed}`;
+      return `${step.name}  draw  ${step.description} (local) ${JSON.stringify({ ...step.params, redraw: step.params.redraw ? 'scheduled' : 'inherited' })}${changed}`;
     }
     if (step.kind === 'place') return `${step.name}  place  ${'sheet' in step ? `sheet [${step.sheet.join(', ')}]` : step.image} (stage)`;
     return `${step.name}  process  ${step.definition.name} ${JSON.stringify(step.inputs)} (${step.space})`;

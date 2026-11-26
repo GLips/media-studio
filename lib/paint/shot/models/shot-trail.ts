@@ -1,5 +1,5 @@
 // shot-trail.ts: a trail, a built-in effect (shot-effect.ts): its input now, then `count` ghosts of it as it was, each
-// `every.drawings` drawings further back on the drawing clock its plane's `sourceClock` declares, and faded by `fade`
+// `every.drawings` drawings further back on its input schedule, and faded by `fade`
 // again. A ghost is read where and as it was drawn, laid through the plane as it lay then, and seen through the
 // camera as it stands now. Before the source's first drawing in the shot there's no ghost. Its studio half is
 // shot-trail-gpu.ts.
@@ -12,8 +12,8 @@ export type ShotTrailParams = { readonly count: number; readonly every: { readon
 
 /**
  * `source` and `count` ghosts of it, each `every.drawings` drawings before the one after it and `fade` times as
- * visible. Each ghost slides another `dx, dy` plane px from its original position. Place it on a drawing clock:
- * `shotPlace(trail(hand, { count: 3, every: { drawings: 1 }, fade: 0.6 }), { id, depth, sourceClock: { hold: 2 } })`.
+ * visible. Each ghost slides another `dx, dy` plane px from its original position. Schedule its input:
+ * `shotPlace(trail(scheduledSource(hand, drawings), { count: 3, every: { drawings: 1 }, fade: 0.6 }), { id, depth })`.
  */
 export const trail = defineShotEffect({
   name: 'trail',
