@@ -262,7 +262,7 @@ export { paintingInTime, type PaintingInTime, type PaintingInTimeOptions, type P
 export { shotFigure, shotFigureInTime, shotFigureSilhouette, shotPlace, type ShotFigure } from '#lib/paint/shot/models/shot-figure.ts';
 // Effects: a definition's models half and its studio half, made alike by the built-ins and a project's own.
 export {
-  defineShotEffect, SHOT_EFFECT_READS_MOST, type ShotEffect, type ShotEffectDefinition, type ShotEffectImage, type ShotEffectParams, type ShotEffectMoment, type ShotEffectProblem,
+  defineShotEffect, shotPlaneImage, type ShotPlaneImage, SHOT_EFFECT_READS_MOST, type ShotEffect, type ShotEffectDefinition, type ShotEffectImage, type ShotEffectParams, type ShotEffectMoment, type ShotEffectProblem,
   type ShotEffectRead, type ShotEffectVaries, type ShotImageSource,
 } from '#lib/paint/shot/models/shot-effect.ts';
 export { offsetCopies, type ShotOffsetCopiesParams } from '#lib/paint/shot/models/shot-offset-copies.ts';

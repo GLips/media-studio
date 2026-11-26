@@ -93,7 +93,11 @@ export function shotPaintedExtent(plane: CompiledShotPaintedPlane, motion: Compi
  * the shot's moments.
  */
 export function shotEffectExtent(image: CompiledShotEffectImage, motion: CompiledShotMotion, rigged: ReadonlySet<OccurrenceKey>): StampPlaneExtent {
-  const inputs = image.reads.map(({ input }) => (input.kind === 'painted' ? shotPaintedExtent(input, motion, rigged) : shotEffectExtent(input, motion, rigged)));
+  if (image.definition.extent === 'stage') return { kind: 'everywhere' };
+  const inputs = image.reads.map(({ input }): StampPlaneExtent => {
+    if (input.kind === 'plane-image') return { kind: 'everywhere' };
+    return input.kind === 'effect' ? shotEffectExtent(input, motion, rigged) : shotPaintedExtent(input, motion, rigged);
+  });
   const unchecked = inputs.find((extent) => extent.kind === 'unchecked');
   if (unchecked) return unchecked;
   if (inputs.some((extent) => extent.kind === 'everywhere')) return { kind: 'everywhere' };

@@ -31,7 +31,7 @@ import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { createLensCompositor, type LensItemsLayer, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import { shotCanvasLayings, shotPaintedSolvables, shotPlaneLeaves, type CompiledPaintedShot, type CompiledShotPaintedPlane, type CompiledShotPlane, type PaintedShotPaintOptions } from '../models/shot-compile.ts';
-import { shotEffectImageEmits, shotImageLeafReads, shotLeafReadMoment, shotMomentMapped } from '../models/shot-effect.ts';
+import { shotImageLeafReads, shotLeafReadMoment, shotMomentMapped } from '../models/shot-effect.ts';
 import { shotExposureMoments, shotSolvablesShown, shotWarmShown } from '../models/shot-shown.ts';
 import { shotPinnedPlanes, type ShotPinCentres } from '../models/shot-placement.ts';
 import { shotNodePoseAt, shotRigReader, shotVisibilityAt, type ShotRigRead } from '../models/shot-frame-plan.ts';
@@ -216,6 +216,8 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     // Each effect plane's reads of painted images, in its evaluation's order, and each of those by its index: a site's key.
     const effectPlanes = shot.planes.flatMap((plane) => (plane.kind === 'effect' ? [plane] : []));
     const effectReads = new Map(effectPlanes.map((plane) => [plane, shotImageLeafReads(plane.image)] as const));
+    const allReads = [...effectReads.values()].flat();
+    const readsByLeaf = new Map([...new Set(allReads.map(({ leaf }) => leaf))].map((plane) => [plane, allReads.filter(({ leaf }) => leaf === plane)]));
     const solvableOrder = new Map(shotPaintedSolvables(shot).map((plane, i) => [plane, i] as const));
 
     /**
@@ -223,7 +225,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
      * map it to, none before its source begins.
      */
     const solvedAts = (plane: CompiledShotPaintedPlane, frame: PaintMoment): PaintMoment[] =>
-      plane.placed ? [frame] : [...effectReads.values()].flatMap((reads) => reads.filter(({ leaf }) => leaf === plane).flatMap((read) => shotLeafReadMoment(shot, read, frame) ?? []));
+      plane.placed ? [frame] : (readsByLeaf.get(plane) ?? []).flatMap((read) => shotLeafReadMoment(shot, read, frame) ?? []);
 
     /**
      * Where `shown` (shotSolvablesShown's) are solved for frame moment `frame`, each once, laid as `pinned` lays a pinned
@@ -395,10 +397,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
         const rendered = renders[canvas.index], lookOf = (id: string) => lensFrame.planes.get(id) ?? STAMP_REST_LOOK;
         const own = steps.filter((step) => canvasOf.get(step.plane) === canvas.index), momentOf = (plane: CompiledShotPlane) => moments.get(plane.id);
         const shown = own.flatMap((step) => (step.kind === 'plane' ? [planeOf.get(step.plane)!] : []));
-        const effectEmits = (plane: CompiledShotPlane) => {
-          const laid = laidEffects.get(plane.id);
-          return !!laid && (shotEffectImageEmits(laid.plane.image) || laid.leaves.some((leaf) => !!leaf?.emits));
-        };
+        const effectEmits = (plane: CompiledShotPlane) => plane.kind === 'effect' && (images.get(plane.id)?.sharp()?.emission ?? null) !== null;
         const glowing = shown.some((plane) => momentOf(plane)?.emits || effectEmits(plane) || rendered.glowing.has(plane.id));
         const itemsMove = own.some((step) => step.kind === 'items' && step.items.some((item) => items.lookOf(step.plane, item).shutter));
         const moving = fast && (shown.some((plane) => momentOf(plane)?.travels || lookOf(plane.id).shutter) || itemsMove || rendered.moved.size > 0);
@@ -484,8 +483,10 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
           ...shotPaintedSolvables(shot).flatMap((plane) => {
             const shown = shotWarmShown(shot, plane, frames, mode, read);
             costs?.count('hidden solves skipped', shown.hidden);
-            // An effect's input warms at each moment its reads map the frame to.
-            return shown.frames.flatMap((frame) => solvedAts(plane, frame)).map((at) => ({ solve: { what: plane.id, at: at.at }, run: async () => (await planes.solve(plane, at, read)).release() }));
+            // Adjacent stacks share earlier drawings. Warm each distinct solve site once across the span.
+            const ats = shown.frames.flatMap((frame) => solvedAts(plane, frame));
+            const unique = new Map(ats.map((at) => [shotSiteKey({ plane, at }, solvableOrder), at]));
+            return [...unique.values()].map((at) => ({ solve: { what: plane.id, at: at.at }, run: async () => (await planes.solve(plane, at, read)).release() }));
           }),
           ...(textures?.warmSolves(frames) ?? []),
         ];

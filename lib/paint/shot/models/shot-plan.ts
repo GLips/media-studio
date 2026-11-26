@@ -35,5 +35,5 @@ export function shotDrawableOrder(
 /** `shot`'s drawables at moment `at` far to near (shotDrawableOrder): its planes at their depths then, its instanced planes' `items`. */
 export function shotDrawablesAt(shot: Pick<CompiledPaintedShot, 'planes' | 'written'>, items: ReadonlyMap<string, readonly PlaneInstance[]>, at: PaintMoment): ShotDrawable[] {
   const depthOf = new Map(shot.planes.map(({ id, depth }) => [id, depth]));
-  return shotDrawableOrder(shot.written, items, (plane) => presentationValueAt(depthOf.get(plane.id)!, at));
+  return shotDrawableOrder(shot.written.filter((plane) => plane.kind === 'instanced' || !plane.imageOnly), items, (plane) => presentationValueAt(depthOf.get(plane.id)!, at));
 }

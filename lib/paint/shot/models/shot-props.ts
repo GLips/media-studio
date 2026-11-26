@@ -97,6 +97,8 @@ type PlaneCommon = {
  */
 export type PlaneProps = PlaneCommon & ShotNodeFields & {
   readonly kind?: undefined;
+  /** Supply this plane's painted image to readers without drawing it separately in the lens. */
+  readonly imageOnly?: boolean;
   readonly lay?: PlaneLay;
   /**
    * Distance from the camera at rest, above 0, larger farther; 1 is the depth a pan is measured at. A value in time,

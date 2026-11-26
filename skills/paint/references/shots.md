@@ -69,14 +69,17 @@ coloured footage cleanly; and `slices({source, second?, third?, fourth?}, {cells
 share, seed, reroll?})`, cells of the frame a seeded share moved, each showing one input (two looks of one subject,
 neither placed, make a tiled mosh); and `trail(hero, {count, every: {drawings}, fade})`, whose ghosts step back whole
 drawings on its plane's `sourceClock` (required), each laid where it lay then, seen through the camera now. Cells lie in plane px, the same seed cutting the same; `reroll: 'drawing'` cuts afresh each drawing,
-the same through a hold. Define your own as the studio does, in two halves: `defineShotEffect({name, inputs, optional?, defaults,
-problems, reads, grow?, varies?})` (plain data: `reads(params, given)` names, of the inputs given, each read's input, a map in plane px, and a moment: `{drawingsEarlier: n}`, or a map shifting `at` and `frame` alike, as `momentEarlier` does), and
-`defineShotEffectGpu(effect, {wgsl, uniforms})`, whose WGSL defines `fn shotEffect(p: vec2f) -> ShotFilm` over
-`shotRead(i, p)`, `shotOver`, `shotFaded` and `shotParam(i)` (`studio api defineShotEffectGpu`). An effect that
-changes over time says so in `varies(params)`: `['drawing']` gives its WGSL `shotDrawing()`, the drawing its plane's
-`sourceClock` shows, so a hold reuses its picture: seed with it, never the frame; `['moment']` gives `shotSeconds()`,
-drawn anew each frame through holds. Each reads 0 unless asked. Pass your halves to
-`<PaintedShot effects={[...]}>`, a module constant. An effect plane can't be the back or take masks, and no mask reads it.
+the same through a hold.
+
+**Writing an effect.** `defineShotEffect({name, inputs, defaults})` reads supplied inputs once in order.
+`reads(params,given)` can request 24 mapped reads, including earlier drawings. `grow(params)` pads the crop.
+`extent: 'stage'` shades every pixel including the margin. A generator declares `inputs: [], extent: 'stage'`,
+takes only params, and can paint the back. For a group, pass e.g. `{wall:shotPlaneImage('wall'),actor:shotPlaneImage('actor')}`
+and use `shotOver`. These read paintings or effects through the camera, masked and sharp, at this exposure.
+`imageOnly:true` omits a nearer member from the lens. Pass sources directly for earlier moments.
+Declare `varies:()=>['drawing']` or `['moment']` for drawing-held or continuous noise.
+Register `defineShotEffectGpu(effect,{wgsl,uniforms?})` in PaintedShot's module-constant `effects`;
+`studio api defineShotEffectGpu` lists sampling, block, noise and color helpers.
 An effect whose light is its own (a tube, a spark) says `emits: true`: its film's emission blooms through the lens.
 
 **Light spill.** `illuminate(receiver, lightSpill(source, {reach, gain, added}))` lights any plane, the back or a
