@@ -349,7 +349,7 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
           if (!moment) laid.set(key, (moment = await planes.moment(each, at)));
           return moment;
         });
-        effectsLaid.set(plane.id, { plane, leaves, visibility: shotVisibilityAt(shot, plane.id, plane.id, exposure.at) });
+        effectsLaid.set(plane.id, { plane, leaves, at: exposure.at, visibility: shotVisibilityAt(shot, plane.id, plane.id, exposure.at) });
       });
       const items = shotExposureItems(shot.instanced, shot.motion, exposure, exposure.looks);
       const renders = await gpuEachInTurn(canvases, (canvas) => canvas.sourceLayers.render(t, stampLensSourceExposureOf(exposure.exposure ?? undefined)));

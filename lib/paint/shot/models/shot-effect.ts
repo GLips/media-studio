@@ -45,13 +45,21 @@ export type ShotEffectRead<I extends string = string> = {
   readonly moment?: ShotEffectMoment;
 };
 
+/**
+ * What of the moment an effect's output follows: `drawing`, the drawing its plane's `sourceClock` shows (a plane
+ * declaring none is refused), so it rerolls each drawing and a hold reuses its picture; `moment`, the seconds, for
+ * change running on through a hold. Its WGSL reads them as `shotDrawing()` and `shotSeconds()`; each followed keys its output.
+ */
+export type ShotEffectVaries = 'drawing' | 'moment';
+
 /** A problem an effect finds in its parameters: the parameter's field (`count`, `step.x`) and what's wrong. */
 export type ShotEffectProblem = { readonly field: string; readonly message: string };
 
 /**
- * An effect's models half. `name` keys its output, so it's unique among a shot's effects. `inputs` names what it
- * reads, `optional` those it may go without. `problems` checks its parameters, defaults filled in; `reads` lists at
- * most SHOT_EFFECT_READS_MOST reads of the inputs `given`; `grow`, px its output spreads past them (0 when left out).
+ * An effect's models half. `name` keys its output, unique among a shot's effects. `inputs` names what it reads,
+ * `optional` those it may skip. `problems` checks its parameters, defaults filled in; `reads` lists at
+ * most SHOT_EFFECT_READS_MOST reads of the inputs `given`; `grow`, px its output spreads past them (0 when left out);
+ * `varies`, what of the moment it follows.
  */
 export type ShotEffectDefinition<P extends ShotEffectParams = ShotEffectParams, I extends string = string, O extends I = I> = {
   readonly name: string;
@@ -62,6 +70,7 @@ export type ShotEffectDefinition<P extends ShotEffectParams = ShotEffectParams, 
   problems(params: P): readonly ShotEffectProblem[];
   reads(params: P, given: readonly I[]): readonly ShotEffectRead<I>[];
   grow?(params: P): number;
+  varies?(params: P): readonly ShotEffectVaries[];
 };
 
 /** The most reads one effect makes: each binds a texture in its pass, which a device holds 16 of; nest effects for more. */
@@ -113,9 +122,13 @@ export type CompiledShotImage = CompiledShotPaintedPlane | CompiledShotEffectIma
 /** A read compiled: the image read, its map (input plane px to output plane px), and its moment map (null: the frame's own). */
 export type CompiledShotEffectRead = { readonly input: CompiledShotImage; readonly map: PaintSimilarity; readonly moment: ((moment: PaintMoment) => PaintMoment) | null };
 
+/** What of moment an effect draws at it reads (ShotEffectVaries): its drawing, and its seconds; 0 for each it doesn't follow. */
+export type ShotEffectTime = { readonly drawing: number; readonly seconds: number };
+
 /**
  * An effect's image compiled: its definition; its parameters, defaults filled in; its reads, in order; how far its
- * output spreads past them, px; and `key`, what of its output's key its parameters fix (its reads' keys follow).
+ * output spreads past them, px; `key`, what of its output's key its parameters fix (its reads' keys follow); and
+ * `timeAt`, what it reads of the moment it's drawn at (null: nothing, the same every frame).
  */
 export type CompiledShotEffectImage = {
   readonly kind: 'effect';
@@ -124,6 +137,17 @@ export type CompiledShotEffectImage = {
   readonly reads: readonly CompiledShotEffectRead[];
   readonly grow: number;
   readonly key: string;
+  readonly timeAt: ((moment: PaintMoment) => ShotEffectTime) | null;
+};
+
+/** What `effect` drawn at `moment` reads of it, all 0 for an effect following none. */
+export const shotEffectTimeAt = (effect: CompiledShotEffectImage, moment: PaintMoment): ShotEffectTime => effect.timeAt?.(moment) ?? { drawing: 0, seconds: 0 };
+
+/** What of `effect`'s output's key it fixes drawn at `moment`: its own key, and what it reads of the moment, if anything. */
+export const shotEffectKeyAt = (effect: CompiledShotEffectImage, moment: PaintMoment) => {
+  if (!effect.timeAt) return effect.key;
+  const { drawing, seconds } = effect.timeAt(moment);
+  return JSON.stringify([effect.key, drawing, seconds]);
 };
 
 const finiteMap = ({ ma, mb, kx, ky }: PaintSimilarity) => [ma, mb, kx, ky].every(Number.isFinite) && (ma !== 0 || mb !== 0);
@@ -134,7 +158,8 @@ const finiteMap = ({ ma, mb, kx, ky }: PaintSimilarity) => [ma, mb, kx, ky].ever
  * SHOT_EFFECT_READS_MOST, a map that isn't a finite similarity, a growth below 0. Inputs are compiled by the caller.
  */
 export function shotEffectChecked(plane: string, field: string, image: ShotEffectImage): {
-  readonly params: ShotEffectParams; readonly reads: readonly ShotEffectRead[]; readonly grow: number; readonly problems: readonly PaintingProblem[];
+  readonly params: ShotEffectParams; readonly reads: readonly ShotEffectRead[]; readonly grow: number; readonly varies: readonly ShotEffectVaries[];
+  readonly problems: readonly PaintingProblem[];
 } {
   const { definition } = image, { name } = definition, problems: PaintingProblem[] = [];
   const error = (at: string, message: string) => problems.push(paintingProblem('error', plane, paintingField(field, at), `${name}: ${message}`));
@@ -145,9 +170,10 @@ export function shotEffectChecked(plane: string, field: string, image: ShotEffec
   for (const input of Object.keys(image.inputs)) if (!definition.inputs.includes(input)) error(`inputs.${input}`, `has no input ${input}; it reads ${definition.inputs.join(', ')}`);
   // SAFETY: every key given is one of the defaults' (checked above, refusing the rest), each its own check's to judge.
   const params = { ...definition.defaults, ...image.params } as ShotEffectParams;
-  if (problems.length) return { params, reads: [], grow: 0, problems };
+  if (problems.length) return { params, reads: [], grow: 0, varies: [], problems };
   for (const { field: at, message } of definition.problems(params)) error(`params.${at}`, message);
-  if (problems.length) return { params, reads: [], grow: 0, problems };
+  if (problems.length) return { params, reads: [], grow: 0, varies: [], problems };
+  const varies = definition.varies?.(params) ?? [];
   const given = definition.inputs.filter((input) => image.inputs[input] !== undefined), reads = definition.reads(params, given), grow = definition.grow?.(params) ?? 0;
   if (!reads.length) error('params', 'reads nothing: an effect reads one of its inputs at least');
   if (reads.length > SHOT_EFFECT_READS_MOST) error('params', `makes ${reads.length} reads, past the ${SHOT_EFFECT_READS_MOST} one effect makes: read the output of one in another`);
@@ -159,12 +185,13 @@ export function shotEffectChecked(plane: string, field: string, image: ShotEffec
     }
   });
   if (!(grow >= 0 && Number.isFinite(grow))) error('params', `grows its output by ${grow} px; it grows by 0 or more`);
-  return { params, reads, grow, problems };
+  return { params, reads, grow, varies, problems };
 }
 
-/** A compiled effect image from its checked parts and compiled reads: its parameters keyed with its definition's name. */
-export const compiledShotEffect = (definition: ShotEffectDefinition, params: ShotEffectParams, reads: readonly CompiledShotEffectRead[], grow: number): CompiledShotEffectImage =>
-  ({ kind: 'effect', definition, params, reads, grow, key: JSON.stringify([definition.name, params]) });
+/** A compiled effect image from its checked parts, compiled reads and time: its parameters keyed with its definition's name. */
+export const compiledShotEffect = (
+  definition: ShotEffectDefinition, params: ShotEffectParams, reads: readonly CompiledShotEffectRead[], grow: number, timeAt: CompiledShotEffectImage['timeAt'],
+): CompiledShotEffectImage => ({ kind: 'effect', definition, params, reads, grow, key: JSON.stringify([definition.name, params]), timeAt });
 
 /** A read's map, its identity when the read gives none. */
 export const shotEffectReadMap = (read: ShotEffectRead) => read.map ?? PAINT_SIMILARITY_IDENTITY;

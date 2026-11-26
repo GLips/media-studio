@@ -14,7 +14,7 @@ import type { StampKeptHeld } from './stamp-kept-memo.ts';
  */
 export const STAMP_PAINT_COST_NAMES = [
   'evaluations made', 'evaluation memo hits', 'selections compiled', 'selection hits', 'hidden solves skipped', 'poses made', 'pose hits', 'solves', 'entries run', 'decisions made', 'decisions reused',
-  'film hits', 'film disk hits', 'film misses', 'picture hits', 'picture misses', 'film readback hits', 'film readback misses', 'checkpoint hits', 'checkpoint misses',
+  'film hits', 'film disk hits', 'film misses', 'picture hits', 'picture misses', 'effect hits', 'effect misses', 'film readback hits', 'film readback misses', 'checkpoint hits', 'checkpoint misses',
   'evictions', 'readbacks', 'bytes uploaded',
 ] as const;
 

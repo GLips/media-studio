@@ -31,7 +31,7 @@ import type { LensCompositor, LensLayer } from '#lib/picture/lens/studio/lens-co
 import type { PaintRigPicture } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import { gpuEachInTurn } from '#lib/platform/gpu/models/gpu-in-turn.ts';
 import type { CompiledPaintedShot, CompiledShotEffectPlane, CompiledShotPaintedPlane, PaintedShotPaintOptions } from '../models/shot-compile.ts';
-import { shotEffectBox, type CompiledShotImage } from '../models/shot-effect.ts';
+import { shotEffectBox, shotEffectKeyAt, shotEffectTimeAt, type CompiledShotImage } from '../models/shot-effect.ts';
 import { shotPlanePosesAt, shotPlaneReseedAt, shotPlaneSharesAt, shotRigGroupPivot, type ShotFrameRigs, type ShotRigRead } from '../models/shot-frame-plan.ts';
 import { shotEffectImageKey, shotImageKeys, shotImageReadKey } from '../models/shot-images.ts';
 import type { ShotMaskAcross } from '../models/shot-masks.ts';
@@ -113,10 +113,13 @@ type ShotPaintedImage = ShotImage & { readonly moment: ShotPlaneMoment; readonly
 
 /**
  * An effect plane as one exposure lays it: the plane; each painted image its effect reads as that read lies
- * (shotImageLeafReads' order), null for a read before its source begins, which lays nothing; and the visibility its
- * output is laid at.
+ * (shotImageLeafReads' order), null for a read before its source begins, which lays nothing; the exposure's moment,
+ * which an effect varying in time reads (through its reads' moment maps when nested); and the visibility its output
+ * is laid at.
  */
-export type ShotEffectLaid = { readonly plane: CompiledShotEffectPlane; readonly leaves: readonly (ShotPlaneMoment | null)[]; readonly visibility: number };
+export type ShotEffectLaid = {
+  readonly plane: CompiledShotEffectPlane; readonly leaves: readonly (ShotPlaneMoment | null)[]; readonly at: PaintMoment; readonly visibility: number;
+};
 
 /**
  * What an image reads where an alphaOf mask names a drawable, whatever lays it: another plane's image, a source's
@@ -168,7 +171,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effec
   // A variant isn't here: a mask reads an instanced plane through its items.
   const paintedOf = new Map(shot.planes.flatMap((plane) => (plane.kind === 'painted' ? [[plane.id, plane] as const] : [])));
   const laysKept = new WeakMap<PaintingSelectionCompiled, StampSheetsLays>(), pictures = createStampPlanePictures(owner, { stage, arena });
-  const dissolve = createShotDissolve(owner, { stage, arena }), effectPass = createShotEffectPass(owner, { stage, arena });
+  const dissolve = createShotDissolve(owner, { stage, arena }), effectPass = createShotEffectPass(owner, { stage, arena, costs });
   /** `compiled`'s sheets' lays on the shot's stage, made once a compile. */
   async function laysOf(compiled: PaintingSelectionCompiled): Promise<StampSheetsLays> {
     const known = laysKept.get(compiled);
@@ -388,10 +391,10 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effec
       /** Effect plane `laid`'s image: its effect over its reads' images, each asked for first, its output laid at its visibility. */
       const effectImage = (laid: ShotEffectLaid): ShotImage => {
         let leaf = 0;
-        const evaluate = (at: CompiledShotImage, visibility: number): ShotImage => {
+        const evaluate = (at: CompiledShotImage, visibility: number, moment: PaintMoment): ShotImage => {
           if (at.kind === 'painted') return leafImage(laid.leaves[leaf++]);
-          const gpu = effects.get(at.definition)!, inputs = at.reads.map(({ input }) => evaluate(input, 1));
-          const key = shotEffectImageKey(at.key, visibility, inputs.map(({ key: inputKey }, i) => ({ key: inputKey, map: at.reads[i].map })));
+          const gpu = effects.get(at.definition)!, inputs = at.reads.map((read) => evaluate(read.input, 1, read.moment ? read.moment(moment) : moment));
+          const key = shotEffectImageKey(shotEffectKeyAt(at, moment), visibility, inputs.map(({ key: inputKey }, i) => ({ key: inputKey, map: at.reads[i].map })));
           let sharp: StampPlanePicture | null | undefined;
           const drawn = () => {
             if (sharp !== undefined) return sharp;
@@ -403,7 +406,9 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effec
             });
             const texels = box && stampStageTexelsWithin(stage, box.x0, box.y0, box.x1, box.y1);
             sharp = texels && visibility > 0
-              ? effectPass.draw(encoder, { gpu, params: at.params, reads: at.reads.map(({ map }, i) => ({ picture: pictured[i], map })), box: texels, visibility, key })
+              ? effectPass.draw(encoder, {
+                gpu, params: at.params, time: shotEffectTimeAt(at, moment), reads: at.reads.map(({ map }, i) => ({ picture: pictured[i], map })), box: texels, visibility, key,
+              })
               : null;
             return sharp;
           };
@@ -415,7 +420,7 @@ export function createShotPaintedPlanes(owner: StampPaintGpuOwner, { shot, effec
             },
           };
         };
-        return evaluate(laid.plane.image, laid.visibility);
+        return evaluate(laid.plane.image, laid.visibility, laid.at);
       };
       const image = (id: string): ShotImage => {
         const known = made.get(id);

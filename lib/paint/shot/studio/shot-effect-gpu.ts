@@ -1,10 +1,11 @@
 // shot-effect-gpu.ts: an effect's studio half, and the pass that draws every effect. A half is WGSL for
-// `fn shotEffect(p: vec2f) -> ShotFilm`, the film at plane px `p`, and its parameters packed as floats. The pass draws
+// `fn shotEffect(p: vec2f) -> ShotFilm`, the film at plane px `p`, its parameters packed as floats. The pass draws
 // it into a picture cached under its key while the frame's encoder reads it, as its inputs are.
 //
-// Its helpers: `shotRead(i, p)`, read i's film at `p` through its map, filtered, clear outside its picture;
-// `shotOver`, `shotFaded`, `shotFilmClear`, `shotParam(i)`, SHOT_READS. A film is the light it adds, what it takes
-// of what's behind per channel (1 − transmittance), and the light it emits.
+// Its helpers: `shotRead(i, p)`, read i's film at `p` through its map, filtered, clear past it;
+// `shotOver`, `shotFaded`, `shotFilmClear`, `shotParam(i)`, SHOT_READS; `shotDrawing()`, `shotSeconds()`
+// (ShotEffectVaries; 0 unless followed). A film is the light it adds, what it takes
+// of what's behind per channel (1 − transmittance), and light it emits.
 //
 // Negative space: an output carries no group motion (its plane's lens blur still runs) nor coverage for a mask.
 
@@ -19,7 +20,8 @@ import type { StampUniformArena } from '#lib/paint/painting/studio/stamp-uniform
 import { gpuUniformLayout, gpuUniformWriter } from '#lib/platform/gpu/models/gpu-uniform-layout.ts';
 import { paintingProblem, type PaintingProblem } from '#lib/paint/document/models/painting-problem.ts';
 import type { CompiledPaintedShot } from '../models/shot-compile.ts';
-import { SHOT_EFFECT_READS_MOST, type CompiledShotImage, type ShotEffect, type ShotEffectDefinition, type ShotEffectParams } from '../models/shot-effect.ts';
+import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint-costs.ts';
+import { SHOT_EFFECT_READS_MOST, type CompiledShotImage, type ShotEffect, type ShotEffectDefinition, type ShotEffectParams, type ShotEffectTime } from '../models/shot-effect.ts';
 
 /** The most floats an effect packs its parameters into: one uniform slot's. */
 export const SHOT_EFFECT_PARAMS_MOST = 64;
@@ -76,7 +78,7 @@ export function shotEffectTable(halves: readonly ShotEffectGpu[]): ShotEffectTab
   return table;
 }
 
-const SHOT_EFFECT_PASS = gpuUniformLayout('ShotEffectPass', [['origin', 'vec2u'], ['extent', 'vec2u'], ['visibility', 'f32'], ['reads', { vec4fArray: SHOT_EFFECT_READS_MOST }]]);
+const SHOT_EFFECT_PASS = gpuUniformLayout('ShotEffectPass', [['origin', 'vec2u'], ['extent', 'vec2u'], ['visibility', 'f32'], ['drawing', 'i32'], ['seconds', 'f32'], ['reads', { vec4fArray: SHOT_EFFECT_READS_MOST }]]);
 const SHOT_EFFECT_PARAMS = gpuUniformLayout('ShotEffectParams', [['values', { vec4fArray: SHOT_EFFECT_PARAMS_MOST / 4 }]]);
 
 /** The helpers an effect's WGSL reads its inputs and composites with, for reads whose pictures emit at `emission` (null: none). */
@@ -99,6 +101,8 @@ fn shotOver(top: ShotFilm, under: ShotFilm) -> ShotFilm {
   return ShotFilm(top.light + through * under.light, vec3f(1.0) - through * (vec3f(1.0) - under.taken), top.emission + through * under.emission);
 }
 fn shotParam(i: u32) -> f32 { return shotParams.values[i / 4u][i % 4u]; }
+fn shotDrawing() -> i32 { return shotPass.drawing; }
+fn shotSeconds() -> f32 { return shotPass.seconds; }
 ${texel}
 fn shotReadTexel(i: u32, t: vec2i) -> ShotFilm {
   switch i {
@@ -147,15 +151,20 @@ ${emission.map((_, i) => `  _ = textureDimensions(read${i});`).join('\n')}
 export type ShotEffectPassRead = { readonly picture: StampPlanePicture | null; readonly map: PaintSimilarity };
 
 /**
- * What one effect draws: its studio half, its parameters, its reads, the stage texels its output covers, the
- * visibility it's laid at, and the key it's kept under.
+ * What one effect draws: its studio half, its parameters, what it reads of its moment, its reads, the stage texels
+ * its output covers, the visibility it's laid at, and the key it's kept under.
  */
 export type ShotEffectPassDraw = {
-  readonly gpu: ShotEffectGpu; readonly params: ShotEffectParams; readonly reads: readonly ShotEffectPassRead[]; readonly box: StampPixelBox; readonly visibility: number; readonly key: string;
+  readonly gpu: ShotEffectGpu; readonly params: ShotEffectParams; readonly time: ShotEffectTime; readonly reads: readonly ShotEffectPassRead[]; readonly box: StampPixelBox; readonly visibility: number; readonly key: string;
 };
 
-/** The effect pass on `owner`'s device over `stage`, its outputs kept in the cache's `picture` store until `dispose`. */
-export function createShotEffectPass(owner: StampPaintGpuOwner, { stage, arena }: { readonly stage: StampStage; readonly arena: StampUniformArena }) {
+/**
+ * The effect pass on `owner`'s device over `stage`, its outputs kept in the cache's `picture` store until `dispose`,
+ * each found or drawn counted into `costs`.
+ */
+export function createShotEffectPass(
+  owner: StampPaintGpuOwner, { stage, arena, costs }: { readonly stage: StampStage; readonly arena: StampUniformArena; readonly costs?: StampPaintCostTally | undefined },
+) {
   const { device } = owner, { margin } = stage, outputs = owner.cache.store<StampPlanePictureLayers & { readonly box: StampPixelBox }>('picture');
   const pipelineOf = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
   return {
@@ -163,8 +172,9 @@ export function createShotEffectPass(owner: StampPaintGpuOwner, { stage, arena }
      * `draw`'s output, kept under its key, or drawn into `encoder` and kept: a film, emitting when a read does. Every
      * read's picture is used by `encoder` (the cache's own rule), so none is given up before it's read.
      */
-    draw(encoder: GPUCommandEncoder, { gpu, params, reads, box, visibility, key }: ShotEffectPassDraw): StampPlanePicture {
+    draw(encoder: GPUCommandEncoder, { gpu, params, time, reads, box, visibility, key }: ShotEffectPassDraw): StampPlanePicture {
       const found = outputs.find(key, encoder);
+      costs?.count(found ? 'effect hits' : 'effect misses');
       if (found) return { ...found.note, texture: found.textures[0] };
       const emits = reads.some(({ picture }) => !!picture && picture.emission !== null), layers = stampPlanePictureLayers('film', { emits, travels: false });
       const [texture] = outputs.make(key, encoder, [{
@@ -185,6 +195,8 @@ export function createShotEffectPass(owner: StampPaintGpuOwner, { stage, arena }
           put('origin', [box.x, box.y]);
           put('extent', [box.w, box.h]);
           put('visibility', visibility);
+          put('drawing', time.drawing);
+          put('seconds', time.seconds);
           put('reads', Array.from({ length: SHOT_EFFECT_READS_MOST * 4 }, (_, word) => {
             const at = back[Math.floor(word / 4)];
             return at ? [at.ma, at.mb, at.kx, at.ky][word % 4] : 0;
