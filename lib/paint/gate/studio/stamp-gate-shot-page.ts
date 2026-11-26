@@ -12,6 +12,7 @@ import { checkStampGateFigureCard, checkStampGateFigureImage, stampGateFigureCar
 import { checkStampGateOffsetCopies, stampGateOffsetCopiesPlacedShot, stampGateOffsetCopiesShot } from '../models/stamp-gate-offset-copies.ts';
 import { checkStampGateChannelSplit, STAMP_GATE_CHANNEL_SPLIT_FOOTAGES, stampGateChannelSplitShot } from '../models/stamp-gate-channel-split.ts';
 import { checkStampGateTwoLooks, stampGateTwoLooksShot } from '../models/stamp-gate-two-looks.ts';
+import { checkStampGateSlicesReroll, STAMP_GATE_SLICES_REROLL_FRAMES, STAMP_GATE_SLICES_REROLL_SHUFFLED, stampGateSlicesRerollShot } from '../models/stamp-gate-slices-reroll.ts';
 import { checkStampGateTrail, STAMP_GATE_TRAIL_FRAMES, STAMP_GATE_TRAIL_SHUFFLED, stampGateTrailShot } from '../models/stamp-gate-trail.ts';
 import { checkStampGateCardShutter, STAMP_GATE_CARD_SHUTTER, stampGateCardShutterShot } from '../models/stamp-gate-card-shutter.ts';
 import { STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_POSED_AT, stampGateCardsPosedShot, stampGateCardsShot } from '../models/stamp-gate-cards.ts';
@@ -443,6 +444,17 @@ async function checkTrail(): Promise<StampGateWashCheck[]> {
   });
 }
 
+/** shot/slices-reroll: the two looks tiled by slices rerolling each drawing, drawn in turn and shuffled, each on a renderer of its own, beside each look placed alone. */
+async function checkSlicesReroll(): Promise<StampGateWashCheck[]> {
+  const inTurn = await stampGateShotFrames(stampGateSlicesRerollShot(), STAMP_GATE_SLICES_REROLL_FRAMES);
+  const shuffled = await stampGateShotFrames(stampGateSlicesRerollShot(), STAMP_GATE_SLICES_REROLL_SHUFFLED);
+  return checkStampGateSlicesReroll({
+    inTurn: inTurn.frames.map(stampGateRgb), shuffled: shuffled.frames.map(stampGateRgb),
+    looks: [await frameAtRest(stampGateTwoLooksShot({ look: 'wash' })), await frameAtRest(stampGateTwoLooksShot({ look: 'gouache' }))],
+    drawn: inTurn.costs.map(({ counts }) => counts.get('effect misses') ?? 0),
+  });
+}
+
 /** Shot case `id`'s checks. */
 export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGateWashCheck[]> {
   if (id === 'shot/rain') return checkStampGateRain();
@@ -464,6 +476,7 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/channel-split') return checkChannelSplit();
   if (id === 'shot/two-looks') return checkTwoLooks();
   if (id === 'shot/trail') return checkTrail();
+  if (id === 'shot/slices-reroll') return checkSlicesReroll();
   return checkStampGateShotMasksCase(id);
 }
 

@@ -387,6 +387,15 @@
       "acceptedOver": "3b2ce5d2",
       "adapter": "apple metal-3"
     },
+    "shot/slices-reroll": {
+      "file": "shot/slices-reroll.png",
+      "output": "db87135b12eda6069e762ed8cdeb0314d7a840a1b25f7cf0db9bd6c27770e173",
+      "inputs": "4ecab55d1c34e25cac345e4508b7cea3cb61057eeafd5273fc8dd03f3b3a7d69",
+      "reason": "vid-227: new baseline, two looks tiled by slices rerolling each drawing",
+      "accepted": "2026-11-26",
+      "acceptedOver": "1d547e9b",
+      "adapter": "apple metal-3"
+    },
     "shot/trail": {
       "file": "shot/trail.png",
       "output": "1ce0c28cc088a61bd054dab6690cf95fd89fdbbf45e2faf1f549d46a8390aff7",

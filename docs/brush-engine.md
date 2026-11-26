@@ -860,7 +860,8 @@ figure placed alone, moved by its offset. Two looks of one figure, neither place
 show in each cell its look moved as `shotSlicesCell` says, some past the figure. A six-pose
 hand's `trail` under a pan (`shot/trail`, `stamp-gate-trail.ts`) draws the same frames in turn and shuffled, no ghost
 before its first drawing, each frame laying anew only drawings no earlier frame showed, its ghosts a step apart as the
-camera stands now. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
+camera stands now. Two looks tiled by `slices` with `reroll: 'drawing'` (`shot/slices-reroll`) cut afresh each
+drawing, identical through a hold and drawn once a drawing, the same in turn and shuffled. The masked shot (`stamp-gate-shot-masks.ts`) shows the paper heron part revealed by its document's reveal (`shot/masks`),
 and cuts a tint to the heron's wing, to all but it, and to a disc moving across as a picture plane and as a three
 plane under a panned camera. On a plane nearer than the heron, the tint stays cut to the wing, and to a picture disc,
 as a pan parts their depths (`shot/masks-across`), laid anew each frame they move apart; at the heron's depth, never.
