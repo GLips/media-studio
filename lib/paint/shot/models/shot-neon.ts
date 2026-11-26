@@ -10,6 +10,8 @@ import { paintHexToLinear } from '#lib/paint/materials/models/paint-spectrum.ts'
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { hashRandom } from '#lib/picture/motion/models/random.ts';
 import { defineShotEffect, type ShotEffectImage, type ShotEffectProblem, type ShotImageSource } from './shot-effect.ts';
+import { channelSplit } from './shot-channel-split.ts';
+import { slices } from './shot-slices.ts';
 import { shotPlace } from './shot-figure.ts';
 import { illuminate, lightSpill, type ShotLightSpill } from './shot-light-spill.ts';
 import type { PlaneProps } from './shot-props.ts';
@@ -74,6 +76,8 @@ export type NeonSpill = { readonly reach: number; readonly gain?: number; readon
 export type NeonOptions = {
   readonly palette: readonly string[];
   readonly tube?: Partial<Omit<NeonTubesParams, 'palette'>>;
+  /** Separate the RGB plates by fringe px either side, and tear sparse rows up to tear px on each drawing. */
+  readonly scan?: { readonly fringe: number; readonly tear: number; readonly seed: number };
   readonly spill?: NeonSpill;
   readonly flicker?: Partial<NeonFlicker> | false;
 };
@@ -95,10 +99,15 @@ export type Neon = {
  * Neon: `neon({ palette: ['#ff3fa4', '#3ff0ff'], spill: { reach: 48, gain: 6 }, flicker: { seed: 3 } })`, then
  * `sign.place(shotFigure(painting, card), { id: 'sign', depth: 1.2 })` and `sign.light(wall, 'sign')`.
  */
-export function neon({ palette, tube = {}, spill = { reach: 48 }, flicker = {} }: NeonOptions): Neon {
+export function neon({ palette, tube = {}, scan, spill = { reach: 48 }, flicker = {} }: NeonOptions): Neon {
   const params: Partial<NeonTubesParams> = { ...tube, palette: palette.flatMap(paintHexToLinear) };
   const flickering = flicker === false ? 1 : neonFlickerValue({ rate: 12, depth: 0.6, chance: 0.08, seed: 1, ...flicker });
-  const tubes = (figure: ShotImageSource) => neonTubes(figure, params);
+  const tubes = (figure: ShotImageSource) => {
+    const glass = neonTubes(figure, params);
+    if (!scan) return glass;
+    const plates = channelSplit(glass, { red: [scan.fringe, 0], blue: [-scan.fringe, 0] });
+    return slices({ source: plates }, { cells: 'rows', size: 5, shift: scan.tear, share: 0.065, reroll: 'drawing', seed: scan.seed });
+  };
   const spillOf = (source: string) => lightSpill(source, { gain: 6, added: 0.5, ...spill });
   return {
     tubes,
