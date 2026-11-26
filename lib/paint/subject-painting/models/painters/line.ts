@@ -14,7 +14,7 @@ import type { SubjectWithEvidence } from '#lib/paint/subject/models/subject-chec
 import { subjectKeyPageDirection } from '#lib/paint/subject/models/subject-evidence.ts';
 import { subjectAreaBox, type SubjectArea } from '#lib/paint/subject/models/subject-geometry.ts';
 import type { PartId } from '#lib/paint/subject/models/subject-id.ts';
-import type { PaintableRef, SubjectHex, SubjectLineKind } from '#lib/paint/subject/models/subject.ts';
+import type { PaintableRef, Subject, SubjectHex, SubjectLineKind } from '#lib/paint/subject/models/subject.ts';
 import { subjectAreaRegion } from '../subject-document-geometry.ts';
 import {
   defineSubjectPainter, type ResolvedSubjectIntent, type SubjectContribution, type SubjectEdgeIntent, type SubjectPainterContext,
@@ -246,10 +246,10 @@ function lineContribution(slot: LineSlot, marks: LineMarks, applications: readon
 
 // ---- the painter -----------------------------------------------------------------------------------------------------
 
-function paintLineSubject(context: LineContext, brushes: LineSubjectBrushes): SubjectContribution<LineSlot>[] {
-  const { subject, paintKey } = context;
-  if (subject.silhouette.kind === 'hidden') return [];
-  const box = subjectAreaBox(subject.silhouette.geometry);
+const edgeScenes = new WeakMap<Subject, LineScene>();
+
+function readLineScene(subject: Subject, silhouette: SubjectArea): LineScene {
+  const box = subjectAreaBox(silhouette);
   // Line width follows the subject's size, as a pen is chosen for the drawing's size, not the page's.
   const unit = Math.max(box.x1 - box.x0, box.y1 - box.y0);
   const basePx = Math.min(20, Math.max(1.5, unit * 0.009));
@@ -257,20 +257,28 @@ function paintLineSubject(context: LineContext, brushes: LineSubjectBrushes): Su
   const depth = subject.surface && lineDepthField(subject.surface);
   const light = subject.illumination && subjectKeyPageDirection(subject.illumination);
   const visible = [...subject.parts.values()].filter((part): part is VisibleSubjectPart => part.visibility.kind === 'visible');
-  const edges = lineEdgeReader(subject.silhouette.geometry.rings, step, depth);
+  const edges = lineEdgeReader(silhouette.rings, step, depth);
   const paths = [...subject.features.values()].flatMap((feature) => (feature.kind === 'path' && feature.visibility.kind === 'visible' ? [{ ...feature, visibility: feature.visibility }] : []));
   const stated = lineStatedEdges(paths.flatMap(({ visibility }) => visibility.geometry.runs.flatMap((run) => linePathOutline(run, step))), edges.tolerance);
-  const scene: LineScene = {
+  return {
     basePx, unit, step, depth, light, edges, stated, outlines: lineContourOutlines(visible, edges, step, depth),
   };
-  const minLength = basePx * 2.5;
+}
+
+function paintLineSubject(context: LineContext, brushes: LineSubjectBrushes, slots: readonly LineSlot[]): SubjectContribution<LineSlot>[] {
+  const { subject, paintKey } = context;
+  if (subject.silhouette.kind === 'hidden') return [];
+  const scene = edgeScenes.get(subject) ?? readLineScene(subject, subject.silhouette.geometry);
+  edgeScenes.set(subject, scene);
+  const { step } = scene;
+  const minLength = scene.basePx * 2.5;
   // How far a line handing its edge over inks on: past the gap the edge tolerance leaves between two lines' ends.
-  const handoverReach = 2 * edges.tolerance;
+  const handoverReach = 2 * scene.edges.tolerance;
   const sideWeight = (owner: PartId) => (subject.parts.get(owner)?.side === 'far' ? 0.8 : 1);
   const painted = (slot: LineSlot, marks: LineMarks, options: LineSubjectOptions, intent: ResolvedSubjectIntent) =>
     lineContribution(slot, marks, lineApplications(scene, brushes, options, intent, marks, paintKey), paintKey);
 
-  const fill = context.paintedParts('fill').flatMap((part) => {
+  const fill = () => context.paintedParts('fill').flatMap((part) => {
     const intent = context.intent(part.ref), options = context.optionsFor(part.ref);
     if (!isSpotBlack(intent, options)) return [];
     const spot = lineSpotBlack(context, part.visibility.geometry, part.id, part.ref);
@@ -278,7 +286,7 @@ function paintLineSubject(context: LineContext, brushes: LineSubjectBrushes): Su
     return painted('fill', { operation: 'fill', target: part.ref, runs: [], roleOf: () => 'contour', centre, spot }, options, intent);
   });
 
-  const contours = context.paintedParts('contour').flatMap((part) => {
+  const contour = () => context.paintedParts('contour').flatMap((part) => {
     const intent = context.intent(part.ref), options = context.optionsFor(part.ref);
     const share = sideWeight(part.id) * intentWeight(intent);
     const runs = intent.edge === 'lost' ? [] : scene.outlines.get(part.id)!.flatMap((outline) => lineRunsWhere(outline, true, minLength, (point) => {
@@ -291,7 +299,7 @@ function paintLineSubject(context: LineContext, brushes: LineSubjectBrushes): Su
     return painted('contour', { operation: 'contour', target: part.ref, runs, roleOf, centre }, options, intent);
   });
 
-  const features = context.paintedFeatures('features').flatMap((feature) => {
+  const features = () => context.paintedFeatures('features').flatMap((feature) => {
     if (feature.kind === 'landmark') return [];
     const intent = context.intent(feature.ref), options = context.optionsFor(feature.ref);
     const category: LineCategory = feature.kind === 'path' ? feature.line : 'region';
@@ -315,7 +323,8 @@ function paintLineSubject(context: LineContext, brushes: LineSubjectBrushes): Su
     return painted('features', { operation: 'line', target: feature.ref, runs, roleOf: () => category, centre, ...(spot && { spot }) }, options, intent);
   });
 
-  return [...fill, ...contours, ...features];
+  const passes = { fill, contour, features };
+  return slots.flatMap((slot) => passes[slot]());
 }
 
 const lineOptionProblems = ({ lineWeight, detail, lineColor, overshoot }: LineSubjectOptions): SubjectPainterReport[] => [
@@ -330,14 +339,14 @@ const lineOptionProblems = ({ lineWeight, detail, lineColor, overshoot }: LineSu
  * illumination for which side a line faces when the subject carries them, and draws a plain hierarchy of lines when not.
  * Interprets `localColor` only to decide what to spot black.
  */
-export const lineSubjectPainter = (brushes: LineSubjectBrushes) => defineSubjectPainter<LineSubjectOptions>()({
+export const lineSubjectPainter = (brushes: LineSubjectBrushes, slots: readonly [LineSlot, ...LineSlot[]] = ['fill', 'contour', 'features']) => defineSubjectPainter<LineSubjectOptions>()({
   id: 'line',
   evidence: [],
   defaults: LINE_SUBJECT_DEFAULTS,
-  slots: ['fill', 'contour', 'features'],
-  replaceAllAt: 'fill',
+  slots,
+  replaceAllAt: slots[0],
   controls: ['tool', 'lineWeight', 'detail', 'lineColor', 'spotBlacks', 'overshoot'],
   intents: ['localColor', 'emphasis', 'edge'],
   checkOptions: lineOptionProblems,
-  paint: (context) => paintLineSubject(context, brushes),
+  paint: (context) => paintLineSubject(context, brushes, slots),
 });

@@ -36,8 +36,7 @@ Moving, fading, revealing and posing finished paint costs a frame; a new propert
    ([techniques.md](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/techniques.md)).
 3. **Write the source** in the scene's folder. A first painting:
    [first-painting.md](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/first-painting.md); how water, `on`,
-   layers and sheets behave: [painting-model.md](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/painting-model.md). A
-   character with a model, painted whole by a style and then retuned, replaced or finished by hand:
+   layers and sheets behave: [painting-model.md](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/painting-model.md). For a character, start from the nearest look:
    [subject-painting.md](${CLAUDE_PLUGIN_ROOT}/skills/paint/references/subject-painting.md).
 4. **Check, solve, look.** `studio paint check <source>` until clean; `--solve` until every landing time is the one
    you planned; `studio paint still` and read the PNG at delivery size. Done when all three agree with the plan. When
