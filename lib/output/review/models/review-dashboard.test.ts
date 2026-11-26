@@ -60,7 +60,7 @@ test('a plan awaits you once handed over with a scene unsigned, or whenever a si
 test('the project page sorts a file onto its rung by path', () => {
   const rungs = ['out/wip/animatic.mp4', 'out/wip/vid91-animatic.mp4', 'out/video.mp4', 'out/video-hevc.mov', 'out/stills/og.png',
     'out/still-sheets/og.png', 'out/wip/r1-open.jpg', 'out/wip/frames-0-100.mp4', 'out/joined.mp4'].map((path) => projectPageRungOf({ path }));
-  assert.deepEqual(rungs, ['animatic', 'animatic', 'cut', 'cut', 'stills', 'stills', 'older', 'older', 'older']);
+  assert.deepEqual(rungs, ['animatic', 'animatic', 'cut', 'cut', 'stills', 'stills', 'everything-else', 'everything-else', 'everything-else']);
 });
 
 test('a note on generated footage counts on the footage, and a note on a render on the newest render, whichever is newer', () => {

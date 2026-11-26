@@ -79,6 +79,8 @@ type ProjectTileGridProps = {
   readonly now: number;
   /** The heading over it (`out/stills/`), which its tiles' names leave out. A made file is named by what it is. */
   readonly base: string;
+  /** Keep the rows' order, newest first, ungrouped, whatever the studio's arrangement says: the latest view's. */
+  readonly newestFirst?: boolean;
 };
 
 /**
@@ -86,8 +88,9 @@ type ProjectTileGridProps = {
  * grid per shape as the stills grid has, so every picture fills its cell; by name or not at all, justified rows of
  * pictures at their own shapes. Names show what tells a group's files apart.
  */
-export function ProjectTileGrid({ project, rows, now, base }: ProjectTileGridProps) {
-  const { group, sort } = useStudioCollectionArrangement();
+export function ProjectTileGrid({ project, rows, now, base, newestFirst = false }: ProjectTileGridProps) {
+  const arrangement = useStudioCollectionArrangement();
+  const { group, sort } = newestFirst ? { group: 'none', sort: 'newest' } as const : arrangement;
   const [, setLearned] = useState(0);
   const keys = rows.map((row) => projectThumbnailKeyOf(row.thumbnail));
   const names = rows.map(({ artifact: { path, made } }) => {

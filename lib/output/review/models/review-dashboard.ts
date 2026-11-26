@@ -188,9 +188,9 @@ export function reviewProjectWaitingCount(summary: ReviewProjectSummary, planSig
 /**
  * The project page's rungs, in its order after the plan, decisions and project notes: the animatic (`animatic` in
  * out/wip/), a cut (`out/video*`), what the project made toward them (ProjectMade), delivered stills (out/stills/,
- * out/still-sheets/). The rest is `older` (check frames, probes, test renders), which the page folds away.
+ * out/still-sheets/). The rest is `everything-else` (every other media file in the project), which the page folds away.
  */
-export type ProjectPageRung = 'animatic' | 'cut' | 'scene-renders' | 'footage' | 'music' | 'images' | 'stills' | 'older';
+export type ProjectPageRung = 'animatic' | 'cut' | 'scene-renders' | 'footage' | 'music' | 'images' | 'stills' | 'everything-else';
 
 /** The rungs for what a project made beyond its renders and stills, by what made each file. */
 const MADE_RUNGS = { 'scene-render': 'scene-renders', footage: 'footage', music: 'music', image: 'images', asset: 'images' } as const;
@@ -203,5 +203,5 @@ export function projectPageRungOf({ path, made }: Pick<ProjectArtifact, 'path' |
   if (folder === 'out/wip/' && video && name.includes('animatic')) return 'animatic';
   if (folder === 'out/' && video && name.startsWith('video')) return 'cut';
   if (folder === 'out/stills/' || folder === 'out/still-sheets/') return 'stills';
-  return 'older';
+  return 'everything-else';
 }

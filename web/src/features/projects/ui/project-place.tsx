@@ -8,6 +8,7 @@ import { useProjectPlanSignoffs, type ProjectPlanSignoffs } from '#web/features/
 import { Readout } from '#web/shared/ui/readout.tsx';
 import { colors } from '#web/shared/ui/theme.stylex.ts';
 import { ProjectAge } from './project-age.tsx';
+import { useProjectFileIsNew } from './project-file-new.tsx';
 import { projectFileAgeWordOf, projectMadeDetailOf, projectMadeTitleOf } from '#lib/output/review/models/project-made.ts';
 import { ProjectRow } from './project-row.tsx';
 import type { ProjectRowTarget } from './project-target-link.tsx';
@@ -124,6 +125,7 @@ function ProjectPlanPlace({ project, row, now }: { readonly project: string; rea
 type ProjectPlaceViewProps = { readonly view: PlaceView; readonly row: ReviewProjectRow };
 
 function ProjectPlaceView({ view: { target, thumbnail, title, detail, state, end }, row }: ProjectPlaceViewProps) {
-  const status = <ProjectRowStatus threads={row.threads} state={state} />;
+  const fresh = useProjectFileIsNew(row.on === 'file' ? row.artifact.path : '', row.on === 'file' ? row.artifact.modified : '');
+  const status = <ProjectRowStatus threads={row.threads} state={state} fresh={row.on === 'file' && fresh} />;
   return <ProjectRow target={target} thumbnail={<ProjectThumbnail {...thumbnail} />} title={title} detail={detail} status={status} end={end} />;
 }

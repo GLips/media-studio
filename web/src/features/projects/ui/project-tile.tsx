@@ -3,6 +3,7 @@ import type { ReviewProjectRow } from '#lib/output/review/models/review-dashboar
 import { StudioTileCaption } from '#web/shared/ui/studio-tile-caption.tsx';
 import { colors, radius, spacing } from '#web/shared/ui/theme.stylex.ts';
 import { ProjectAge } from './project-age.tsx';
+import { useProjectFileIsNew } from './project-file-new.tsx';
 import { projectFileAgeWordOf } from '#lib/output/review/models/project-made.ts';
 import { ProjectTargetLink } from './project-target-link.tsx';
 import { ProjectRowStatus } from './project-row-status.tsx';
@@ -46,10 +47,11 @@ type ProjectTileProps = {
  */
 export function ProjectTile({ project, row, now, name, siblings, cell, justified = false }: ProjectTileProps) {
   const { artifact } = row;
+  const fresh = useProjectFileIsNew(artifact.path, artifact.modified);
   return (
     <ProjectTargetLink target={{ project, on: 'file', path: artifact.path }} xstyle={[styles.tile, justified && styles.justified(cell.width)]}>
       <ProjectThumbnail project={project} thumbnail={row.thumbnail} tile={cell} />
-      <StudioTileCaption name={name} siblings={siblings} status={<ProjectRowStatus threads={row.threads} />}
+      <StudioTileCaption name={name} siblings={siblings} status={<ProjectRowStatus threads={row.threads} fresh={fresh} />}
         end={<ProjectAge now={now} at={artifact.modified} what={projectFileAgeWordOf(artifact)} />} />
     </ProjectTargetLink>
   );

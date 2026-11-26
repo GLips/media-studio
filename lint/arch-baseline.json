@@ -1116,9 +1116,6 @@
     "lib/output/render/engine/render-pipeline.ts": {
       "...frames.flatMap((f) => [1, 2, 3].flatMap((every) => [...runUpTo(f, every), f])),": 1
     },
-    "lib/output/review/engine/project-artifacts.ts": {
-      ".map((artifact) => {": 1
-    },
     "lib/output/review/engine/review-artifact.ts": {
       "...(snapshot?.timeline.sounds ?? []).map((s) => ({ ...s, source: 'video' as const })),": 1,
       "].filter((s) => holds(s.at)).map((s) => ({ ...s, at: s.at - shift, frame: reviewFrameAt(s.at - shift, fps) })).toSorted((a, b) => a.at - b.at);": 1

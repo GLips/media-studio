@@ -1,7 +1,7 @@
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useEffect, useEffectEvent } from 'react';
-import { projectPulseQueryOptions, useProjectPulse } from '#web/features/projects/index.ts';
+import { markProjectFileOpened, projectPulseQueryOptions, useProjectPulse } from '#web/features/projects/index.ts';
 import {
   ReviewScreen, reviewArtifactQueryOptions, reviewReplacementHashOf, reviewSearchValidator, reviewStillsFolderOpening, useReviewDraft,
 } from '#web/features/review/index.ts';
@@ -47,6 +47,8 @@ function ReviewArtifactPage({ project, path }: { readonly project: string; reado
   const { data: artifact } = useSuspenseQuery(options);
   const draft = useReviewDraft(`${project}/${path}`);
   const replacement = reviewReplacementHashOf(useProjectPulse(project), artifact, r);
+  // Opening a file counts as seeing it, so it stops reading as new on the latest view until it changes again.
+  useEffect(() => markProjectFileOpened(project, path), [project, path]);
   const loadReplacement = () => void queryClient.refetchQueries({ queryKey: options.queryKey });
   const loadReplacementNow = useEffectEvent(loadReplacement);
   useEffect(() => {
