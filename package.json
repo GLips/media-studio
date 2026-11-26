@@ -7,12 +7,12 @@
     "studio": "cli/studio.ts"
   },
   "scripts": {
-    "typecheck": "effect-tsgo tsc -p .",
+    "typecheck": "node lint/workspace-check.ts typecheck",
     "typecheck:gate": "effect-tsgo tsc -p tsconfig.gate.json",
     "typecheck:web": "effect-tsgo tsc -p web/tsconfig.json --noEmit",
-    "test": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'cli/**/*.test.ts' 'web/src/**/*.test.ts' 'work/projects/**/*.test.ts' lib/output/render/engine/workspace-retime-check.ts",
+    "test": "node lint/workspace-check.ts test-all",
     "test:gate": "node --test 'lib/**/*.test.ts' 'lint/**/*.test.ts' 'cli/**/*.test.ts' 'web/src/**/*.test.ts'",
-    "test:workspace": "node --test 'work/projects/**/*.test.ts' lib/output/render/engine/workspace-retime-check.ts",
+    "test:workspace": "node lint/workspace-check.ts test",
     "test:recorder": "swift test --package-path lib/footage/recording/engine/recorder --scratch-path lib/footage/recording/engine/recorder/.build/gate",
     "check:arch": "node lint/check-arch.ts",
     "lint": "node lint/lint.ts",

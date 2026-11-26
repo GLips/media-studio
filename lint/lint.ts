@@ -27,12 +27,12 @@ const root = join(dirname(script), '..');
 
 const { values } = parseArgs({
   options: {
-    scope: { type: 'string' }, snapshot: { type: 'string' }, list: { type: 'boolean' },
+    scope: { type: 'string' }, project: { type: 'string' }, snapshot: { type: 'string' }, list: { type: 'boolean' },
     'update-baseline': { type: 'boolean' }, 'admit-new': { type: 'boolean' },
   },
 });
 
-type LintRunOptions = { snapshot?: string; list?: boolean };
+type LintRunOptions = { project?: string; snapshot?: string; list?: boolean };
 
 const baselineRewrite = parseBaselineRewrite(values);
 const passed = values.scope === undefined
@@ -42,7 +42,7 @@ process.exitCode = passed ? 0 : 1;
 
 /** One scope linted and printed, its baseline rewritten as `rewrite` says. Returns whether it passed. */
 function reportOxlint(scope: GateScope, options: LintRunOptions, rewrite: BaselineRewrite | undefined): boolean {
-  const snapshot = gateRunSnapshot(options.snapshot, rewrite !== undefined);
+  const snapshot = gateRunSnapshot(options.snapshot, rewrite !== undefined, options.project);
   const { repository, linted, findings, advisories, fresh, stale, baselined } = judgeOxlint(root, scope, snapshot);
 
   const owner = scope === 'workspace' ? 'work/\'s' : 'the studio\'s';
@@ -52,7 +52,7 @@ function reportOxlint(scope: GateScope, options: LintRunOptions, rewrite: Baseli
   const leftOut = snapshot.kind === 'index' ? describeLeftOutOfIndex(repository, 'from disk') : [];
 
   if (rewrite) {
-    const { file, unexcused } = rewriteGateBaseline(root, scope, 'oxlint', findings, rewrite);
+    const { file, unexcused } = rewriteGateBaseline(root, repository, 'oxlint', findings, rewrite);
     console.log(`Wrote ${findings.length - unexcused.length} oxlint findings to ${file}, counted over ${where}: stage it${scope === 'workspace' ? ' in work/' : ''} for the hook to read it.`);
     if (leftOut.length) console.log(`\n${leftOut.join('\n')}`);
     const unexcusedLines = describeUnexcused(scope, unexcused);

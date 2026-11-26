@@ -11,8 +11,11 @@ import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isolatedGitEnv } from '#lib/platform/git/engine/fixture-git.ts';
 import { STUDIO_WORKSPACE_MOUNT } from './policy/studio-tree.ts';
-import { baselineTier, compareToBaseline, parseBaseline, rebaselineTier, type Baseline, type BaselineRewrite, type BaselineTier } from './baseline.ts';
-import { parseLiveSnapshot, readSnapshotText, type CandidateSnapshot, type LiveSnapshot, type MountedSnapshot } from './candidate-snapshot.ts';
+import { inFrozenProject } from '#lib/platform/project/models/frozen-project.ts';
+import {
+  baselineTier, compareToBaseline, mergeBaselines, parseBaseline, partitionBaseline, rebaselineTier, type Baseline, type BaselineRewrite, type BaselineTier,
+} from './baseline.ts';
+import { uncheckedProjectsOfSnapshot, parseLiveSnapshot, readSnapshotText, type CandidateSnapshot, type LiveSnapshot, type MountedSnapshot } from './candidate-snapshot.ts';
 import type { Finding } from './structural/check-context.ts';
 
 export type GateScope = 'public' | 'workspace';
@@ -62,20 +65,32 @@ function assertOwnWorkspaceRepository(root: string, { root: workspace, gitEnv }:
 /** The scope's baseline file, relative to the studio's root. */
 export const gateBaselineFile = (scope: GateScope) => (SCOPE_MOUNT[scope] ? `${SCOPE_MOUNT[scope]}/` : '') + SCOPE_BASELINE[scope];
 
-/** The baseline the repository's snapshot holds, or nothing excused where it holds none. */
-export const readGateBaseline = (repo: GateRepository): Baseline => parseBaseline(readSnapshotText(repo, SCOPE_BASELINE[repo.scope]));
+/** Whether a baseline's path, relative to the studio's root, lies in a project the repository's snapshot holds frozen. */
+function inFrozenProjectOf(repo: GateRepository): (path: string) => boolean {
+  const frozen = uncheckedProjectsOfSnapshot(repo);
+  const prefix = `${repo.mount}/`;
+  return (path) => repo.mount !== '' && path.startsWith(prefix) && inFrozenProject(path.slice(prefix.length), frozen);
+}
+
+/**
+ * The baseline the repository's snapshot holds, or nothing excused where it holds none. A frozen project's entries are
+ * set aside: no gate reads its files, and they excuse them again once it thaws.
+ */
+export const readGateBaseline = (repo: GateRepository): Baseline =>
+  partitionBaseline(parseBaseline(readSnapshotText(repo, SCOPE_BASELINE[repo.scope])), inFrozenProjectOf(repo)).judged;
 
 /**
  * The snapshot one run of a gate reads: `--snapshot`'s, else the working tree. `--update-baseline` reads only the
  * index, which the hook judges: a baseline excuses what a commit holds, and counting an untracked or unstaged source
  * would excuse what no commit holds, a new project's violations among them.
  */
-export function gateRunSnapshot(argument: string | undefined, updateBaseline: boolean): LiveSnapshot {
+export function gateRunSnapshot(argument: string | undefined, updateBaseline: boolean, project?: string): LiveSnapshot {
   const snapshot = parseLiveSnapshot(argument ?? (updateBaseline ? 'index' : 'worktree'));
   if (updateBaseline && snapshot.kind !== 'index') {
     throw new Error('--update-baseline counts the index, what the hook judges: stage what the baseline should excuse, and leave out --snapshot worktree');
   }
-  return snapshot;
+  if (project && snapshot.kind !== 'worktree') throw new Error('--project selects a project in the working tree');
+  return project ? { kind: 'worktree', project } : snapshot;
 }
 
 /**
@@ -96,11 +111,12 @@ export function parseBaselineRewrite(options: { scope?: string; 'update-baseline
  * the rewrite left unexcused, which still block.
  */
 export function rewriteGateBaseline(
-  root: string, scope: GateScope, tier: BaselineTier, findings: readonly Finding[], rewrite: BaselineRewrite,
+  root: string, repo: GateRepository, tier: BaselineTier, findings: readonly Finding[], rewrite: BaselineRewrite,
 ): { file: string; unexcused: Finding[] } {
-  const file = gateBaselineFile(scope), path = join(root, file);
-  const onDisk = parseBaseline(existsSync(path) ? readFileSync(path, 'utf8') : undefined);
-  const rewritten = rebaselineTier(onDisk, tier, findings, rewrite);
+  const file = gateBaselineFile(repo.scope), path = join(root, file);
+  const onDisk = partitionBaseline(parseBaseline(existsSync(path) ? readFileSync(path, 'utf8') : undefined), inFrozenProjectOf(repo));
+  // A frozen project's entries are kept as they are: no finding of its was counted.
+  const rewritten = mergeBaselines(rebaselineTier(onDisk.judged, tier, findings, rewrite), onDisk.setAside);
   writeFileSync(path, `${JSON.stringify(rewritten, null, 2)}\n`);
   return { file, unexcused: compareToBaseline(findings, baselineTier(rewritten, tier)).fresh };
 }

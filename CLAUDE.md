@@ -38,6 +38,7 @@
   freely; every other feature is a peer, imported only with a reasoned grant in its `visibility.json`. A new area is
   declared in `studio-tree.ts`. An import into a feature from outside it uses `#lib/*`, never a relative path;
   `node lint/rewrite-lib-imports.ts` rewrites any that slip in.
+- Active projects stay fully checked. Fix any an engine change breaks in the same change (use ast-grep or ts-morph for many call sites). Freeze finished projects with `studio freeze`.
 - A project, `work/projects/<p>/`, starts with `studio new` and passes every check from its first commit; a new project
   isn't baselined, so a violation in it blocks. It holds `project.ts` (its capability, held to what it binds, and the
   `shared` modules its scenes may import), `storyboard.ts` (its plan: the brief, a row per scene with its lines and

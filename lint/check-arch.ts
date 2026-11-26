@@ -31,12 +31,12 @@ const root = join(dirname(script), '..');
 
 const { values } = parseArgs({
   options: {
-    rev: { type: 'string' }, snapshot: { type: 'string' }, scope: { type: 'string' }, list: { type: 'boolean' },
+    rev: { type: 'string' }, snapshot: { type: 'string' }, scope: { type: 'string' }, project: { type: 'string' }, list: { type: 'boolean' },
     'update-baseline': { type: 'boolean' }, 'admit-new': { type: 'boolean' },
   },
 });
 
-type ArchRunOptions = { rev?: string; snapshot?: string; list?: boolean };
+type ArchRunOptions = { project?: string; rev?: string; snapshot?: string; list?: boolean };
 
 const baselineRewrite = parseBaselineRewrite(values);
 // A commit is the studio's, so --rev alone judges the studio.
@@ -49,7 +49,7 @@ process.exitCode = passed ? 0 : 1;
 function reportArchitecture(scope: GateScope, options: ArchRunOptions, rewrite: BaselineRewrite | undefined): boolean {
   if (scope === 'workspace' && options.rev) throw new Error('--rev names a commit of the studio\'s; the workspace scope reads work/\'s working tree or index');
   if (options.rev && (options.snapshot || rewrite)) throw new Error('--rev reads a commit, so it takes no --snapshot and rewrites no baseline');
-  const live = gateRunSnapshot(options.snapshot, rewrite !== undefined);
+  const live = gateRunSnapshot(options.snapshot, rewrite !== undefined, options.project);
   const target: CheckTarget = scope === 'workspace'
     ? { scope, snapshot: live }
     : { scope, snapshot: options.rev ? { kind: 'commit', rev: options.rev } : live };
@@ -70,7 +70,7 @@ function reportArchitecture(scope: GateScope, options: ArchRunOptions, rewrite: 
       console.log(`Ratcheted ${DOC_BUDGETS_MANIFEST}, stage it:\n${ratchet.moves.map((move) => `  ${move}`).join('\n')}\n`);
     }
     const counted = ratchet ? findings.filter((finding) => !isRatchetedDocBudgetFinding(finding)) : findings;
-    const { file, unexcused } = rewriteGateBaseline(root, scope, 'structural', counted, rewrite);
+    const { file, unexcused } = rewriteGateBaseline(root, repository, 'structural', counted, rewrite);
     console.log(`Wrote ${counted.length - unexcused.length} findings to ${file}, counted over ${where}: stage it${scope === 'workspace' ? ' in work/' : ''} for the hook to read it.`);
     if (leftOut.length) console.log(`\n${leftOut.join('\n')}`);
     const unexcusedLines = describeUnexcused(scope, unexcused);

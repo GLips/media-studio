@@ -1,6 +1,6 @@
 import { createServerFn } from '@tanstack/react-start';
 import { Schema } from 'effect';
-import { summarizeReviewProjects } from '#web/infrastructure/studio-engine.server.ts';
+import { frozenReviewOrigin, summarizeReviewProjects } from '#web/infrastructure/studio-engine.server.ts';
 
 /** Every project under work/projects/ with its files, decisions, plan and what waits on whom, the most recently active first. */
 export const fetchReviewProjectSummaries = createServerFn({ method: 'GET' }).handler(() => summarizeReviewProjects());
@@ -9,3 +9,8 @@ export const fetchReviewProjectSummaries = createServerFn({ method: 'GET' }).han
 export const fetchReviewProjectSummary = createServerFn({ method: 'GET' })
   .validator(Schema.toStandardSchemaV1(Schema.Struct({ project: Schema.String })))
   .handler(({ data }) => summarizeReviewProjects([data.project])[0]);
+
+/** Only the live plan executes a project's engine code. Artifact playback reads the delivered media. */
+export const fetchFrozenReviewOrigin = createServerFn({ method: 'GET' })
+  .validator(Schema.toStandardSchemaV1(Schema.Struct({ project: Schema.String })))
+  .handler(({ data }) => frozenReviewOrigin(data.project));
