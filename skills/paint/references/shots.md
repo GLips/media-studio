@@ -62,39 +62,40 @@ wrapper between a canvas and its shot may transform, filter or make a stacking c
 mode, `isolation`, a z-index on a positioned element, a clip path or mask): it's refused. A clear back needs HTML
 behind it inside the shot at every frame; over a dark page, put an opaque background behind it inside the shot.
 
-**Effects.** An effect draws one image from others: a figure, a selection on a transparent ground, a painting in time,
-or another effect. Its inputs need no plane of their own; each is laid through the effect's plane's lay. Built in:
-`offsetCopies`; `channelSplit(hero, {red: [x, y], green, blue})`, each channel moved whole, so its fringe tints
-coloured footage cleanly; and `slices({source, second?, third?, fourth?}, {cells: 'rows' | 'rects', size, shift,
-share, seed, reroll?})`, cells of the frame a seeded share moved, each showing one input (two looks of one subject,
-neither placed, make a tiled mosh); and `trail(hero, {count, every: {drawings}, fade})`, whose ghosts step back whole
-drawings on its plane's `sourceClock` (required), each laid where it lay then, seen through the camera now. Cells lie in plane px, the same seed cutting the same; `reroll: 'drawing'` cuts afresh each drawing,
-the same through a hold. Define your own as the studio does, in two halves: `defineShotEffect({name, inputs, optional?, defaults,
-problems, reads, grow?, varies?})` (plain data: `reads(params, given)` names, of the inputs given, each read's input, a map in plane px, and a moment: `{drawingsEarlier: n}`, or a map shifting `at` and `frame` alike, as `momentEarlier` does), and
-`defineShotEffectGpu(effect, {wgsl, uniforms})`, whose WGSL defines `fn shotEffect(p: vec2f) -> ShotFilm` over
-`shotRead(i, p)`, `shotOver`, `shotFaded` and `shotParam(i)` (`studio api defineShotEffectGpu`). An effect that
-changes over time says so in `varies(params)`: `['drawing']` gives its WGSL `shotDrawing()`, the drawing its plane's
-`sourceClock` shows, so a hold reuses its picture: seed with it, never the frame; `['moment']` gives `shotSeconds()`,
-drawn anew each frame through holds. Each reads 0 unless asked. Pass your halves to
-`<PaintedShot effects={[...]}>`, a module constant. An effect plane can't be the back or take masks, and no mask reads it.
-An effect whose light is its own (a tube, a spark) says `emits: true`: its film's emission blooms through the lens.
+**Effects.** Place an effect with `shotPlace(image, plane)`. Its inputs share that lay and need no planes.
+Use a figure, transparent selection, painting in time or another effect. Effect planes can't be the back or use masks.
 
-**Light spill.** `illuminate(receiver, lightSpill(source, {reach, gain, added}))` lights any plane, the back or a
-three plane included, with the emission of painted or effect plane `source` as it lies (its visibility and flicker
-included), blurred by `reach` px. The receiver's paint reflects it (light × (1 + gain·E)), and `added`·E lies where it
-covers; it never emits, so the wall doesn't bloom. The source's own glow is `lens.bloom`, tuned apart. A source that
-doesn't emit throws nothing, however bright: glow it, or make its light an effect that emits. Where it lands: where
-the frame shows the source at rest (`map` moves it), then fixed to the receiver as the camera moves, following the
-source's lay. On a three receiver it's laid in frame px as if the plane were flat at its depth, a screen-space approximation.
+- `offsetCopies(hero, {count, dx, dy, fade})` stacks today's pose. `channelSplit(hero, {red: [5,0], blue: [-5,0]})`
+  separates colour, coverage and emission together.
+- `trail(channelSplit(hand), {count: 10, every: {drawings: 1}, dx: -12, dy: -16, fade: 0.98})` stacks earlier drawings,
+  each at its earlier lay plus its offset. Place behind the live figure with `sourceClock: {hold: 2}`.
+  Space the poses with `every.drawings`. Use `visibility: trailStrobe(2, 0.75)` for two pulses/sec at 75% duty.
+- `slices({source, second?, third?, fourth?}, {cells: 'rows' | 'rects', size, shift, share, seed})` cuts between inputs
+  in plane px. Add `reroll: 'drawing'` and a source clock to reseed each drawing.
+- `mosh({source: hero, second: gouache, ground: paper}, {block: 80, throwPx: 120, age: 2, recolor: 0.65})` displaces
+  older macroblocks, stretches pixels across tear bands and swaps block palettes. Supply a held source clock.
+  Omit `second` to sample hero's past. Give `ground` a frame-covering card selected on transparent ground for dark checker and pixel noise,
+  or omit it for clear gaps.
 
-**Neon.** `const sign = neon({palette: ['#ff3fa4', '#3ff0ff'], spill: {reach: 48}, flicker: {seed: 3}})`, then
-`sign.place(shotFigure(painting, card), {id: 'sign', depth: 1.2})` and `sign.light(wall, 'sign')`. `tubes` (the
-`neonTubes` effect) bends each line into a tube of the palette colour nearest its paint's hue, white at its core;
-`flicker` is a value in time for its visibility. The tubes stand alone, on any plane or in another effect. Feed it
-lines alone, an ink per gas, on a transparent ground.
+**Your own effect.** Pair `defineShotEffect({name, inputs, optional?, defaults, problems, reads, grow?, varies?})` with
+`defineShotEffectGpu(effect, {wgsl, uniforms})`. Each read names a supplied input, optional map in plane px and optional
+moment (`{drawingsEarlier: n}` or a function shifting both `at` and `frame`). WGSL defines
+`fn shotEffect(p: vec2f) -> ShotFilm` with `shotRead(i,p)`, `shotOver`, `shotFaded` and `shotParam(i)`.
+Declare `varies: () => ['drawing']` for `shotDrawing()` on the held source clock, or `['moment']` for continuous
+`shotSeconds()`. Undeclared clocks read zero. Register the GPU half in a constant array passed to `<PaintedShot effects={...}>`.
 
-**Worked examples**: `$(studio home)/work/projects/2026-11-clapper-effects/`, a hand's `trail`, a two-look
-`slices` mosh, `neon` lighting a wall.
+**Light spill.** Declare `emits: true` for an effect generating emission. The lens blooms it.
+`illuminate(wall, lightSpill('sign', {reach, gain, added, map}))` reflects the sign's emission, including flicker, onto
+painted or three planes. Reach is blur in px. Gain multiplies the receiver's paint response, added colours its covered
+surface. The optional map offsets the light at rest. It then follows the source lay and receiver depth.
+Three receivers approximate a flat plane at their depth.
+
+**Neon.** `neon({palette: ['#ff3fa4','#3ff0ff'], spill: {reach: 48}, flicker: {seed: 3}})` turns transparent ink
+lines into tubes, matching each hue to a gas. Use `sign.place(lines, plane)` and `sign.light(wall, 'sign')`, or
+compose `sign.tubes(lines)` and `sign.flicker` individually. Add `scan: {fringe: 5, tear: 100, seed: 3}` and a held
+source clock for split edges and horizontal tears. The displaced tubes also light the wall.
+
+**Worked examples** live in `$(studio home)/work/projects/2026-11-clapper-effects/`.
 
 ## The camera
 
