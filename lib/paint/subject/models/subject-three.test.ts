@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Bone, DoubleSide, Float32BufferAttribute, Group, InstancedMesh, Mesh, MeshBasicMaterial, Path, PlaneGeometry, Shape, ShapeGeometry, Skeleton, SkinnedMesh, SphereGeometry, Vector2, type Object3D } from 'three';
-import { shotCameraLookingAt } from '#lib/picture/shot-camera/models/shot-camera.ts';
+import { Bone, DoubleSide, Float32BufferAttribute, Group, InstancedMesh, Mesh, MeshBasicMaterial, Path, PlaneGeometry, Shape, ShapeGeometry, Skeleton, SkinnedMesh, SphereGeometry, Vector2, Vector3, type Object3D } from 'three';
+import { shotCameraLookingAt, shotCameraProject } from '#lib/picture/shot-camera/models/shot-camera.ts';
+import { subjectFramePoint } from './subject-frame.ts';
 import { defineSubjectFromThree, projectSubjectFromThree, type SubjectThreeAnnotation } from './subject-three.ts';
 import { findSubjectFeature, findSubjectPart } from './subject.ts';
 
@@ -120,4 +121,31 @@ test('a mesh the GPU deforms is refused by name and annotation; a morph weighted
     "deformed-mesh face/leaves: the mesh annotated region 'leaf' can't be projected",
     "deformed-mesh face/cheek: the mesh annotated part 'arm' can't be projected",
   ]);
+});
+
+test('a plane frame maps its face exactly through the perspective, and is unavailable seen from behind', () => {
+  const near = shotCameraLookingAt({ frame: { width: 100, height: 100 }, fov: 60, near: 0.1, far: 100 }, { position: [4, 1, 5], target: [0, 0, 0] });
+  const frameOn = (turn: number) => {
+    const card = new Mesh(new PlaneGeometry(4, 4), new MeshBasicMaterial({ side: DoubleSide }));
+    card.rotation.y = turn;
+    const root = new Group();
+    root.add(card);
+    const subject = defineSubjectFromThree({
+      id: 'card', root, camera: near, cellPx: 1, annotations: new Map([[card, { kind: 'part', part: 'card' } as const]]),
+      materials: [{ id: 'paper', localColor: '#f0ead8' }], parts: [{ id: 'card', material: 'paper' }],
+      frames: [{ id: 'front', owner: 'card', from: { kind: 'plane', object: card, origin: [0, 0, 0], xAxis: [2, 0, 0], yAxis: [0, -2, 0] } }],
+    });
+    return { card, status: subject.frames.values().next().value!.status };
+  };
+  const { card, status } = frameOn(0.3);
+  assert.equal(status.kind, 'available');
+  if (status.kind !== 'available') return;
+  assert.ok(status.basis.perspective && Math.hypot(status.basis.perspective.x, status.basis.perspective.y) > 0.05, 'a near, turned face is foreshortened');
+  card.updateMatrixWorld();
+  for (const [x, y] of [[-1, -1], [1, -1], [1, 1], [-1, 1], [0.3, -0.7]]) {
+    const seen = shotCameraProject(near, card.localToWorld(new Vector3(2 * x, -2 * y, 0)))!;
+    const mapped = subjectFramePoint(status.basis, { x, y });
+    assert.ok(Math.hypot(mapped.x - seen.x, mapped.y - seen.y) < 1e-6, `local (${x}, ${y}) lands where the camera sees it`);
+  }
+  assert.deepEqual(frameOn(Math.PI).status, { kind: 'unavailable', reason: 'its face is turned away from the camera' });
 });

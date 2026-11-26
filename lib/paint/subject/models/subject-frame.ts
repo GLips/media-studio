@@ -1,14 +1,17 @@
-// subject-frame.ts: local frames on a subject, such as a face's, so a hand-painted replacement draws in the face's
-// own coordinates and turns and foreshortens with it. A frame comes from landmarks or from the projection. When it
-// can't be had (a landmark hidden, the face turned edge-on) it is unavailable with its reason: never guessed from a
-// bounding box.
+// subject-frame.ts: local frames on a subject, such as a face's or a flat side's, so paint drawn in the part's own
+// coordinates turns and foreshortens with it: a hand-painted replacement, or marks a painter anchors to the part. A
+// frame comes from landmarks or from the projection. When it can't be had (a landmark hidden, the face turned
+// edge-on) it is unavailable with its reason: never guessed from a bounding box.
 
 import type { StampPoint } from '#lib/paint/painting/models/stamp-region.ts';
 import type { SubjectLandmarkPoint, Visibility } from './subject-geometry.ts';
 import type { FrameId, PartId } from './subject-id.ts';
 
-/** An affine frame on the page: local (x, y) lands at `origin + x·xAxis + y·yAxis`, in document px. */
-export type SubjectFrameBasis = { readonly origin: StampPoint; readonly xAxis: StampPoint; readonly yAxis: StampPoint };
+/**
+ * A frame on the page: local (x, y) lands at `(origin + x·xAxis + y·yAxis) / (1 + x·p.x + y·p.y)`, in document px,
+ * with `p` its `perspective` (none: affine). A plane seen through a camera maps exactly so, its far side drawn in.
+ */
+export type SubjectFrameBasis = { readonly origin: StampPoint; readonly xAxis: StampPoint; readonly yAxis: StampPoint; readonly perspective?: StampPoint };
 
 /** A frame's basis in this view, or why it has none (its landmarks hidden, seen edge-on or from behind). */
 export type SubjectFrameStatus =
@@ -30,11 +33,19 @@ export type SubjectFrameSource<F extends string = string> =
 /** Below this share of its axes' lengths, a frame's axes are taken as parallel: it has no second direction. */
 const DEGENERATE_SHARE = 1e-3;
 
+/** Where one local step along x and along y moves the page at the frame's origin: its axes, less the perspective's pull. */
+function subjectFrameTangents({ origin, xAxis, yAxis, perspective = { x: 0, y: 0 } }: SubjectFrameBasis): { readonly x: StampPoint; readonly y: StampPoint } {
+  return {
+    x: { x: xAxis.x - origin.x * perspective.x, y: xAxis.y - origin.y * perspective.x },
+    y: { x: yAxis.x - origin.x * perspective.y, y: yAxis.y - origin.y * perspective.y },
+  };
+}
+
 /** The frame's basis when its axes span the page, else why not. */
 export function subjectFrameStatusOf(basis: SubjectFrameBasis): SubjectFrameStatus {
-  const { xAxis: u, yAxis: v } = basis;
+  const { x: u, y: v } = subjectFrameTangents(basis), p = basis.perspective ?? { x: 0, y: 0 };
   const lengths = Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y);
-  if (![basis.origin.x, basis.origin.y, u.x, u.y, v.x, v.y].every(Number.isFinite)) return { kind: 'unavailable', reason: 'its basis isn\'t finite' };
+  if (![basis.origin.x, basis.origin.y, basis.xAxis.x, basis.xAxis.y, basis.yAxis.x, basis.yAxis.y, p.x, p.y].every(Number.isFinite)) return { kind: 'unavailable', reason: 'its basis isn\'t finite' };
   if (lengths === 0 || Math.abs(u.x * v.y - u.y * v.x) < DEGENERATE_SHARE * lengths) return { kind: 'unavailable', reason: 'its axes are parallel or zero: the view is edge-on to it' };
   return { kind: 'available', basis };
 }
@@ -62,9 +73,14 @@ export function subjectFrameFromLandmarks<F extends string>(
   return subjectFrameStatusOf({ origin, xAxis, yAxis });
 }
 
-/** Local (x, y) on the page. */
-export const subjectFramePoint = ({ origin, xAxis, yAxis }: SubjectFrameBasis, local: StampPoint): StampPoint =>
-  ({ x: origin.x + local.x * xAxis.x + local.y * yAxis.x, y: origin.y + local.x * xAxis.y + local.y * yAxis.y });
+/** Local (x, y) on the page. Past the frame's horizon (where `1 + x·p.x + y·p.y` reaches 0) it has no place. */
+export function subjectFramePoint({ origin, xAxis, yAxis, perspective }: SubjectFrameBasis, local: StampPoint): StampPoint {
+  const w = perspective ? 1 + local.x * perspective.x + local.y * perspective.y : 1;
+  return { x: (origin.x + local.x * xAxis.x + local.y * yAxis.x) / w, y: (origin.y + local.x * xAxis.y + local.y * yAxis.y) / w };
+}
 
-/** One local unit in px, as an area's square root: what a stroke's width or a dot's radius scales by. */
-export const subjectFrameUnitPx = ({ xAxis, yAxis }: SubjectFrameBasis) => Math.sqrt(Math.abs(xAxis.x * yAxis.y - xAxis.y * yAxis.x));
+/** One local unit in px at the frame's origin, as an area's square root: what a stroke's width or a dot's radius scales by. */
+export function subjectFrameUnitPx(basis: SubjectFrameBasis): number {
+  const { x: u, y: v } = subjectFrameTangents(basis);
+  return Math.sqrt(Math.abs(u.x * v.y - u.y * v.x));
+}

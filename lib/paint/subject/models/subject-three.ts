@@ -17,6 +17,7 @@ import {
   nearestSubjectRaster, rasterSubjectUnit, subjectMaskSignedDistance, subjectRasterDepthAt, subjectSampleAt, subjectVisibleRuns,
   traceSubjectMaskEdgeRuns, traceSubjectMaskRings, type SubjectRasterTriangles,
 } from './subject-three-raster.ts';
+import { subjectFrameStatusOf, type SubjectFrameBasis, type SubjectFrameStatus } from './subject-frame.ts';
 import {
   checkSubject, type SubjectFeatureInput, type SubjectFrameInput, type SubjectInput, type SubjectLineKind, type SubjectMaterialInput, type Subject,
 } from './subject.ts';
@@ -54,6 +55,19 @@ export type SubjectThreeFeatureInput<F extends string, P extends string, M exten
   | (FeatureCommon<F, P, G, T> & { readonly kind: 'path'; readonly line: SubjectLineKind })
   | (FeatureCommon<F, P, G, T> & { readonly kind: 'landmark'; readonly at: { readonly object: Object3D; readonly point: ShotPoint } });
 
+/**
+ * A face's local square [-1,1]² spans its two half-axes in object space. Set x rightward and y downward as
+ * seen from the front. The frame disappears edge-on, from behind or when its square reaches the camera plane.
+ */
+export type SubjectThreePlaneFrame = {
+  readonly kind: 'plane'; readonly object: Object3D; readonly origin: ShotPoint; readonly xAxis: ShotPoint; readonly yAxis: ShotPoint;
+};
+
+/** A frame as declared: from landmarks or projected (subject.ts's), or on a face of an object. */
+export type SubjectThreeFrameInput<R extends string, P extends string, F extends string> =
+  | SubjectFrameInput<R, P, F>
+  | { readonly id: R; readonly owner: P; readonly from: SubjectThreePlaneFrame };
+
 /** A light by its world direction toward it (three's y up), turned into the evidence's view convention. */
 export type SubjectThreeLight = { readonly direction: ShotPoint; readonly intensity?: number };
 
@@ -73,7 +87,7 @@ export type SubjectThreeInput<P extends string, M extends string, F extends stri
   readonly materials: readonly SubjectMaterialInput<M>[];
   readonly parts: readonly SubjectThreePartInput<P, NoInfer<M>, F, T>[];
   readonly features?: readonly SubjectThreeFeatureInput<F, NoInfer<P>, NoInfer<M>, G, T>[];
-  readonly frames?: readonly SubjectFrameInput<R, NoInfer<P>, NoInfer<F>>[];
+  readonly frames?: readonly SubjectThreeFrameInput<R, NoInfer<P>, NoInfer<F>>[];
   readonly illumination?: { readonly key: SubjectThreeLight; readonly fills?: readonly SubjectThreeLight[]; readonly terminator?: number };
   /**
    * How far, in scene units, a decal, line or landmark may sit behind the surface in front of it and still show:
@@ -350,7 +364,10 @@ export function projectSubjectFromThree<
 
   const subjectInput: SubjectInput<P, M, F, R, G, T> = {
     id: input.id, materials: input.materials, parts, features: [...features, ...outlines], silhouette, surface,
-    ...(input.frames && { frames: input.frames }), ...(input.illumination && { illumination: illuminationOf(input.illumination, camera) }),
+    ...(input.frames && { frames: input.frames.map((frame): SubjectFrameInput<R, P, F> => (frame.from.kind === 'plane'
+      ? { id: frame.id, owner: frame.owner, from: { kind: 'projected', status: projectedPlaneFrame(frame.from, input.root, camera) } }
+      : { ...frame, from: frame.from })) }),
+    ...(input.illumination && { illumination: illuminationOf(input.illumination, camera) }),
   };
   return checkSubject(subjectInput);
 }
@@ -400,6 +417,32 @@ function partCentreDepth(units: readonly DrawUnit[], part: string) {
     for (const k of corners) { near = Math.min(near, depth[k]); far = Math.max(far, depth[k]); }
   }
   return near <= far ? (near + far) / 2 : undefined;
+}
+
+/**
+ * A plane frame as the camera sees it. Each page coordinate times depth is linear in local (x, y), and so is depth:
+ * three projected points give both, and their ratio is the frame's exact homography.
+ */
+function projectedPlaneFrame(plane: SubjectThreePlaneFrame, root: Object3D, camera: ShotCamera): SubjectFrameStatus {
+  const world = worldMatrixOf(plane.object, root);
+  if (!world) return { kind: 'unavailable', reason: 'its object isn\'t in the subject\'s scene' };
+  const origin = new Vector3(...plane.origin).applyMatrix4(world);
+  const direction = (axis: ShotPoint) => new Vector3(...plane.origin).add(new Vector3(...axis)).applyMatrix4(world).sub(origin);
+  const xAxis = direction(plane.xAxis), yAxis = direction(plane.yAxis);
+  const normal = new Vector3().crossVectors(yAxis, xAxis).normalize();
+  const towardCamera = new Vector3(...camera.position).sub(origin).normalize();
+  const facing = normal.dot(towardCamera);
+  if (Math.abs(facing) < 1e-8) return { kind: 'unavailable', reason: 'the view is edge-on to its plane' };
+  if (facing < 0) return { kind: 'unavailable', reason: 'its face is turned away from the camera' };
+  const at = (x: number, y: number) => shotCameraProject(camera, origin.clone().addScaledVector(xAxis, x).addScaledVector(yAxis, y));
+  // The camera sees the whole square only if each corner is in front of it; depth is linear, so then every point is.
+  if ([[-1, -1], [1, -1], [1, 1], [-1, 1]].some(([x, y]) => !at(x, y))) return { kind: 'unavailable', reason: 'it reaches behind the camera' };
+  const [o, u, v] = [at(0, 0)!, at(1, 0)!, at(0, 1)!];
+  const axis = (p: typeof o) => ({ x: (p.x * p.depth - o.x * o.depth) / o.depth, y: (p.y * p.depth - o.y * o.depth) / o.depth });
+  const basis: SubjectFrameBasis = {
+    origin: { x: o.x, y: o.y }, xAxis: axis(u), yAxis: axis(v), perspective: { x: (u.depth - o.depth) / o.depth, y: (v.depth - o.depth) / o.depth },
+  };
+  return subjectFrameStatusOf(basis);
 }
 
 /** `object`'s world matrix, composed down from `root`; undefined when it isn't beneath it. */

@@ -164,6 +164,7 @@ export { SUBJECT_HIDDEN, subjectAreaBox, subjectAreaVisibility, subjectPathVisib
 export type { FeatureGroupId, FeatureId, FrameId, MaterialId, PartId, SubjectId, SubjectIds, SubjectTag } from '#lib/paint/subject/models/subject-id.ts';
 export { formatSubjectDiagnostics, SubjectDiagnosticError, type SubjectDiagnostic, type SubjectDiagnosticCode, type SubjectResult } from '#lib/paint/subject/models/subject-diagnostic.ts';
 export { subjectKeyPageDirection, type IlluminationEvidence, type SubjectEvidenceKind, type SubjectLight, type SubjectSampleLayout, type SubjectVector3, type SurfaceEvidence } from '#lib/paint/subject/models/subject-evidence.ts';
+export { subjectFrameMarks } from '#lib/paint/subject-painting/models/subject-frame-marks.ts';
 export { subjectFramePoint, subjectFrameUnitPx, type SubjectFrame, type SubjectFrameBasis, type SubjectFrameSource, type SubjectFrameStatus } from '#lib/paint/subject/models/subject-frame.ts';
 export {
   checkSubject, defineSubject, findSubjectFeature, findSubjectFrame, findSubjectMaterial, findSubjectPart, subjectMaterialOf, subjectRefKey,
@@ -173,7 +174,7 @@ export { selectFeature, selectFeatureGroup, selectMaterial, selectPart, selectTa
 export { requireSubjectEvidence, type SubjectWithEvidence } from '#lib/paint/subject/models/subject-check.ts';
 export {
   defineSubjectFromThree, projectSubjectFromThree, type SubjectThreeAnnotation, type SubjectThreeCenterline, type SubjectThreeDiagnostic,
-  type SubjectThreeFeatureInput, type SubjectThreeInput, type SubjectThreeLight, type SubjectThreePartInput, type SubjectThreeSurfaceAnnotation,
+  type SubjectThreeFrameInput, type SubjectThreePlaneFrame, type SubjectThreeFeatureInput, type SubjectThreeInput, type SubjectThreeLight, type SubjectThreePartInput, type SubjectThreeSurfaceAnnotation,
 } from '#lib/paint/subject/models/subject-three.ts';
 export {
   definePrimitiveSubject, primitiveSubjectEdgeId,
