@@ -104,8 +104,8 @@ export function planTimingOf({ storyboard, resolved, music }: ProjectStoryboard)
   const lines = scenes.flatMap((s) => s.lines);
   const audio: PlanAudio[] = timeline.audio.flatMap((placed): PlanAudio[] => {
     if (placed.kind === 'voice') {
-      const sound = planSoundOf(voice[placed.line]?.src ?? null);
-      return sound ? [{ ...sound, atSeconds: placed.atSeconds, duration: placed.duration, what: placed.line }] : [];
+      return planSoundsOf(voice[placed.line]?.src ?? null, placed.duration)
+        .map(({ src, from, at, duration }) => ({ src, from, duration, atSeconds: placed.atSeconds + at, what: placed.line }));
     }
     const grid = storyboard.grid, track = grid && 'music' in grid ? music[grid.music] : undefined;
     return track ? [{ src: track.src, from: 0, atSeconds: placed.atSeconds, duration: track.duration, what: 'music' }] : [];
@@ -116,10 +116,14 @@ export function planTimingOf({ storyboard, resolved, music }: ProjectStoryboard)
   return { fps, end: timeline.end, scenes, lines, flags, audio };
 }
 
-/** Where a line's sound plays from: its clip, or the stretch of a library recording it's spoken in. */
-const planSoundOf = (src: VoiceLine['src']): { src: string; from: number } | null => {
-  if (src === null) return null;
-  return typeof src === 'string' ? { src, from: 0 } : { src: libraryMediaUrl(src.item, src.file), from: src.start };
+/**
+ * Where a line's sound plays from, `at` seconds into the line for `duration`: its clip, or each piece of a library
+ * recording it plays, butted together, as the plan's preview needs no cross-fades.
+ */
+const planSoundsOf = (src: VoiceLine['src'], duration: number): { src: string; from: number; at: number; duration: number }[] => {
+  if (src === null) return [];
+  if (typeof src === 'string') return [{ src, from: 0, at: 0, duration }];
+  return src.pieces.map((p) => ({ src: libraryMediaUrl(src.item, src.file), from: p.start, at: p.at, duration: p.duration }));
 };
 
 /** A voiced scene's lead before its first line, the gaps between its lines, and its tail after the last. */

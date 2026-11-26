@@ -15,6 +15,7 @@ import type { RenderSnapshot } from '#lib/output/render/models/render-snapshot-m
 import { probeFrameSize } from '#lib/platform/ffmpeg/engine/ffmpeg.ts';
 import { reviewTimingOf, type ReviewTiming } from '../models/review-moment.ts';
 import { reviewStoryboardOf, reviewTimingMarksOf } from '../models/review-storyboard.ts';
+import { reviewSpeechCleanupOf } from '../models/review-speech.ts';
 import { REVIEW_FALLBACK_FPS, reviewFrameAt, type ReviewMediaKind, type ReviewStillCellsFile } from '../models/review-context.ts';
 import type { ReviewPlacementTarget } from '../models/review-placement.ts';
 import type { ReviewArtifact } from '../models/review-artifact.ts';
@@ -101,6 +102,7 @@ export function readReviewArtifact(project: string, path: string, render?: strin
     });
     artifact.storyboard = reviewStoryboardOf({ fps, frames: snapshot.frames, scenes: timeline.scenes, lines: timeline.cues, clock: snapshot.clock });
     artifact.marks = reviewTimingMarksOf({ frames: snapshot.frames, clock: snapshot.clock });
+    if (timeline.cues.some((c) => c.speech)) artifact.speechCleanup = reviewSpeechCleanupOf(timeline.cues, fps, snapshot.frames);
     if (snapshot.glitchCheck === 'pieces') artifact.missing.push(`a check for blank or torn frames where the remote pieces join: each piece was checked alone`);
     if (snapshot.motion) artifact.motion = snapshot.motion;
     else artifact.missing.push(`motion for what's under a point: only a delivered render (studio render) measures it`);

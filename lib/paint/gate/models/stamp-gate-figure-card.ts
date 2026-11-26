@@ -182,9 +182,9 @@ export const STAMP_GATE_FIGURE_IMAGE: PaintingSourceModule<typeof figureCardProp
   }),
 };
 
-/** The footage: FOOTAGE over the whole stage, one picture uploaded once. */
-export function stampGateFootagePlane(stage: StampStage): PlaneProps {
-  const linear = [1, 3, 5].map((at) => srgbToLinear(Number.parseInt(FOOTAGE.slice(at, at + 2), 16) / 255));
+/** The footage: `colour` (FOOTAGE's dark green by default) over the whole stage, one picture uploaded once. */
+export function stampGateFootagePlane(stage: StampStage, colour = FOOTAGE): PlaneProps {
+  const linear = [1, 3, 5].map((at) => srgbToLinear(Number.parseInt(colour.slice(at, at + 2), 16) / 255));
   const picture: StampPictureRgba = { box: { x: 0, y: 0, w: stage.width, h: stage.height }, rgba: new Float32Array(stage.width * stage.height * 4).map((_, i) => (i % 4 === 3 ? 1 : linear[i % 4])) };
   return { id: 'footage', depth: 2, source: { kind: 'picture', extent: { kind: 'everywhere' }, pictureAt: () => Promise.resolve(picture) } };
 }

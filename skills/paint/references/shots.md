@@ -61,12 +61,14 @@ mode, `isolation`, a z-index on a positioned element, a clip path or mask): it's
 behind it inside the shot at every frame; over a dark page, put an opaque background behind it inside the shot.
 
 **Effects.** An effect draws one image from others: a figure, a selection on a transparent ground, a painting in time,
-or another effect. Its inputs need no plane of their own; each is laid through the effect's plane's lay. `offsetCopies`
-and `trail` are built in. A trail's ghosts step back whole drawings on the clock its plane's `sourceClock` declares
-(a plane with none is refused: declare one, never guess it), each laid where it lay then and seen through the camera
-now; none reads before the source's first drawing. Define your own as the studio does, in two halves:
-`defineShotEffect({name, inputs, defaults, problems, reads, grow?})` (plain data: each read names an input, a map in
-plane px, and a moment: `{drawingsEarlier: n}`, or a map shifting `at` and `frame` alike, as `momentEarlier` does), and
+or another effect. Its inputs need no plane of their own; each is laid through the effect's plane's lay. Built in:
+`offsetCopies`; `channelSplit(hero, {red: [x, y], green, blue})`, each channel moved whole, so its fringe tints
+coloured footage cleanly; and `slices({source, second?, third?, fourth?}, {cells: 'rows' | 'rects', size, shift,
+share, seed})`, cells of the frame a seeded share moved, each showing one input: give two looks of one subject, neither
+placed, for a tiled mosh; and `trail(hero, {count, every: {drawings}, fade})`, whose ghosts step back whole drawings on
+the clock its plane's `sourceClock` declares (a plane with none is refused: declare one, never guess it), each laid where
+it lay then and seen through the camera now, none before the source's first drawing. Cells lie in plane px, not on the subject, and the same seed always cuts the same. Define your own as the studio does, in two halves: `defineShotEffect({name, inputs, optional?, defaults,
+problems, reads, grow?})` (plain data: `reads(params, given)` names, of the inputs given, each read's input, a map in plane px, and a moment: `{drawingsEarlier: n}`, or a map shifting `at` and `frame` alike, as `momentEarlier` does), and
 `defineShotEffectGpu(effect, {wgsl, uniforms})`, whose WGSL defines `fn shotEffect(p: vec2f) -> ShotFilm` over
 `shotRead(i, p)`, `shotOver`, `shotFaded` and `shotParam(i)` (`studio api defineShotEffectGpu`). Pass your halves to
 `<PaintedShot effects={[...]}>`, a module constant. An effect plane can't be the back or take masks, and no mask reads it.

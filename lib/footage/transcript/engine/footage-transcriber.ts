@@ -31,6 +31,8 @@ export class TranscriptionFailed extends Schema.TaggedError<TranscriptionFailed>
 }
 
 export class FootageTranscriber extends Context.Service<FootageTranscriber, {
+  /** Names how it hears (WhisperCpp's `transcriber`), so a transcript kept from another is known to be stale. */
+  readonly transcriber: string;
   /**
    * What's said in `path` (any file ffmpeg reads with an audio track) and when, from the user cache when it was heard
    * before. Whisper's spelling is not a script's; see alignSpokenWords.
@@ -102,7 +104,7 @@ export const whisperFootageTranscriberLayer = Layer.effect(FootageTranscriber, E
     });
   }, Effect.scoped);
 
-  return FootageTranscriber.of({ transcribe });
+  return FootageTranscriber.of({ transcriber: whisper.transcriber, transcribe });
 }));
 
 /** The transcriber over local whisper.cpp, its cache in the user cache; needs only Node's services beneath it. */

@@ -133,12 +133,16 @@ const bringIntoLibrary = Effect.fn('LibraryAdd.bring')(function* (source: Librar
 export const finishLibraryItem = Effect.fn('LibraryAdd.finish')(function* (id: string, { proxies }: { proxies: boolean }) {
   const store = yield* LibraryStore, media = yield* LibraryMediaFolder, transcriber = yield* FootageTranscriber;
   const item = yield* store.readItem(id);
-  // Written after each track, so a finish stopped part way keeps what it heard.
-  let heard: LibraryTranscriptFile = Option.getOrElse(yield* store.readTranscript(id), () => ({ tracks: {} }));
+  // Written after each track, so a finish stopped part way keeps what it heard. One heard another way, or written by
+  // older code, is heard again whole.
+  const kept = yield* store.readTranscript(id).pipe(Effect.catchTag('LibraryFileUnreadable', (error) =>
+    Effect.logWarning(`${error.message}: hearing it again`).pipe(Effect.as(Option.none<LibraryTranscriptFile>()))));
+  let heard: LibraryTranscriptFile = Option.filter(kept, (file) => file.heardBy === transcriber.transcriber)
+    .pipe(Option.getOrElse(() => ({ heardBy: transcriber.transcriber, tracks: {} })));
   for (const track of librarySpokenTracks(item)) {
     if (heard.tracks[track]) continue;
     yield* Effect.log(`transcribing ${track}`);
-    heard = { tracks: { ...heard.tracks, [track]: yield* transcriber.transcribe(yield* media.itemFile(id, item.tracks[track].file)) } };
+    heard = { heardBy: heard.heardBy, tracks: { ...heard.tracks, [track]: yield* transcriber.transcribe(yield* media.itemFile(id, item.tracks[track].file)) } };
     yield* store.writeTranscript(id, heard);
   }
   // Levelling is a quick pass over the sound alone, so it's made even when proxies are left for later.

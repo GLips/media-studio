@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { audioPauses, fileTimeInPiece, planTranscriptPieces, quietAudioLevel, wordsTimedAtPauses, type TranscriptPiece } from './transcript-audio.ts';
+import { audioPauses, fileTimeInPiece, planTranscriptPieces, quietAudioLevel, unheardSpeech, wordsTimedAtPauses, type TranscriptPiece } from './transcript-audio.ts';
 
 /** Level frames (10 ms each) for runs of speech (`true`) and quiet, each `seconds` long. */
 const heardLength = (piece: TranscriptPiece) => piece.kept.reduce((sum, s) => sum + s.end - s.start, 0);
@@ -34,11 +34,26 @@ test('a word ends where the quiet after it begins, and words with no quiet betwe
   const levels = levelsOf([false, 1], [true, 1], [false, 0.6], [true, 0.8], [false, 1]);
   const pauses = audioPauses(levels, quietAudioLevel(levels));
   // Whisper's DTW times sit late in each word, one of them in the quiet after its word.
-  const words = wordsTimedAtPauses([{ text: 'one', at: 1.3 }, { text: 'two', at: 1.7 }, { text: 'three', at: 2.1 }, { text: 'four', at: 2.9 }], pauses, 4.4);
+  const words = wordsTimedAtPauses([{ text: 'one', at: 1.3 }, { text: 'two', at: 1.7 }, { text: 'three', at: 2.1 }, { text: 'four', at: 2.9 }], pauses, 4.4, []);
   assert.deepEqual(words, [
     { text: 'one', start: 1, end: 1.42 },
     { text: 'two', start: 1.42, end: 1.82 },
     { text: 'three', start: 1.82, end: 2 },
     { text: 'four', start: 2.6, end: 3.4 },
   ]);
+});
+
+test('speech whisper wrote no word in is unheard, and the word before it stops short of it', () => {
+  // "app", a 60 ms stop, its "-lication", 80 ms of quiet, a "So" whisper left out, a long pause, then "Share". DTW times
+  // fall late in a word, so "app"'s lies in its second run. A breath (quiet sound) after the pause isn't speech; the word
+  // before the So ends in the quiet before it.
+  const levels = [
+    ...levelsOf([false, 1], [true, 0.2], [false, 0.06], [true, 0.15], [false, 0.08], [true, 0.4], [false, 1]),
+    ...levelsOf([true, 0.3]).map(() => 60), ...levelsOf([false, 0.2], [true, 0.5], [false, 0.5]),
+  ];
+  const quiet = quietAudioLevel(levels), pauses = audioPauses(levels, quiet);
+  const heard = [{ text: 'application,', at: 1.35 }, { text: 'Share', at: 3.6 }];
+  const unheard = unheardSpeech(levels, quiet, heard);
+  assert.deepEqual(unheard, [{ start: 1.49, end: 1.89 }]);
+  assert.deepEqual(wordsTimedAtPauses(heard, pauses, levels.length / 100, unheard).map((w) => [w.text, w.end]), [['application,', 1.452], ['Share', 3.89]]);
 });

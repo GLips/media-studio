@@ -161,12 +161,57 @@ const WORD_GAP = 0.1;
 // and a raw mic recording, where halfway was 30–50 ms late.
 const WORD_MEETING = 0.3;
 
+// Sound whisper wrote no word in is speech when it's at most 12 dB under the file's speech (its 90th-percentile sound
+// frame) and this long: quieter is a breath or the room, shorter a click or a consonant's burst.
+const UNHEARD_UNDER_SPEECH = 1 / 4;
+const UNHEARD_MIN_FRAMES = 12;
+
 /**
- * When each heard word starts and ends. Whisper's DTW times say where a word sits, not where it starts, so the audio
- * decides its edges: quiet whose middle lies between two words' times bounds both, and two words with no quiet between
- * them meet WORD_MEETING of the way from one time to the next.
+ * Stretches of speech-level sound whisper wrote no word in: a filler or a word it left out. A sound run between pauses
+ * claims a word whose time lies in it or the quiet after it; DTW times fall late, so a run less than WORD_GAP before
+ * another is that word's start, cut by a stop.
  */
-export function wordsTimedAtPauses(heard: readonly HeardWord[], pauses: readonly AudioSpan[], duration: number): SpokenWord[] {
+export function unheardSpeech(levels: readonly number[], quiet: number, heard: readonly HeardWord[]): AudioSpan[] {
+  const pauses = audioPauses(levels, quiet), frame = (seconds: number) => Math.round(seconds / AUDIO_LEVEL_FRAME);
+  const runs: { start: number; end: number }[] = [];
+  let after = 0;
+  for (const p of pauses) {
+    if (frame(p.start) > after) runs.push({ start: after, end: frame(p.start) });
+    after = frame(p.end);
+  }
+  if (after < levels.length) runs.push({ start: after, end: levels.length });
+  const sound = levels.filter((level) => level >= quiet).toSorted((a, b) => a - b);
+  const speech = sound[Math.floor(sound.length * 0.9)] ?? Infinity;
+  const times = heard.map((word) => frame(word.at));
+  const claims = (k: number): boolean => {
+    const run = runs[k], next = runs[k + 1];
+    if (times.some((t) => t >= run.start && t < (next?.start ?? Infinity))) return true;
+    return next !== undefined && next.start - run.end < WORD_GAP / AUDIO_LEVEL_FRAME && claims(k + 1);
+  };
+  return runs.flatMap((run, k) => {
+    if (run.end - run.start < UNHEARD_MIN_FRAMES || claims(k)) return [];
+    const loudest = Math.max(...levels.slice(run.start, run.end));
+    return loudest >= speech * UNHEARD_UNDER_SPEECH ? [{ start: toMs(run.start * AUDIO_LEVEL_FRAME), end: toMs(run.end * AUDIO_LEVEL_FRAME) }] : [];
+  });
+}
+
+/**
+ * When each heard word starts and ends. DTW times say where a word sits, not where it starts, so the audio decides
+ * its edges: quiet whose middle lies between two words' times bounds both; with none, they meet WORD_MEETING of the
+ * way from one time to the next. Unheard speech bounds its neighbours as a word would.
+ */
+export function wordsTimedAtPauses(heard: readonly HeardWord[], pauses: readonly AudioSpan[], duration: number, unheard: readonly AudioSpan[]): SpokenWord[] {
+  // Each unheard span goes in as a wordless word at its middle, before the first word heard after it; whisper's own
+  // order stands, as its times can step back.
+  const all = [...heard];
+  for (const span of unheard) {
+    const at = (span.start + span.end) / 2, next = all.findIndex((word) => word.at > at);
+    all.splice(next < 0 ? all.length : next, 0, { text: '', at });
+  }
+  return timedAtPauses(all, pauses, duration).filter((word) => word.text);
+}
+
+function timedAtPauses(heard: readonly HeardWord[], pauses: readonly AudioSpan[], duration: number): SpokenWord[] {
   const gaps = pauses.filter((p) => p.end - p.start >= WORD_GAP);
   // DTW times can step back a little; a word never sits before the one heard before it.
   const at: number[] = [];

@@ -11,7 +11,7 @@ import { StudioFfmpeg } from '#lib/platform/ffmpeg/engine/studio-ffmpeg.ts';
 import { LibraryMediaFolder } from '#lib/footage/library-media/engine/library-media-folder.ts';
 import { LibrarySpeechUnmeasured } from '../models/library-errors.ts';
 import { LIBRARY_LEVELLED_LUFS, libraryLevelledProcessing, librarySpokenTracks } from '../models/library-item.ts';
-import { LIBRARY_QUIET_WINDOW, libraryQuietSpans } from '../models/library-quiet.ts';
+import { LIBRARY_QUIET_WINDOW, librarySoundSpans } from '../models/library-quiet.ts';
 import { libraryDeepFilter } from './library-deep-filter.ts';
 import { LibraryStore } from './library-store.ts';
 
@@ -48,11 +48,17 @@ const levelLibraryTrack = Effect.fn('LibraryLevelled.levelTrack')(function* (id:
   const store = yield* LibraryStore, media = yield* LibraryMediaFolder, ffmpeg = yield* StudioFfmpeg;
   const fs = yield* FileSystem.FileSystem, path = yield* Path.Path;
   const item = yield* store.readItem(id);
-  const track = item.tracks[name], processing = libraryLevelledProcessing(name);
-  if (track.levelled?.processing === processing && track.levelled.quiet) return item;
+  const track = item.tracks[name], processing = libraryLevelledProcessing(name), file = `proxies/${name}-levelled.wav`;
+  const out = path.join(yield* media.online(), id, file);
+  const { levelled } = track;
+  if (levelled?.processing === processing) {
+    if (levelled.quiet && levelled.soft && levelled.clicks) return item;
+    // Made the same way, but measured by older code: only its sound spans are missing.
+    const spans = librarySoundSpans(yield* windowLevels(out));
+    return yield* store.updateItem(id, (now) => ({ ...now, tracks: { ...now.tracks, [name]: { ...now.tracks[name], levelled: { ...levelled, ...spans } } } }));
+  }
   yield* Effect.log(`levelling ${name} for the mix (${processing})`);
-  const source = yield* media.itemFile(id, track.file), file = `proxies/${name}-levelled.wav`;
-  const out = path.join(yield* media.online(), id, file), temp = `${out}.${process.pid}.part.wav`;
+  const source = yield* media.itemFile(id, track.file), temp = `${out}.${process.pid}.part.wav`;
   const target = `I=${LIBRARY_LEVELLED_LUFS}:TP=${LEVELLED_TRUE_PEAK}:LRA=${LEVELLED_LRA}`;
   // loudnorm's two passes: measure, then apply the gain linearly where the peaks allow it.
   const { stderr, exitCode } = yield* ffmpeg.report(['-hide_banner', '-nostats', '-i', source, '-vn', '-af', `loudnorm=${target}:print_format=json`, '-f', 'null', '-']);
@@ -85,8 +91,8 @@ const levelLibraryTrack = Effect.fn('LibraryLevelled.levelTrack')(function* (id:
   if (check.exitCode !== 0) return yield* new LibrarySpeechUnmeasured({ id, track: name, why: lastLine(check.stderr) });
   const lufs = ebur128IntegratedLufs(check.stderr);
   if (lufs === undefined) return yield* new LibrarySpeechUnmeasured({ id, track: name, why: `its levelled copy ${file} measures silent` });
-  const quiet = libraryQuietSpans(yield* windowLevels(out));
-  return yield* store.updateItem(id, (now) => ({ ...now, tracks: { ...now.tracks, [name]: { ...now.tracks[name], levelled: { file, lufs: Math.round(lufs * 10) / 10, processing, quiet } } } }));
+  const spans = librarySoundSpans(yield* windowLevels(out));
+  return yield* store.updateItem(id, (now) => ({ ...now, tracks: { ...now.tracks, [name]: { ...now.tracks[name], levelled: { file, lufs: Math.round(lufs * 10) / 10, processing, ...spans } } } }));
 });
 
 // Digital silence reads -inf; a floor this low is as quiet as any.

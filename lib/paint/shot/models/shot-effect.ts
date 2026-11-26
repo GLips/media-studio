@@ -49,17 +49,18 @@ export type ShotEffectRead<I extends string = string> = {
 export type ShotEffectProblem = { readonly field: string; readonly message: string };
 
 /**
- * An effect's models half. `name` keys its output and names it in problems, so it's unique among a shot's effects.
- * `inputs` names what it reads. `problems` checks its parameters, `defaults` filled in; `reads` lists its reads, at
- * most SHOT_EFFECT_READS_MOST; `grow`, px its output spreads past them (a blur's reach), 0 when left out.
+ * An effect's models half. `name` keys its output, so it's unique among a shot's effects. `inputs` names what it
+ * reads, `optional` those it may go without. `problems` checks its parameters, defaults filled in; `reads` lists at
+ * most SHOT_EFFECT_READS_MOST reads of the inputs `given`; `grow`, px its output spreads past them (0 when left out).
  */
-export type ShotEffectDefinition<P extends ShotEffectParams = ShotEffectParams, I extends string = string> = {
+export type ShotEffectDefinition<P extends ShotEffectParams = ShotEffectParams, I extends string = string, O extends I = I> = {
   readonly name: string;
   readonly inputs: readonly [I, ...I[]];
+  readonly optional?: readonly O[];
   readonly defaults: P;
   // Methods, so a definition of any parameters stands as one of ShotEffectParams in a table (method parameters are bivariant).
   problems(params: P): readonly ShotEffectProblem[];
-  reads(params: P): readonly ShotEffectRead<I>[];
+  reads(params: P, given: readonly I[]): readonly ShotEffectRead<I>[];
   grow?(params: P): number;
 };
 
@@ -79,18 +80,23 @@ export type ShotEffectImage = {
 
 type IsUnion<T, U = T> = T extends unknown ? ([U] extends [T] ? false : true) : never;
 
-/** An effect's inputs as its constructor takes them: the source itself for an effect of one, else each by name. */
-export type ShotEffectInputs<I extends string> = true extends IsUnion<I> ? Readonly<Record<I, ShotImageSource>> : ShotImageSource;
+/**
+ * An effect's inputs as its constructor takes them: the source itself for an effect of one, else each by name, those
+ * in `O` optional.
+ */
+export type ShotEffectInputs<I extends string, O extends I = never> = true extends IsUnion<I>
+  ? Readonly<Record<Exclude<I, O>, ShotImageSource>> & Partial<Readonly<Record<O, ShotImageSource>>>
+  : ShotImageSource;
 
 /** An effect's constructor, `offsetCopies(hero, { count: 3 })`, and its definition, which its studio half and the effect table name. */
-export type ShotEffect<P extends ShotEffectParams, I extends string> = ((inputs: ShotEffectInputs<I>, params?: Partial<P>) => ShotEffectImage) & {
-  readonly definition: ShotEffectDefinition<P, I>;
+export type ShotEffect<P extends ShotEffectParams, I extends string, O extends I = never> = ((inputs: ShotEffectInputs<I, O>, params?: Partial<P>) => ShotEffectImage) & {
+  readonly definition: ShotEffectDefinition<P, I, O>;
 };
 
 /** `definition` as a constructor of its images: place one with shotPlace, or read it in another effect. */
-export function defineShotEffect<P extends ShotEffectParams, const I extends string>(definition: ShotEffectDefinition<P, I>): ShotEffect<P, I> {
+export function defineShotEffect<P extends ShotEffectParams, const I extends string, const O extends I = never>(definition: ShotEffectDefinition<P, I, O>): ShotEffect<P, I, O> {
   const [only] = definition.inputs, lone = definition.inputs.length === 1;
-  const make = (inputs: ShotEffectInputs<I>, params: Partial<P> = {}): ShotEffectImage => ({
+  const make = (inputs: ShotEffectInputs<I, O>, params: Partial<P> = {}): ShotEffectImage => ({
     kind: 'effect', definition,
     // SAFETY: an effect of one input takes the source itself (ShotEffectInputs); of more, a record by name.
     inputs: lone ? { [only]: inputs as ShotImageSource } : (inputs as Readonly<Record<string, ShotImageSource>>),
@@ -134,18 +140,19 @@ export function shotEffectChecked(plane: string, field: string, image: ShotEffec
   const error = (at: string, message: string) => problems.push(paintingProblem('error', plane, paintingField(field, at), `${name}: ${message}`));
   const taken = Object.keys(definition.defaults);
   for (const key of Object.keys(image.params)) if (!taken.includes(key)) error(`params.${key}`, `takes no parameter ${key}; it takes ${taken.join(', ') || 'none'}`);
-  for (const input of definition.inputs) if (!(input in image.inputs)) error('inputs', `reads ${input}, which isn't given: give ${definition.inputs.join(', ')}`);
+  const optional: readonly string[] = definition.optional ?? [], required = definition.inputs.filter((input) => !optional.includes(input));
+  for (const input of required) if (image.inputs[input] === undefined) error('inputs', `reads ${input}, which isn't given: give ${required.join(', ')}`);
   for (const input of Object.keys(image.inputs)) if (!definition.inputs.includes(input)) error(`inputs.${input}`, `has no input ${input}; it reads ${definition.inputs.join(', ')}`);
   // SAFETY: every key given is one of the defaults' (checked above, refusing the rest), each its own check's to judge.
   const params = { ...definition.defaults, ...image.params } as ShotEffectParams;
   if (problems.length) return { params, reads: [], grow: 0, problems };
   for (const { field: at, message } of definition.problems(params)) error(`params.${at}`, message);
   if (problems.length) return { params, reads: [], grow: 0, problems };
-  const reads = definition.reads(params), grow = definition.grow?.(params) ?? 0;
+  const given = definition.inputs.filter((input) => image.inputs[input] !== undefined), reads = definition.reads(params, given), grow = definition.grow?.(params) ?? 0;
   if (!reads.length) error('params', 'reads nothing: an effect reads one of its inputs at least');
   if (reads.length > SHOT_EFFECT_READS_MOST) error('params', `makes ${reads.length} reads, past the ${SHOT_EFFECT_READS_MOST} one effect makes: read the output of one in another`);
   reads.forEach(({ input, map, moment }, i) => {
-    if (!definition.inputs.includes(input)) error('params', `its read ${i} names ${input}, which isn't one of its inputs (${definition.inputs.join(', ')})`);
+    if (!given.includes(input)) error('params', `its read ${i} names ${input}, which isn't one of the inputs given (${given.join(', ')})`);
     if (map && !finiteMap(map)) error('params', `its read ${i}'s map (${map.ma}, ${map.mb}, ${map.kx}, ${map.ky}) isn't a finite similarity that keeps a size`);
     if (moment && typeof moment !== 'function' && !(Number.isInteger(moment.drawingsEarlier) && moment.drawingsEarlier >= 0)) {
       error('params', `its read ${i} reads ${moment.drawingsEarlier} drawings earlier, not a whole number from 0`);

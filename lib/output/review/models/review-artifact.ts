@@ -6,6 +6,7 @@ import type { RenderVoice } from '#lib/timing/voice/models/render-voice.ts';
 import type { ReviewTiming } from './review-moment.ts';
 import type { ReviewMediaKind, ReviewRenderStamp, ReviewScene, ReviewSoundMarker, ReviewStillCell } from './review-context.ts';
 import type { ReviewStoryboardCard, ReviewTimingMarks } from './review-storyboard.ts';
+import type { ReviewSpeechCleanup } from './review-speech.ts';
 
 /**
  * A reviewable file. `pair` names the other encoding of the same transparent delivery (video.webm beside
@@ -51,6 +52,8 @@ export type ReviewArtifact = {
   timing?: ReviewTiming;
   storyboard?: ReviewStoryboardCard[];
   marks?: ReviewTimingMarks;
+  /** What the cleanup of the render's recorded lines took out or left in, to restore or take out again. */
+  speechCleanup?: ReviewSpeechCleanup;
   /** On a variant sheet (`studio still --sheet`), its cells, from the .cells.json beside it. */
   cells?: ReviewStillCell[];
   /** A delivered render's captions file (out/video.srt), for download. */

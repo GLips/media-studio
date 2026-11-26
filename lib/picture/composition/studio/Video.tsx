@@ -7,7 +7,7 @@
 import { useMemo, useRef } from 'react';
 import { AbsoluteFill, Artifact, Sequence, useCurrentFrame, useRemotionEnvironment, useVideoConfig, type VideoConfig } from 'remotion';
 import { sfxSoundLabel } from '#lib/timing/sound/models/library.ts';
-import { edgeFadeGain, levelGain, musicBedGainAt, VOICE_LUFS } from '#lib/timing/sound/models/mix.ts';
+import { levelGain, musicBedGainAt, recordedPieceClips, VOICE_LUFS } from '#lib/timing/sound/models/mix.ts';
 import { libraryMediaUrl } from '#lib/footage/library/studio/library-media.ts';
 import { previsRequestFor, previsSpan, type PrevisClip } from '#lib/footage/previs/studio/previs.ts';
 import type { TimelineReport } from '#lib/picture/video/models/timeline-report.ts';
@@ -69,8 +69,14 @@ function timelineReport(video: VideoDef, tl: LaidVideo, { fps, width, height, du
     })),
     cues: tl.cues.map(({ id, start, end, text, src }) => {
       const scene = tl.scenes.find((sc) => id in sc.spans)!, span = scene.spans[id];
-      const words = span.words.map((w) => ({ text: w.text, start: scene.start + span.start + w.start, end: scene.start + span.start + w.end }));
-      return { id, start, end, text, voiced: src !== null, words };
+      const at = scene.start + span.start, line = video.voice[id], speech = line && 'speech' in line ? line.speech : undefined;
+      const words = span.words.map((w) => ({ text: w.text, start: at + w.start, end: at + w.end }));
+      if (!speech) return { id, start, end, text, voiced: src !== null, words };
+      return { id, start, end, text, voiced: src !== null, words, speech: {
+        scene: scene.id,
+        removals: speech.removals.map((r) => Object.assign({}, r, { at: at + r.at })),
+        unheard: speech.unheard.map((u) => ({ start: at + u.at, end: at + u.at + u.to - u.from, from: u.from, to: u.to })),
+      } };
     }),
     captions: sidecar && { srt: captionsToSrt(sidecar), vtt: captionsToVtt(sidecar) },
     crossfades: tl.scenes.flatMap((scene, i) => (scene.xfade ? [{
@@ -161,15 +167,18 @@ export function Video({ video, previsClips, sfxCues, captions, probe, blockouts,
 
 
 /**
- * A voice line: a clip of its own, or a stretch of a recording played from where it starts in the file and stopping at
- * its out point, faded at its edges (longer where an edge cuts into sound: RecordedSpeech's edges).
+ * A voice line: a clip of its own, or the pieces of a recording it plays, each from where it starts in the file,
+ * cross-fading at its cuts and faded at the line's edges (longer where an edge cuts into sound: RecordedSpeech's edges).
  */
 function VoiceLineSound({ cue, t }: { cue: LaidVideo['cues'][number]; t: number }) {
   const gain = levelGain(cue.lufs!, VOICE_LUFS, `line ${cue.id}`), duration = cue.end - cue.start, src = cue.src!;
-  const faded = useMemo(() => (typeof src === 'string' ? null : (s: number) => gain * edgeFadeGain(s, duration, src.fade)), [src, gain, duration]);
-  return typeof src === 'string'
-    ? <SoundClip src={src} t={t} at={cue.start} volume={gain} id={`line ${cue.id}`} />
-    : <SoundClip src={libraryMediaUrl(src.item, src.file)} t={t} at={cue.start} from={src.start} duration={duration} volume={faded!} id={`line ${cue.id}`} />;
+  // Memoised whole: a clip's volume function is sampled every millisecond each time it changes.
+  const pieces = useMemo(() => (typeof src === 'string' ? [] : recordedPieceClips(src, duration).map((p) => Object.assign(p, { volume: (s: number) => gain * p.gain(s) }))), [src, gain, duration]);
+  if (typeof src === 'string') return <SoundClip src={src} t={t} at={cue.start} volume={gain} id={`line ${cue.id}`} />;
+  const file = libraryMediaUrl(src.item, src.file);
+  return pieces.map((p, k) => (
+    <SoundClip key={k} src={file} t={t} at={cue.start + p.at} from={p.start} duration={p.duration} volume={p.volume} id={`line ${cue.id}${k ? ` piece ${k + 1}` : ''}`} />
+  ));
 }
 
 /** The bed under the whole video, ducked around every line, estimated ones included, so the Studio previews the final mix. */

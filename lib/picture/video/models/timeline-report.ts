@@ -2,6 +2,7 @@
 // render pipeline, the checks and `studio sfx`, which read it in Node.
 
 import type { SceneRung } from '#lib/timing/timeline/models/scene-rung.ts';
+import type { SpokenRemoval } from '#lib/timing/voice/models/recorded-speech.ts';
 
 /** What `studio gen video` asks for a previs scene, read from the timeline report. */
 export type PrevisRequest = { blockout: '3d' | '2d'; prompt: string; references: readonly string[]; audio: boolean; from: number; duration: number };
@@ -23,8 +24,15 @@ export type TimelineReport = {
    * included; `start` and `dur` are its cuts in seconds.
    */
   scenes: { id: string; from: number; to: number; visible: { from: number; to: number }; start: number; dur: number; note?: string; rung?: SceneRung; lines: readonly string[]; previs?: PrevisRequest }[];
-  /** Each voice line, with every word as it's spoken (spread by length over an estimated line), in video seconds. */
-  cues: { id: string; start: number; end: number; text: string; voiced: boolean; words: { text: string; start: number; end: number }[] }[];
+  /**
+   * Each voice line, with every word as it's spoken (spread by length over an estimated line), in video seconds. A
+   * line spoken in a recording has `speech`: its scene, what its cleanup took out or left in, and the speech the
+   * transcript wrote no word for, each `at` its video second.
+   */
+  cues: {
+    id: string; start: number; end: number; text: string; voiced: boolean; words: { text: string; start: number; end: number }[];
+    speech?: TimelineSpokenCleanup;
+  }[];
   /** The captions as .srt and .vtt, paged by the style's sidecar rule; null for a video with nothing to caption. */
   captions: { srt: string; vtt: string } | null;
   /** Where one scene dissolves into the next, in video seconds; a hard cut has none. */
@@ -38,6 +46,9 @@ export type TimelineReport = {
   /** Each of `VideoDef.sounds`, landing `at` video seconds, with the take it plays's recipe (`impact`, `whip`…). */
   sounds: { id: string; at: number; sound: string }[];
 };
+/** A recorded line's cleanup in a timeline report (TimelineReport.cues), its moments in video seconds. */
+export type TimelineSpokenCleanup = { scene: string; removals: SpokenRemoval[]; unheard: { start: number; end: number; from: number; to: number }[] };
+
 /** A scene's `expect` (see SceneExpectation), its `during` in video seconds. */
 export type TimelineExpectation = { scene: string; start: number; end: number } & ({ see: string } | { hold: string; for: number; within?: number });
 

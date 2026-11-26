@@ -50,8 +50,9 @@ function heardWordsForTest(wavPath: string): SpokenWord[] {
 const fakeTranscriberModule = {
   FootageTranscriber,
   footageTranscriberLayer: Layer.succeed(FootageTranscriber, FootageTranscriber.of({
+    transcriber: 'fake',
     transcribe: (path) => Effect.try({
-      try: () => ({ duration: 0, words: heardWordsForTest(path), pauses: [] }),
+      try: () => ({ duration: 0, words: heardWordsForTest(path), pauses: [], unheard: [] }),
       catch: (error) => new TranscriptionFailed({ path, reason: String(error) }),
     }),
   })),
