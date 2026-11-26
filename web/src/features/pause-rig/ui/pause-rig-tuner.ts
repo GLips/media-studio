@@ -43,7 +43,7 @@ const KNOBS: Record<PauseRigTunedKnob, { step: number; finest: number; min: numb
 export const PAUSE_RIG_TUNED_KNOBS: readonly PauseRigTunedKnob[] = ['hesitation', 'boundary', 'boundaryExcess', 'topSpeed', 'ramp', 'longest'];
 
 // A knob is settled after this many turns, however fine its step: a session should end.
-const TURNS_PER_KNOB = 8;
+const TURNS_PER_KNOB = 6;
 // Every this many turns, one repeats an earlier pair.
 const REPEAT_EVERY = 6;
 
@@ -130,4 +130,11 @@ export function pickPauseRigTrial(tuner: PauseRigTuner, trial: PauseRigTrial, pi
     answers: [...tuner.answers, { trial, chose }],
     repeats: tuner.repeats,
   };
+}
+
+/** Turns answered, and about how many a session takes in all: every unsettled knob's turns left, and their repeats. */
+export function pauseRigTunerProgress(tuner: PauseRigTuner): { done: number; about: number } {
+  const done = tuner.answers.length + tuner.repeats.asked;
+  const left = PAUSE_RIG_TUNED_KNOBS.reduce((sum, k) => sum + (pauseRigKnobSettled(tuner, k) ? 0 : TURNS_PER_KNOB - tuner.turns[k]), 0);
+  return { done, about: done + left + Math.ceil(left / (REPEAT_EVERY - 1)) };
 }

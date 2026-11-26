@@ -1,93 +1,111 @@
-// pause-rig-pick-panel.tsx: what "1 or 2?" shows: the turn and its two versions, the picks and how the picked one
-// felt, each knob's best so far and how consistent repeated pairs were; then, once tuned, each whole line to confirm.
-import { Button, Group, Stack, Text } from '@mantine/core';
+// pause-rig-pick-panel.tsx: what "1 or 2?" shows a listener, and nothing more: one instruction, Play, which version is
+// playing, the three answers (open once both versions have played), how the picked one felt, and how far along the
+// session is. The tuner's numbers live behind the page's Details.
+import { Box, Button, Group, Stack, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
+import { useState } from 'react';
 import { TextInput } from '#web/shared/ui/text-input.tsx';
-import { colors, fonts } from '#web/shared/ui/theme.stylex.ts';
-import { PAUSE_RIG_CONFIRM_LINES, PAUSE_RIG_LINES } from './pause-rig-lines.ts';
-import { PAUSE_RIG_FEELS, PAUSE_RIG_TUNED_KNOBS, pauseRigKnobSettled } from './pause-rig-tuner.ts';
-import type { usePauseRigPick } from './use-pause-rig-pick.ts';
+import { colors, radius, spacing, typography } from '#web/shared/ui/theme.stylex.ts';
+import { PAUSE_RIG_CONFIRM_LINES } from './pause-rig-lines.ts';
+import { PAUSE_RIG_FEELS, PAUSE_RIG_TUNED_KNOBS, pauseRigKnobSettled, pauseRigTunerProgress } from './pause-rig-tuner.ts';
+import type { PauseRigVersion, usePauseRigPick } from './use-pause-rig-pick.ts';
 
 const styles = stylex.create({
-  on: { borderColor: colors.accent, color: colors.accent },
-  mono: { fontFamily: fonts.mono, color: colors.dim },
-  settled: { color: colors.cream },
+  instruction: { textAlign: 'center' },
+  hint: { color: colors.dim, textAlign: 'center', minHeight: typography.lineHeight },
+  version: {
+    display: 'grid', placeItems: 'center', width: '96px', height: '72px', borderRadius: radius.control,
+    borderWidth: 1, borderStyle: 'solid', borderColor: colors.line, backgroundColor: colors.panel, color: colors.dim,
+  },
+  heard: { color: colors.cream },
+  playing: { borderColor: colors.accent, color: colors.accent, backgroundColor: colors.raised },
+  answer: { minWidth: '120px' },
+  dot: { width: spacing.gap, height: spacing.gap, borderRadius: radius.pill, borderWidth: 1, borderStyle: 'solid', borderColor: colors.mark },
+  settled: { backgroundColor: colors.cream, borderColor: colors.cream },
+  muted: { color: colors.dim },
 });
 
-const FEEL_KEYS = { rushed: 'q', draggy: 'w', choppy: 'e', fine: 'f' } as const;
-const FEEL_LABELS = { rushed: 'rushed', draggy: 'draggy', choppy: 'choppy / robotic', fine: 'fine' } as const;
+const FEEL_LABELS = { rushed: 'Rushed', draggy: 'Draggy', choppy: 'Choppy / robotic', fine: 'Fine' } as const;
 
-type PauseRigPickPanelProps = {
-  pick: ReturnType<typeof usePauseRigPick>;
-  confirmNote: string;
-  onConfirmNote: (note: string) => void;
-  /** Runs one of the page's actions, as its key would. */
-  act: (name: string) => void;
-};
-
-export function PauseRigPickPanel({ pick, confirmNote, onConfirmNote, act }: PauseRigPickPanelProps) {
-  const { trial, playing, session, confirmLine } = pick;
-  const { tuner } = session;
-  const { asked, agreed } = tuner.repeats;
+/** A version's tile: lit while it plays, brighter once heard; a click plays it alone. */
+function PauseRigVersionTile({ label, version, pick }: { label: string; version: PauseRigVersion; pick: ReturnType<typeof usePauseRigPick> }) {
   return (
-    <Stack gap="tight">
-      {confirmLine !== undefined && (
-        <>
-          <Text size="sm">
-            Confirming, line {session.confirmed.length + 1} of {PAUSE_RIG_CONFIRM_LINES.length}: {PAUSE_RIG_LINES[confirmLine].about}. Does it sound natural?
-          </Text>
-          <Group gap="gap">
-            <Button onClick={() => pick.play('line')} {...stylex.props(playing === 'line' && styles.on)}>Play the line (space)</Button>
-            <Button onClick={() => act('natural')}>Natural (y)</Button>
-            <Button onClick={() => act('unnatural')}>Not natural (n)</Button>
-            <TextInput size="xs" flex={1} placeholder="What's off, if anything (goes with the answer)" value={confirmNote} onChange={(event) => onConfirmNote(event.currentTarget.value)} />
-          </Group>
-        </>
+    <UnstyledButton aria-label={`Play ${label} again`} onClick={() => pick.play(version)}
+      {...stylex.props(styles.version, pick.heard.includes(version) && styles.heard, pick.playing === version && styles.playing)}>
+      <Text component="span" size="heading">{label}</Text>
+    </UnstyledButton>
+  );
+}
+
+export function PauseRigPickPanel({ pick }: { pick: ReturnType<typeof usePauseRigPick> }) {
+  const { session, playing, ready, confirmLine } = pick;
+  const [confirmNote, setConfirmNote] = useState('');
+  const { done, about } = pauseRigTunerProgress(session.tuner);
+
+  if (session.confirming && confirmLine === undefined) {
+    return <Text size="line" {...stylex.props(styles.instruction)}>All done, thank you. The values are in Details.</Text>;
+  }
+  const confirming = confirmLine !== undefined;
+  let playLabel = 'Play';
+  if (playing === 'line') playLabel = 'Playing…';
+  else if (playing) playLabel = `Now playing ${playing === 'first' ? 1 : 2}`;
+  else if (pick.heard.length) playLabel = 'Play again';
+  let hint = '';
+  if (!ready) hint = confirming ? 'Play the line to answer.' : 'Play both to pick.';
+  else if (pick.playing === undefined && !confirming) hint = 'Click 1 or 2 to hear one again.';
+
+  return (
+    <Stack align="center" gap="row">
+      <Text size="line" {...stylex.props(styles.instruction)}>
+        {confirming ? 'Last step: does this whole line sound natural?' : 'Listen to both, then pick the one that sounds more natural.'}
+      </Text>
+      {!confirming && (
+        <Group gap="inset">
+          <PauseRigVersionTile label="1" version="first" pick={pick} />
+          <PauseRigVersionTile label="2" version="second" pick={pick} />
+        </Group>
       )}
-      {confirmLine === undefined && session.confirming && (
-        <Text size="sm">
-          Done: {session.confirmed.filter((c) => c.natural).length} of {session.confirmed.length} lines sounded natural. Copy the values, or restart.
+      <Button size="md" variant="filled" color="orange" onClick={pick.playBoth} disabled={playing !== undefined}>{playLabel}</Button>
+      {confirming
+        ? (
+          <Stack align="center" gap="inset">
+            <Group gap="inset">
+              <Button size="md" disabled={!ready} onClick={() => {
+                pick.confirm(true, confirmNote);
+                setConfirmNote('');
+              }} {...stylex.props(styles.answer)}>Yes, natural</Button>
+              <Button size="md" disabled={!ready} onClick={() => {
+                pick.confirm(false, confirmNote);
+                setConfirmNote('');
+              }} {...stylex.props(styles.answer)}>No</Button>
+            </Group>
+            <TextInput w={420} placeholder="What's off, if anything (optional)" value={confirmNote} onChange={(event) => setConfirmNote(event.currentTarget.value)} />
+          </Stack>
+        )
+        : (
+          <Group gap="inset">
+            <Button size="md" disabled={!ready} onClick={() => pick.pick('first')} {...stylex.props(styles.answer)}>1</Button>
+            <Button size="md" disabled={!ready} onClick={() => pick.pick('second')} {...stylex.props(styles.answer)}>2</Button>
+            <Button size="md" disabled={!ready} onClick={() => pick.pick('same')} {...stylex.props(styles.answer)}>Can't tell</Button>
+          </Group>
+        )}
+      <Text size="xs" {...stylex.props(styles.hint)}>{hint}</Text>
+      {pick.feelable && (
+        <Group gap="gap">
+          <Text size="xs" {...stylex.props(styles.muted)}>Optional: the one you picked felt</Text>
+          {PAUSE_RIG_FEELS.map((felt) => (
+            <Button key={felt} variant={session.last?.feel === felt ? 'filled' : 'default'} onClick={() => pick.feel(felt)}>{FEEL_LABELS[felt]}</Button>
+          ))}
+        </Group>
+      )}
+      <Group gap="inset">
+        <Text size="xs" {...stylex.props(styles.muted)}>
+          {confirming ? `Line ${session.confirmed.length + 1} of ${PAUSE_RIG_CONFIRM_LINES.length}` : `${done + 1} of about ${Math.max(about, done + 1)}`}
         </Text>
-      )}
-      {!session.confirming && trial && (
-        <>
-          <Text size="sm">
-            {trial.repeatOf === undefined ? `Turn ${tuner.answers.length + 1}` : 'A pair again, to check consistency'}: {trial.clip.about}, {trial.knob} at 1 = {trial.first} or 2 = {trial.second}.
-            Which sounds more natural?
-          </Text>
-          <Group gap="gap">
-            <Button onClick={pick.playBoth}>Play 1 then 2 (space)</Button>
-            <Button onClick={() => pick.play('first')} {...stylex.props(playing === 'first' && styles.on)}>Play 1 (a)</Button>
-            <Button onClick={() => pick.play('second')} {...stylex.props(playing === 'second' && styles.on)}>Play 2 (b)</Button>
-            <Button onClick={() => act('first')}>1 (1)</Button>
-            <Button onClick={() => act('second')}>2 (2)</Button>
-            <Button onClick={() => act('same')}>Can't tell (3)</Button>
-          </Group>
-          <Group gap="gap">
-            <Text size="xs" {...stylex.props(styles.mono)}>The one you pick felt:</Text>
-            {PAUSE_RIG_FEELS.map((feel) => (
-              <Button key={feel} onClick={() => act(feel)} {...stylex.props(pick.feel === feel && styles.on)}>{FEEL_LABELS[feel]} ({FEEL_KEYS[feel]})</Button>
-            ))}
-          </Group>
-        </>
-      )}
-      <Group gap="gap">
-        <Button onClick={pick.undo} disabled={session.history.length === 0}>Undo (u)</Button>
-        {!session.confirming && <Button onClick={pick.confirmNow}>Confirm these values now</Button>}
-        <Button onClick={pick.restart}>Restart from the knobs</Button>
-        <Text size="xs" {...stylex.props(styles.mono)}>
-          {asked ? `repeats agreed ${agreed} of ${asked}` : 'no repeats yet'} · {tuner.answers.length} picks
-        </Text>
-      </Group>
-      <Group gap="gap">
-        {PAUSE_RIG_TUNED_KNOBS.map((knob) => {
-          const settled = pauseRigKnobSettled(tuner, knob), { value, step } = tuner.stairs[knob];
-          return (
-            <Text key={knob} size="xs" {...stylex.props(styles.mono, settled && styles.settled)}>
-              {knob} {value}{settled ? ' (settled)' : ` ±${step.toFixed(3)}`}
-            </Text>
-          );
-        })}
+        <Group gap="tight">
+          {PAUSE_RIG_TUNED_KNOBS.map((knob) => <Box key={knob} title={knob} {...stylex.props(styles.dot, pauseRigKnobSettled(session.tuner, knob) && styles.settled)} />)}
+        </Group>
+        <Button variant="subtle" disabled={session.history.length === 0} onClick={pick.undo}>Undo last pick</Button>
       </Group>
     </Stack>
   );

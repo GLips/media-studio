@@ -1,8 +1,7 @@
-// pause-rig-page.tsx: a rig for tuning how recorded lines pace their pauses (library-pause-pacing.ts). Its first mode
-// asks "1 or 2?" (pause-rig-tuner.ts), then confirms the values it settles on over whole lines. The others play the
-// playlist, his face and voice through the real cleanup, as short clips around each changed pause or taken filler or
-// as whole lines, under DialKit's knobs. Anything playing takes a note. A scratch page: it comes down once the values
-// are baked.
+// pause-rig-page.tsx: a rig for tuning how recorded lines pace their pauses (library-pause-pacing.ts). It opens on
+// "1 or 2?" alone (pause-rig-tuner.ts), which ends confirming whole lines. Behind Details: the values, the playlist
+// modes (his face and voice through the real cleanup, as clips around each changed pause or taken filler, or whole
+// lines) under DialKit's knobs, and the transcript's marks. A scratch page: it comes down once the values are baked.
 import { Box, Button, Group, Stack, Text, UnstyledButton } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { useQueries } from '@tanstack/react-query';
@@ -11,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { libraryFootage } from '#lib/footage/library/models/library-footage.ts';
 import type { LibraryLineCleanup } from '#lib/footage/library/models/library-line-cut.ts';
 import { LIBRARY_PAUSE_PACING } from '#lib/footage/library/models/library-pause-pacing.ts';
+import { libraryMediaTimeOf } from '#lib/footage/library/models/library-item.ts';
 import { libraryMediaUrl } from '#lib/footage/library/studio/library-media.ts';
 import { spokenStretchSeconds, type RecordedSpeech } from '#lib/timing/voice/models/recorded-speech.ts';
 import { libraryItemViewQueryOptions } from '#web/features/library/index.ts';
@@ -24,6 +24,9 @@ import { usePauseRigPlayback, type PauseRigEntry } from './use-pause-rig-playbac
 import 'dialkit/styles.css';
 
 const styles = stylex.create({
+  calm: { display: 'flex', justifyContent: 'center', minHeight: '100vh', paddingBlock: spacing.titleRow, paddingInline: spacing.row, backgroundColor: colors.ground, color: colors.cream },
+  column: { width: '100%', maxWidth: '720px' },
+  calmVideo: { display: 'block', width: '100%', height: '40vh', objectFit: 'contain', backgroundColor: colors.panel, borderRadius: radius.control },
   page: { display: 'grid', gridTemplateColumns: `1fr ${spacing.queueWidth} ${spacing.sideWidth}`, gap: spacing.inset, padding: spacing.inset, height: '100vh', backgroundColor: colors.ground, color: colors.cream },
   stage: { minHeight: 0, overflowY: 'auto' },
   video: { display: 'block', width: '100%', height: '50vh', objectFit: 'contain', backgroundColor: colors.panel, borderRadius: radius.control },
@@ -61,10 +64,7 @@ const DIAL = {
 };
 
 // Keys each mode answers to, by the action they take.
-const PICK_KEYS = new Map(Object.entries({
-  '1': 'first', '2': 'second', '3': 'same', '0': 'same', ' ': 'both', r: 'both', a: 'play-first', b: 'play-second', u: 'undo',
-  q: 'rushed', w: 'draggy', e: 'choppy', f: 'fine', y: 'natural', n: 'unnatural',
-}));
+const PICK_KEYS = new Map(Object.entries({ '1': 'first', '2': 'second', '3': 'same', ' ': 'both', u: 'undo' }));
 const PLAYLIST_KEYS = new Map(Object.entries({ ' ': 'play', r: 'replay', ArrowLeft: 'previous', ArrowRight: 'next' }));
 
 export function PauseRigPage() {
@@ -75,7 +75,8 @@ export function PauseRigPage() {
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- each view's data, not the array useQueries makes anew each render
     loaded);
   const dial = useDialKit('Pauses', DIAL, { id: 'pause-rig-tuning', persist: true });
-  const picking = dial.mode === '1 or 2';
+  const [details, setDetails] = useState(false);
+  const picking = !details || dial.mode === '1 or 2';
   const { voicedCutFade, ...manual } = dial.manual;
   const takeOf = (line: number) => footage.get(PAUSE_RIG_LINES[line].item);
   const cutLine = (line: number, cleanup: LibraryLineCleanup): RecordedSpeech | string => {
@@ -94,7 +95,6 @@ export function PauseRigPage() {
 
   const video = useRef<HTMLVideoElement>(null);
   const pick = usePauseRigPick({ active: picking, clips: pickClips, cut: (line, values) => cutLine(line, { voicedCutFade, pauses: values }), takeOf, video, start: manual });
-  const [confirmNote, setConfirmNote] = useState('');
   const values = picking ? pick.best : manual;
 
   const key = JSON.stringify([values, voicedCutFade, dial.bypass, picking]);
@@ -116,18 +116,8 @@ export function PauseRigPage() {
   const act = useRef<(name: string) => void>(() => undefined);
   act.current = (name) => {
     if (name === 'first' || name === 'second' || name === 'same') pick.pick(name);
-    if (name === 'both') {
-      if (pick.confirmLine === undefined) pick.playBoth();
-      else pick.play('line');
-    }
-    if (name === 'play-first') pick.play('first');
-    if (name === 'play-second') pick.play('second');
+    if (name === 'both') pick.playBoth();
     if (name === 'undo') pick.undo();
-    if (name === 'rushed' || name === 'draggy' || name === 'choppy' || name === 'fine') pick.setFeel((now) => (now === name ? undefined : name));
-    if (name === 'natural' || name === 'unnatural') {
-      pick.confirm(name === 'natural', confirmNote);
-      setConfirmNote('');
-    }
     if (name === 'play') playback.toggle();
     if (name === 'replay') playback.replay();
     if (name === 'previous') playback.step(-1);
@@ -159,14 +149,33 @@ export function PauseRigPage() {
     shown: picking ? pick.shown() : { version: dial.bypass ? 'A: every pause as recorded' : 'B: pauses paced' },
   });
 
+  // The media fragment shows the clip's first frame before anything plays, not the file's first.
+  const face = (calm: boolean) => (take && camera
+    ? <Box component="video" ref={video} key={take.item.id} src={`${libraryMediaUrl(take.item.id, camera.proxy?.file ?? camera.file)}#t=${libraryMediaTimeOf(camera, shownClip?.from ?? spec?.from ?? 0).toFixed(2)}`} muted playsInline preload="auto" {...stylex.props(calm ? styles.calmVideo : styles.video)} />
+    : <Box {...stylex.props(calm ? styles.calmVideo : styles.video)} />);
+  const note = spec && <PauseRigNote key={`${spec.item}@${shownClip?.from ?? spec.from}`} about={noteAbout} />;
+  const detailsToggle = <Button variant="subtle" onClick={() => setDetails((open) => !open)}>{details ? 'Hide details' : 'Details'}</Button>;
+
+  if (!details) {
+    return (
+      <Box {...stylex.props(styles.calm)}>
+        <Stack gap="row" {...stylex.props(styles.column)}>
+          {face(true)}
+          <PauseRigPickPanel pick={pick} />
+          {note}
+          <Group justify="center">{detailsToggle}</Group>
+        </Stack>
+      </Box>
+    );
+  }
+  const { asked, agreed } = pick.session.tuner.repeats;
   return (
     <Box {...stylex.props(styles.page)}>
       <Stack gap="gap" {...stylex.props(styles.stage)}>
-        {take && camera
-          ? <Box component="video" ref={video} key={take.item.id} src={libraryMediaUrl(take.item.id, camera.proxy?.file ?? camera.file)} muted playsInline preload="auto" {...stylex.props(styles.video)} />
-          : <Box {...stylex.props(styles.video)} />}
+        <Group>{detailsToggle}</Group>
+        {face(false)}
         {picking
-          ? <PauseRigPickPanel pick={pick} confirmNote={confirmNote} onConfirmNote={setConfirmNote} act={(name) => act.current(name)} />
+          ? <PauseRigPickPanel pick={pick} />
           : (
             <Group gap="gap">
               <Button onClick={() => playback.step(-1)}>← Prev</Button>
@@ -183,10 +192,18 @@ export function PauseRigPage() {
           <CopyValues text={copied} />
           <Text size="xs" {...stylex.props(styles.mono)}>{copied}</Text>
         </Group>
+        <Group gap="gap">
+          <Text size="xs" {...stylex.props(styles.mono)}>
+            {pick.session.tuner.answers.length} picks · {asked ? `repeated pairs agreed ${agreed} of ${asked}` : 'no pair repeated yet'}
+            {pick.trial && ` · now: ${pick.trial.knob} ${pick.trial.first} vs ${pick.trial.second} on ${pick.trial.clip.about}`}
+          </Text>
+          {!pick.session.confirming && <Button onClick={pick.confirmNow}>Confirm these values now</Button>}
+          <Button onClick={pick.restart}>Restart from the knobs</Button>
+        </Group>
         {spec && <Text size="xs" {...stylex.props(styles.mono)}>{spec.item} {spec.from}–{spec.to} s: {spec.about}{shownClip && ` · this clip: ${shownClip.about}`}</Text>}
         {typeof speech === 'string' && <Text {...stylex.props(styles.failure)}>{speech}</Text>}
         {typeof speech === 'object' && <PauseRigTranscript speech={speech} line={!picking && playback.head.playing ? playback.head.line : -1} />}
-        {spec && <PauseRigNote key={`${spec.item}@${shownClip?.from ?? spec.from}`} about={noteAbout} />}
+        {note}
       </Stack>
       <Stack gap="tight" {...stylex.props(styles.side)}>
         {PAUSE_RIG_LINES.map((l, k) => (

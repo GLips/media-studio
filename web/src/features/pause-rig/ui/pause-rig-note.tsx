@@ -17,7 +17,7 @@ export function PauseRigNote({ about }: { about: () => PauseRigLogEntry }) {
   return (
     <Stack gap="hairline">
       <Group gap="gap" align="flex-end">
-        <Textarea flex={1} autosize minRows={1} placeholder="A note on this clip (↵ saves)" value={text} onChange={(event) => setText(event.currentTarget.value)}
+        <Textarea flex={1} autosize minRows={1} placeholder="Anything to say about this clip? (Enter saves)" value={text} onChange={(event) => setText(event.currentTarget.value)}
           onEnter={() => {
             if (text.trim()) void save();
           }} onEscape={() => setText('')} />
