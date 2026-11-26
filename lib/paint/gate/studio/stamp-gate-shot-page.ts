@@ -9,6 +9,9 @@
 
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { checkStampGateFigureCard, checkStampGateFigureImage, stampGateFigureCardShot, stampGateFigureImageShot, type StampGateFigurePlacing } from '../models/stamp-gate-figure-card.ts';
+import { CircleGeometry, Mesh, MeshBasicNodeMaterial, Scene } from 'three/webgpu';
+import type { ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
+import { checkStampGateLightSpill, STAMP_GATE_LIGHT_SPILL_AT, STAMP_GATE_LIGHT_SPILL_BASELINE, STAMP_GATE_LIGHT_SPILL_SCREEN, stampGateLightSpillShot, type StampGateLightSpillDrawn } from '../models/stamp-gate-light-spill.ts';
 import { checkStampGateOffsetCopies, stampGateOffsetCopiesPlacedShot, stampGateOffsetCopiesShot } from '../models/stamp-gate-offset-copies.ts';
 import { checkStampGateChannelSplit, STAMP_GATE_CHANNEL_SPLIT_FOOTAGES, stampGateChannelSplitShot } from '../models/stamp-gate-channel-split.ts';
 import { checkStampGateTwoLooks, stampGateTwoLooksShot } from '../models/stamp-gate-two-looks.ts';
@@ -418,6 +421,40 @@ async function checkOffsetCopies(): Promise<StampGateWashCheck[]> {
   return checkStampGateOffsetCopies({ copies: await frameAtRest(stampGateOffsetCopiesShot()), placed: await frameAtRest(stampGateOffsetCopiesPlacedShot()) });
 }
 
+/** The light-spill case's three screen: a flat grey disc where STAMP_GATE_LIGHT_SPILL_SCREEN says. */
+const LIGHT_SPILL_SCREEN: ThreeSource = {
+  kind: 'three',
+  build: ({ plane }) => {
+    const { x, y, r } = STAMP_GATE_LIGHT_SPILL_SCREEN, geometry = new CircleGeometry(plane.length(r), 64), material = new MeshBasicNodeMaterial({ color: 0x8890a0 });
+    const mesh = new Mesh(geometry, material), scene = new Scene(), at = plane.point({ x, y });
+    mesh.position.set(at.x, at.y, at.z);
+    scene.add(mesh);
+    return {
+      scene, poseAt: () => {},
+      dispose: () => {
+        material.dispose();
+        geometry.dispose();
+      },
+    };
+  },
+};
+
+/** The light-spill case drawn as `drawn` says at `at`, lit and unlit, RGB bytes. */
+async function lightSpillBoth(drawn: Omit<StampGateLightSpillDrawn, 'lit'>, at: number, screen?: ThreeSource) {
+  const frame = async (lit: boolean) => stampGateRgb((await stampGateShotFrames(stampGateLightSpillShot({ ...drawn, lit }, screen), [at])).frames[0]);
+  return { lit: await frame(true), unlit: await frame(false) };
+}
+
+/** shot/light-spill: neon lighting a wall, each frame drawn lit and unlit. */
+async function checkLightSpill(): Promise<StampGateWashCheck[]> {
+  const { rest, panned } = STAMP_GATE_LIGHT_SPILL_AT, open = { bloom: 0, bar: false, pan: true, moved: false };
+  return checkStampGateLightSpill({
+    rest: await lightSpillBoth(open, rest), panned: await lightSpillBoth(open, panned), moved: await lightSpillBoth({ ...open, moved: true }, rest),
+    barred: await lightSpillBoth({ ...open, bar: true }, rest), bloomed: await lightSpillBoth({ ...STAMP_GATE_LIGHT_SPILL_BASELINE }, rest),
+    screen: await lightSpillBoth(open, rest, LIGHT_SPILL_SCREEN), screenPanned: await lightSpillBoth(open, panned, LIGHT_SPILL_SCREEN),
+  });
+}
+
 /** shot/channel-split: channelSplit over the figure read in no plane, beside the figure placed alone, over each footage. */
 async function checkChannelSplit(): Promise<StampGateWashCheck[]> {
   const [green, blue] = STAMP_GATE_CHANNEL_SPLIT_FOOTAGES;
@@ -477,6 +514,7 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/two-looks') return checkTwoLooks();
   if (id === 'shot/trail') return checkTrail();
   if (id === 'shot/slices-reroll') return checkSlicesReroll();
+  if (id === 'shot/light-spill') return checkLightSpill();
   return checkStampGateShotMasksCase(id);
 }
 

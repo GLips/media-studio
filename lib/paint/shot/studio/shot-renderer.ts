@@ -31,7 +31,7 @@ import type { LensMode } from '#lib/picture/lens/models/lens-mode.ts';
 import { shutterOpensAt } from '#lib/picture/lens/models/lens-shutter.ts';
 import { createLensCompositor, type LensItemsLayer, type LensLayer } from '#lib/picture/lens/studio/lens-compositor.ts';
 import { shotCanvasLayings, shotPaintedSolvables, shotPlaneLeaves, type CompiledPaintedShot, type CompiledShotPaintedPlane, type CompiledShotPlane, type PaintedShotPaintOptions } from '../models/shot-compile.ts';
-import { shotImageLeafReads, shotLeafReadMoment, shotMomentMapped } from '../models/shot-effect.ts';
+import { shotEffectImageEmits, shotImageLeafReads, shotLeafReadMoment, shotMomentMapped } from '../models/shot-effect.ts';
 import { shotExposureMoments, shotSolvablesShown, shotWarmShown } from '../models/shot-shown.ts';
 import { shotPinnedPlanes, type ShotPinCentres } from '../models/shot-placement.ts';
 import { shotNodePoseAt, shotRigReader, shotVisibilityAt, type ShotRigRead } from '../models/shot-frame-plan.ts';
@@ -47,6 +47,7 @@ import { shotEffectTableProblems, type ShotEffectGpu, type ShotEffectTable } fro
 import { shotEffectTableWithBuiltins } from './shot-effects-builtin.ts';
 import { createShotPaintedPlanes, type ShotEffectLaid, type ShotImage, type ShotImageRead, type ShotPlaneMoment, type ShotPlaneSolved } from './shot-painted-plane.ts';
 import { createShotPaintedTextures, type ShotWarmSolve } from './shot-painted-textures.ts';
+import { createShotLightSpillPass, type ShotSpillLaid } from './shot-light-spill-gpu.ts';
 import { createShotRigPictures, createShotRigPiecesDrawer } from './shot-rig-pieces.ts';
 import { createShotSheetsLayer } from './shot-sheets-lay.ts';
 import type { ShotSolveProgress } from './shot-watch.ts';
@@ -198,6 +199,8 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
     const layer = createShotSheetsLayer(owner, { stage, arena, fade: createStampSpanFade(owner, arena) });
     const planes = createShotPaintedPlanes(owner, { shot, effects, stage, brushOf, costs, arena, layer, rigPictures: createShotRigPictures(owner, costs), piecesDrawer });
     made.push(planes);
+    const spill = createShotLightSpillPass(owner, { stage, arena });
+    made.push(spill);
     const canvases = surfaces.map((surface, index) => {
       const own = new Map([...sources].filter(([id]) => shot.planes.some((plane) => plane.id === id && plane.canvas === index)));
       const lens = createLensCompositor(webgpu, { ...stage.frame, blurExtent: stampLensSourcesBlurExtent(stage, own) });
@@ -392,18 +395,16 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
         const rendered = renders[canvas.index], lookOf = (id: string) => lensFrame.planes.get(id) ?? STAMP_REST_LOOK;
         const own = steps.filter((step) => canvasOf.get(step.plane) === canvas.index), momentOf = (plane: CompiledShotPlane) => moments.get(plane.id);
         const shown = own.flatMap((step) => (step.kind === 'plane' ? [planeOf.get(step.plane)!] : []));
-        const effectEmits = (plane: CompiledShotPlane) => !!laidEffects.get(plane.id)?.leaves.some((leaf) => !!leaf?.emits);
+        const effectEmits = (plane: CompiledShotPlane) => {
+          const laid = laidEffects.get(plane.id);
+          return !!laid && (shotEffectImageEmits(laid.plane.image) || laid.leaves.some((leaf) => !!leaf?.emits));
+        };
         const glowing = shown.some((plane) => momentOf(plane)?.emits || effectEmits(plane) || rendered.glowing.has(plane.id));
         const itemsMove = own.some((step) => step.kind === 'items' && step.items.some((item) => items.lookOf(step.plane, item).shutter));
         const moving = fast && (shown.some((plane) => momentOf(plane)?.travels || lookOf(plane.id).shutter) || itemsMove || rendered.moved.size > 0);
-        const layers = own.flatMap((step): (LensLayer | LensItemsLayer)[] => {
-          if (step.kind === 'items') {
-            const variant = instancedOf.get(step.plane)!.variants.get(step.variant)!;
-            if (hidden.has(variant.painted)) return [];
-            const laid = shotItemsLayer(encoder, canvas.lens, planes, stage, variantMoments.get(variant)!, step, (item) => items.lookOf(step.plane, item));
-            return laid ? [laid] : [];
-          }
-          const plane = planeOf.get(step.plane)!, isBack = plane === opaqueBack, look = lookOf(plane.id);
+        /** Plane `id` as the lens takes it this exposure: its image placed, or its source rendered and laid. */
+        const planeLayers = (id: string): LensLayer[] => {
+          const plane = planeOf.get(id)!, isBack = plane === opaqueBack, look = lookOf(plane.id);
           if (plane.kind === 'painted' || plane.kind === 'effect') {
             const evaluated = images.get(plane.id);
             if (!evaluated) return [];
@@ -416,6 +417,28 @@ export async function createPaintedShotRenderer(owner: StampPaintGpuOwner, surfa
           const source: StampLaidSourcePlane = plane.kind === 'three' ? { id: plane.id, kind: 'three' } : { id: plane.id, kind: 'picture', extent: plane.source.extent };
           const seen = plane.kind === 'picture' ? pictureLook(plane.id, look, exposure) : look;
           return canvas.sourceLayers.layer(encoder, source, rendered, { look: seen, focus: lensFrame.focus, moving, back: isBack, visibility });
+        };
+        /**
+         * `laid`, plane `id`'s layer, lit by the light other planes throw on it, none from a source hidden or not
+         * emitting. A three render is in frame px, so the spill is carried there through the receiver's own view, as
+         * if flat at its depth (shot-light-spill.ts's approximation); any other takes it in its own plane px.
+         */
+        const lit = (id: string, laid: LensLayer): LensLayer => {
+          const given = shot.spills.get(id), receiver = planeOf.get(id)!;
+          if (!given) return laid;
+          const spills = given.flatMap(({ source, reach, gain, added, map = PAINT_SIMILARITY_IDENTITY }): ShotSpillLaid[] => {
+            const thrower = images.get(source), sharp = thrower?.sharp(), light = thrower && sharp && spill.light(encoder, sharp, thrower.key, reach);
+            if (!light) return [];
+            return [{ light, gain, added, map: receiver.kind === 'three' ? paintSimilarityAfter(shotExposureView(exposure, id), map) : map }];
+          });
+          return spills.length ? spill.lay(encoder, id, laid, spills) : laid;
+        };
+        const layers = own.flatMap((step): (LensLayer | LensItemsLayer)[] => {
+          if (step.kind === 'plane') return planeLayers(step.plane).map((laid) => lit(step.plane, laid));
+          const variant = instancedOf.get(step.plane)!.variants.get(step.variant)!;
+          if (hidden.has(variant.painted)) return [];
+          const laid = shotItemsLayer(encoder, canvas.lens, planes, stage, variantMoments.get(variant)!, step, (item) => items.lookOf(step.plane, item));
+          return laid ? [laid] : [];
         });
         const { frame, last } = canvas.frames(exposure.exposure ?? undefined);
         if (!exposure.exposure || exposure.exposure.index === 0) canvas.glowed = false;

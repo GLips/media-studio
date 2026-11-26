@@ -48,6 +48,8 @@ PaintedShotProps {camera, span, light?, planes, paintedTextures?, warm?}
 | instances | `{kind: 'instanced', depths, variants, instances(m)}` | each variant solved once and shared by every item; paint a variant on a document tight round its paint; one key per item's lifetime, so the shutter blurs it along its own travel |
 | figure | `shotPlace(shotFigure(painting, card), plane)` | `subjectFigureCard`'s group alone, as an image; `shotFigureSilhouette` reads its outline |
 | effect | `shotPlace(offsetCopies(hero, {count, dx, dy, fade}), plane)`; `shotPlace(trail(hero, {count, every: {drawings}, fade}), {..., sourceClock: {hold: n}})` | an image made from others: below |
+| light spill | `illuminate(wall, lightSpill('sign', {reach, gain?, added?, map?}))` | light a plane throws on another: below |
+| neon | `neon({palette, tube?, spill?, flicker?})` | parts: `tubes(figure)`, `flicker`, `place(figure, plane)`, `light(wall, id)` |
 | dissolve | `dissolve(a, b, k)`, nestable | blends pictures, never pigment or shapes; every end one document size on one ground |
 | picture | `{kind: 'picture', extent, pictureAt}` | premultiplied; return the same object while it's still |
 | HTML among canvases | `<PaintedShot>` children: HTML and `<PaintedShotCanvas name>`, in DOM order | below |
@@ -77,6 +79,20 @@ changes over time says so in `varies(params)`: `['drawing']` gives its WGSL `sho
 the frame; `['moment']` gives `shotSeconds()`, for change that runs on through holds, drawn anew each frame. Both read 0
 unless asked, and only what's asked keys its output. Pass your halves to
 `<PaintedShot effects={[...]}>`, a module constant. An effect plane can't be the back or take masks, and no mask reads it.
+An effect whose light is its own (a tube, a spark) says `emits: true`: its film's emission blooms through the lens.
+
+**Light spill.** `illuminate(receiver, lightSpill(source, {reach, gain, added}))` lights any plane, the back or a
+three plane included, with the emission of painted or effect plane `source` as it lies (its visibility and flicker
+included), blurred by `reach` px. The receiver's paint reflects it (light × (1 + gain·E)), and `added`·E lies where it
+covers; it never emits, so the wall doesn't bloom. The source's own glow is `lens.bloom`, tuned apart. A source that
+doesn't emit throws nothing, however bright: glow it, or make its light an effect that emits. Where it lands: where
+the frame shows the source at rest (`map` moves it), then fixed to the receiver as the camera moves, following the
+source's lay. On a three receiver it's laid in frame px as if the plane were flat at its depth, a screen-space approximation.
+
+**Neon.** `const sign = neon({palette: ['#ff3fa4', '#3ff0ff'], spill: {reach: 48}, flicker: {seed: 3}})`, then
+`sign.place(shotFigure(painting, card), {id: 'sign', depth: 1.2})` and `sign.light(wall, 'sign')`. `tubes` (the
+`neonTubes` effect) bends each line into a tube of the palette colour nearest its paint's hue, white at its core;
+`flicker` is a value in time for its visibility. The tubes stand alone, on any plane or in another effect.
 
 ## The camera
 

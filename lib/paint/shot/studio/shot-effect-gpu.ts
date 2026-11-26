@@ -171,14 +171,14 @@ export function createShotEffectPass(
   const pipelineOf = (code: string) => device.createComputePipeline({ layout: 'auto', compute: { module: device.createShaderModule({ code }) } });
   return {
     /**
-     * `draw`'s output, kept under its key, or drawn into `encoder` and kept: a film, emitting when a read does. Every
+     * `draw`'s output, kept under its key, or drawn into `encoder` and kept: a film, emitting when its definition or a read does. Every
      * read's picture is used by `encoder` (the cache's own rule), so none is given up before it's read.
      */
     draw(encoder: GPUCommandEncoder, { gpu, params, time, reads, box, visibility, key }: ShotEffectPassDraw): StampPlanePicture {
       const found = outputs.find(key, encoder);
       costs?.count(found ? 'effect hits' : 'effect misses');
       if (found) return { ...found.note, texture: found.textures[0] };
-      const emits = reads.some(({ picture }) => !!picture && picture.emission !== null), layers = stampPlanePictureLayers('film', { emits, travels: false });
+      const emits = !!gpu.definition.emits || reads.some(({ picture }) => !!picture && picture.emission !== null), layers = stampPlanePictureLayers('film', { emits, travels: false });
       const [texture] = outputs.make(key, encoder, [{
         width: box.w, height: box.h, layers: stampPlanePictureLayerCount(layers), format: 'rgba16float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
       }], { ...layers, box }).textures;

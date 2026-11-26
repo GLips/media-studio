@@ -26,6 +26,9 @@ import { stampGateChannelSplitShot } from './stamp-gate-channel-split.ts';
 import { stampGateTwoLooksEvaluations, stampGateTwoLooksShot } from './stamp-gate-two-looks.ts';
 import { STAMP_GATE_SLICES_REROLL_AT, stampGateSlicesRerollShot } from './stamp-gate-slices-reroll.ts';
 import { STAMP_GATE_TRAIL_AT, STAMP_GATE_TRAIL_HAND, stampGateTrailShot } from './stamp-gate-trail.ts';
+import {
+  STAMP_GATE_LIGHT_SPILL_AT, STAMP_GATE_LIGHT_SPILL_BASELINE, STAMP_GATE_LIGHT_SPILL_SIGN, STAMP_GATE_LIGHT_SPILL_WALL, STAMP_GATE_NEON, stampGateLightSpillShot,
+} from './stamp-gate-light-spill.ts';
 import { STAMP_GATE_FRAME_TOLERANCE } from './stamp-gate-frames.ts';
 import { STAMP_GATE_SHOT_FPS, type StampGateShot } from './stamp-gate-shot-span.ts';
 import {
@@ -49,7 +52,7 @@ export const STAMP_GATE_SHOT_PAGE_IDS = ['shot/page'] as const;
 /** The shots accepted by eye: each a baseline subject, one frame of its shot. */
 export const STAMP_GATE_SHOT_IDS = [
   'shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/masks', 'shot/masks-across', 'shot/masks-across-open', 'shot/rainy-street', 'shot/cards',
-  'shot/pieces', 'shot/approach', 'shot/folds', 'shot/card-shadows', 'shot/figure-image', 'shot/offset-copies', 'shot/channel-split', 'shot/two-looks', 'shot/trail',
+  'shot/pieces', 'shot/approach', 'shot/folds', 'shot/card-shadows', 'shot/figure-image', 'shot/offset-copies', 'shot/channel-split', 'shot/two-looks', 'shot/trail', 'shot/light-spill',
   'shot/slices-reroll',
 ] as const;
 export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
@@ -58,7 +61,7 @@ export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
 export const STAMP_GATE_SHOT_CASE_IDS = [
   'shot/rain', 'shot/shutter', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street', 'shot/cards', 'shot/pieces', STAMP_GATE_SHOT_GLOW_ID,
   STAMP_GATE_SHOT_APPROACH_ID, 'shot/properties-in-time', 'shot/card-shadows', 'shot/card-shutter', 'shot/figure-card', 'shot/figure-image',
-  'shot/offset-copies', 'shot/channel-split', 'shot/two-looks', 'shot/trail', 'shot/slices-reroll',
+  'shot/offset-copies', 'shot/channel-split', 'shot/two-looks', 'shot/trail', 'shot/light-spill', 'shot/slices-reroll',
 ] as const;
 export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
 
@@ -440,6 +443,11 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
     shot: stampGateTrailShot, at: STAMP_GATE_TRAIL_AT, evaluations: () => [2, 3, 4, 5].map((pose) => painting(STAMP_GATE_TRAIL_HAND, { pose })), rigs: {}, poses: [],
   },
   'shot/slices-reroll': { shot: stampGateSlicesRerollShot, at: STAMP_GATE_SLICES_REROLL_AT, evaluations: stampGateTwoLooksEvaluations, rigs: {}, poses: [] },
+  'shot/light-spill': {
+    shot: () => stampGateLightSpillShot(STAMP_GATE_LIGHT_SPILL_BASELINE), at: STAMP_GATE_LIGHT_SPILL_AT.rest,
+    evaluations: () => [painting(STAMP_GATE_LIGHT_SPILL_WALL), painting(STAMP_GATE_LIGHT_SPILL_SIGN)], rigs: {}, poses: [],
+    extra: { drawn: STAMP_GATE_LIGHT_SPILL_BASELINE, spill: { ...STAMP_GATE_NEON.spill('sign') } },
+  },
 };
 
 /** Shot baseline `id`'s shot and the scene second its frame shows. */
