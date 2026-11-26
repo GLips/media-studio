@@ -131,14 +131,14 @@ export function shotEffectChecked(plane: string, field: string, image: ShotEffec
   const taken = Object.keys(definition.defaults);
   for (const key of Object.keys(image.params)) if (!taken.includes(key)) error(`params.${key}`, `takes no parameter ${key}; it takes ${taken.join(', ') || 'none'}`);
   const optional: readonly string[] = definition.optional ?? [], required = definition.inputs.filter((input) => !optional.includes(input));
-  for (const input of required) if (!(input in image.inputs)) error('inputs', `reads ${input}, which isn't given: give ${required.join(', ')}`);
+  for (const input of required) if (image.inputs[input] === undefined) error('inputs', `reads ${input}, which isn't given: give ${required.join(', ')}`);
   for (const input of Object.keys(image.inputs)) if (!definition.inputs.includes(input)) error(`inputs.${input}`, `has no input ${input}; it reads ${definition.inputs.join(', ')}`);
   // SAFETY: every key given is one of the defaults' (checked above, refusing the rest), each its own check's to judge.
   const params = { ...definition.defaults, ...image.params } as ShotEffectParams;
   if (problems.length) return { params, reads: [], grow: 0, problems };
   for (const { field: at, message } of definition.problems(params)) error(`params.${at}`, message);
   if (problems.length) return { params, reads: [], grow: 0, problems };
-  const given = definition.inputs.filter((input) => input in image.inputs), reads = definition.reads(params, given), grow = definition.grow?.(params) ?? 0;
+  const given = definition.inputs.filter((input) => image.inputs[input] !== undefined), reads = definition.reads(params, given), grow = definition.grow?.(params) ?? 0;
   if (!reads.length) error('params', 'reads nothing: an effect reads one of its inputs at least');
   if (reads.length > SHOT_EFFECT_READS_MOST) error('params', `makes ${reads.length} reads, past the ${SHOT_EFFECT_READS_MOST} one effect makes: read the output of one in another`);
   reads.forEach(({ input, map }, i) => {

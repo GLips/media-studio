@@ -65,8 +65,8 @@ or another effect. Its inputs need no plane of their own; each is laid through t
 `offsetCopies`; `channelSplit(hero, {red: [x, y], green, blue})`, each channel moved whole, so its fringe tints
 coloured footage cleanly; and `slices({source, second?, third?, fourth?}, {cells: 'rows' | 'rects', size, shift,
 share, seed})`, cells of the frame a seeded share moved, each showing one input: give two looks of one subject, neither
-placed, for a tiled mosh. Slices sit on the frame, not the subject, and the same seed always cuts the same. Define your own as the studio does, in two halves: `defineShotEffect({name, inputs, defaults, problems,
-reads, grow?})` (plain data: each read names an input, a map in plane px, and a moment map), and
+placed, for a tiled mosh. Cells lie in plane px, not on the subject, and the same seed always cuts the same. Define your own as the studio does, in two halves: `defineShotEffect({name, inputs, optional?, defaults,
+problems, reads, grow?})` (plain data: `reads(params, given)` names, of the inputs given, each read's input, a map in plane px, and a moment map), and
 `defineShotEffectGpu(effect, {wgsl, uniforms})`, whose WGSL defines `fn shotEffect(p: vec2f) -> ShotFilm` over
 `shotRead(i, p)`, `shotOver`, `shotFaded` and `shotParam(i)` (`studio api defineShotEffectGpu`). Pass your halves to
 `<PaintedShot effects={[...]}>`, a module constant. An effect plane can't be the back or take masks, and no mask reads it.

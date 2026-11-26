@@ -101,6 +101,7 @@ test('slices reads each input given, the optional ones left out when not given, 
   assert.ok(input.kind === 'box' && output.kind === 'box');
   assert.deepEqual(output.box, { x0: input.box.x0 - 20, y0: input.box.y0 - 20, x1: input.box.x1 + 20, y1: input.box.y1 + 20 });
   assert.match(messages(shotPlace(slices({ second: hero } as never), { id: 'x', depth: 1 })), /slices: reads source, which isn't given: give source/);
+  assert.equal(compiled(shotPlace(slices({ source: hero, second: undefined }), { id: 'y', depth: 1 })).problems.length, 0);
 });
 
 test("channel split reads its input once a channel, each through its channel's offset, its output spanning every channel's", () => {
