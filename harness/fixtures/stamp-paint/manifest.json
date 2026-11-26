@@ -378,6 +378,15 @@
       "acceptedOver": "3b2ce5d2",
       "adapter": "apple metal-3"
     },
+    "shot/trail": {
+      "file": "shot/trail.png",
+      "output": "1ce0c28cc088a61bd054dab6690cf95fd89fdbbf45e2faf1f549d46a8390aff7",
+      "inputs": "163cba2ed47bbc48883cce2d5d0218b5cf650c8fbf0d3522acd4629884b90865",
+      "reason": "vid-217: new baseline, a six-pose hand's trail under a pan",
+      "accepted": "2026-11-26",
+      "acceptedOver": "c8ca83cc",
+      "adapter": "apple metal-3"
+    },
     "shot/wet-contact": {
       "file": "shot/wet-contact.png",
       "output": "319cf20545aca444ecd160151549a608f59e35676c39e2d70e035a26c14c2149",
