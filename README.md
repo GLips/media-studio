@@ -4,7 +4,7 @@
 
 # media-studio
 
-<h3>A media studio for you and your agents: code-based tools for making video and images, and a review app where you
+<h3>Code-based tools for making video and images, plus a review app where you
 leave specific notes, frame by frame.</h3>
 
 https://github.com/user-attachments/assets/d95c1e29-c845-460f-a8fc-84c1fae775ff
