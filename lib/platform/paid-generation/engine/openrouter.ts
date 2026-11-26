@@ -21,13 +21,18 @@ export type OpenRouterVideoJob = {
   error?: string | null;
 };
 
-function openRouterHeaders(): Record<string, string> {
+/** The OpenRouter key from the environment; throws, naming the secret launcher, when it isn't set. */
+export function openRouterKeyFromEnv(): string {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) {
     throw new Error('OPENROUTER_API_KEY is not set. Run this under your secret launcher so the key exists only in this process, '
       + 'e.g. `"$(studio home)/bin/studio-secrets" studio <verb> <project>`');
   }
-  return { Authorization: `Bearer ${key}` };
+  return key;
+}
+
+function openRouterHeaders(): Record<string, string> {
+  return { Authorization: `Bearer ${openRouterKeyFromEnv()}` };
 }
 
 async function fetchOpenRouter(pathOrUrl: string, init: RequestInit = {}): Promise<Response> {

@@ -21,7 +21,8 @@ const LINK_SECONDS = 60 * 60;
 // Presigned uploads and checks are used at once.
 const REQUEST_SECONDS = 5 * 60;
 
-function s3UploadConfigFromEnv(): S3UploadConfig {
+/** The upload bucket's settings from the environment; throws, naming what's missing, when any isn't set. */
+export function s3UploadConfigFromEnv(): S3UploadConfig {
   const missing = Object.values(UPLOAD_ENV).filter((name) => !process.env[name]);
   if (missing.length) {
     throw new Error(`${missing.join(', ')} ${missing.length > 1 ? 'are' : 'is'} not set: a reference video is uploaded to our bucket for the provider to fetch. `
