@@ -157,6 +157,12 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
   const { sounds } = voice;
   const first = sounds.findIndex((s) => middle(s)! >= asked), last = sounds.findLastIndex((s) => middle(s)! <= askedTo);
   if (first < 0 || last < first || !sounds.slice(first, last + 1).some((s) => !s.unheard)) throw new Error(`${where} has no words said between ${asked} and ${askedTo} s to speak a line from`);
+  // A moment asked in the middle half of a word would take or drop it by a hair, silently: a re-finished transcript
+  // shifts word times, so a range that once held a word whole can lose it. Its edges belong between words.
+  for (const t of [asked, askedTo]) {
+    const split = sounds.find((s) => !s.unheard && s.start + (s.end - s.start) / 4 < t && t < s.end - (s.end - s.start) / 4);
+    if (split) throw new Error(`${where}'s line from ${asked} to ${askedTo} s splits "${split.text}" (${split.start.toFixed(2)}–${split.end.toFixed(2)} s) at ${t} s: move that edge before or after the word`);
+  }
   const keep = new Set(edits.keep ?? []), kept = new Set<number>();
   const keeps = (from: number, to: number) => [...keep].filter((t) => from <= t && t <= to).map((t) => kept.add(t)).length > 0;
 

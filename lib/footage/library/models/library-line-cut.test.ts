@@ -37,3 +37,9 @@ test('a filler stays in when either join lacks a distinct trough', () => {
   const forced = speak(levels, { cut: [line.removals[0].keepAt] });
   assert.deepEqual(forced.pieces, [{ from: 1.98, to: 2.395 }, { from: 2.725, to: 3.1 }]);
 });
+
+test('a line whose edge falls inside a word names the word rather than dropping it', () => {
+  const voice = { sounds, quiet: [], soft: [], clicks: [], envelope: { levels: new Uint8Array(100).fill(30), start: 2, step: 0.01 } };
+  assert.throws(() => cutLibraryLine(voice, 2, 2.84, {}, 'take'), /splits "voice"/);
+  assert.equal(cutLibraryLine(voice, 2, 3, {}, 'take').heard.length, 3);
+});
