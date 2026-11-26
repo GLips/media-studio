@@ -8,9 +8,10 @@ import { paintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.
 import { stampStage } from '#lib/paint/painting/models/stamp-stage.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
 import { compilePaintedShot, type CompiledShotEffectPlane } from './shot-compile.ts';
-import { defineShotEffect, shotEffectKeyAt, shotEffectTimeAt, shotImageLeafReads, shotMomentMapped } from './shot-effect.ts';
+import { defineShotEffect, shotDrawingStarted, shotEffectKeyAt, shotEffectTimeAt, shotPlaneImage, shotImageLeafReads, shotMomentMapped } from './shot-effect.ts';
 import { shotFigure, shotPlace } from './shot-figure.ts';
-import { shotEffectImageKey } from './shot-images.ts';
+import { shotDrawablesAt } from './shot-plan.ts';
+import { shotImageReach, shotEffectImageKey } from './shot-images.ts';
 import { offsetCopies } from './shot-offset-copies.ts';
 import { channelSplit } from './shot-channel-split.ts';
 import { shotSlicesCell, slices } from './shot-slices.ts';
@@ -68,7 +69,7 @@ test('bad parameters and graphs are refused with what to do, each at its field',
     { id: 'd', depth: 1, source: offsetCopies(layersOf(painting(street), ['shadow'])) },
     { id: 'e', depth: 1, source: offsetCopies(hero), masks: [{ kind: 'alphaOf', drawable: 'street/shadow' }] },
   );
-  assert.match(said, /source\.params\.count: offsetCopies: 0 isn't a whole number of copies from 1 to 11/);
+  assert.match(said, /source\.params\.count: offsetCopies: 0 isn't a whole number of copies from 1 to 23/);
   assert.match(said, /source\.params\.fade: offsetCopies: 2 isn't within 0\.\.1/);
   assert.match(said, /source\.params\.speed: offsetCopies: takes no parameter speed; it takes count, dx, dy, fade/);
   assert.match(said, /source\.inputs: chase: reads follow, which isn't given: give lead, follow/);
@@ -135,4 +136,42 @@ test("channel split reads its input once a channel, each through its channel's o
   const plane = shot!.planes.find(({ id }) => id === 'split') as CompiledShotEffectPlane;
   assert.deepEqual(plane.image.reads.map(({ map }) => [map.kx, map.ky]), [[10, 0], [0, 0], [0, -4]]);
   assert.match(messages(shotPlace(channelSplit(hero, { red: [Number.NaN, 0] }), { id: 'x', depth: 1 })), /source\.params\.red: channelSplit: \[NaN, 0\] isn't an offset/);
+});
+
+test('a stage generator can be the sole plane and follows the declared drawing on a seek', () => {
+  const noise = defineShotEffect({ name: 'noise', inputs: [], defaults: { seed: 1 }, extent: 'stage', varies: () => ['drawing'] });
+  const { shot, problems } = compilePaintedShot({ span: SPAN, camera, planes: [shotPlace(noise({ seed: 7 }), { id: 'noise', depth: 2, sourceClock: { hold: 2 } })] }, []);
+  assert.deepEqual(problems, []);
+  const plane = shot!.planes[0];
+  assert.ok(plane.kind === 'effect');
+  assert.deepEqual([-2, 0, 2].map((f) => shotDrawingStarted(shot!, plane.sourceClock, paintMoment(f / FPS))), [false, true, true]);
+  assert.deepEqual([shot!.clearBack, plane.image.params.seed, plane.image.reads.length], [false, 7, 0]);
+  assert.deepEqual(shotEffectExtent(plane.image, shot!.motion, new Set()), { kind: 'everywhere' });
+  assert.deepEqual([6, 0, 7].map((f) => shotEffectTimeAt(plane.image, paintMoment(f / FPS)).drawing), [3, 0, 3]);
+});
+
+test('a group reads masked placed planes at the exposure, with image-only members omitted from the lens', () => {
+  const group = defineShotEffect({ name: 'group', inputs: ['under', 'over'], defaults: {} });
+  const actor = shotPlace(hero, { id: 'actor', depth: 1, imageOnly: true, masks: [{ kind: 'alphaOf', drawable: 'street/shadow' }] });
+  const grouped = group({ under: shotPlaneImage('street'), over: shotPlaneImage('actor') });
+  const { shot, problems } = compiled(actor, shotPlace(grouped, { id: 'all', depth: 1 }));
+  assert.deepEqual(problems, []);
+  assert.deepEqual(shotImageReach(shot!.planes, 'all'), new Set(['all', 'actor', 'street']));
+  assert.deepEqual(shotDrawablesAt(shot!, new Map(), paintMoment(0)).map(({ plane }) => plane), ['street', 'all']);
+  assert.match(messages(shotPlace(group({ under: hero, over: shotPlaneImage('missing') }), { id: 'bad', depth: 1 })), /needs a placed painted or effect plane/);
+  assert.match(messages(shotPlace(group({ under: hero, over: shotPlaneImage('b') }), { id: 'a', depth: 1 }),
+    shotPlace(group({ under: hero, over: shotPlaneImage('a') }), { id: 'b', depth: 1 })), /cycle: a -> b -> a/);
+  assert.match(messages(actor, shotPlace(chase({ lead: hero, follow: grouped }), { id: 'past', depth: 1 })), /reads this exposure/);
+});
+
+test('twenty earlier drawings compile as ordered reads sharing a single painted leaf', () => {
+  const stack = defineShotEffect({ name: 'stack', inputs: ['source'], defaults: {}, reads: () =>
+    Array.from({ length: 21 }, (_, drawingsEarlier) => ({ input: 'source', moment: { drawingsEarlier } })) });
+  const { shot, problems } = compiled(shotPlace(stack(hero), { id: 'stack', depth: 1, sourceClock: { hold: 1 } }));
+  assert.deepEqual(problems, []);
+  const plane = shot!.planes.find(({ id }) => id === 'stack');
+  assert.ok(plane?.kind === 'effect');
+  const reads = shotImageLeafReads(plane.image);
+  assert.equal(new Set(reads.map(({ leaf }) => leaf)).size, 1);
+  assert.deepEqual(reads.map(({ moments }) => Math.round(shotMomentMapped(moments, paintMoment(1)).frame * FPS)), Array.from({ length: 21 }, (_, i) => FPS - i));
 });

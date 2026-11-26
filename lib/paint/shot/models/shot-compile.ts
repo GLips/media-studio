@@ -23,6 +23,7 @@ import type { StampPaintCostTally } from '#lib/paint/painting/models/stamp-paint
 import { paintMoment, type PaintMoment, type StampGroupLay } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { momentEarlier } from '#lib/picture/lens/models/lens-shutter.ts';
 import type { SceneShownSpan } from '#lib/timing/timeline/models/scene-seconds.ts';
+import { shotPlacedImageProblems } from './shot-images.ts';
 import { compiledShotEffect, shotEffectChecked, shotEffectReadMap, shotImageLeaves, type CompiledShotEffectImage, type CompiledShotEffectRead, type CompiledShotImage, type ShotEffectMoment, type ShotImageSource } from './shot-effect.ts';
 import { shotFigureProblems } from './shot-figure.ts';
 import { shotLightSpillProblems, type ShotLightSpill } from './shot-light-spill.ts';
@@ -87,7 +88,7 @@ export type CompiledShotPaintedPlane = ShotPlanePlacement & CompiledShotPaintedI
  * A plane placing an effect's image (shot-effect.ts): its placement, which its inputs are drawn through, and the
  * occurrences they show, each key once, which its entries name.
  */
-export type CompiledShotEffectPlane = ShotPlanePlacement & { readonly kind: 'effect'; readonly image: CompiledShotEffectImage; readonly occurrences: readonly ShotOccurrence[] };
+export type CompiledShotEffectPlane = ShotPlanePlacement & { readonly kind: 'effect'; readonly sourceClock: readonly PaintSceneStep[]; readonly image: CompiledShotEffectImage; readonly occurrences: readonly ShotOccurrence[] };
 
 /** A picture or three plane compiled: its source, posed or pictured at `sourceClock`'s moment; a three plane at one depth. */
 export type CompiledShotSourcePlane = ShotPlaneCommon & { readonly sourceClock: readonly PaintSceneStep[] } & (
@@ -257,6 +258,7 @@ type ShotImageCompiling = {
  */
 function compileEffectInput(source: ShotImageSource, field: string, reader: string, at: ShotImageCompiling): CompiledShotImage | null {
   const { props, common, page, fps, problems } = at;
+  if (typeof source !== 'function' && source.kind === 'plane-image') return source;
   if (typeof source !== 'function' && source.kind === 'effect') return compileEffectImage(source, field, at);
   const figure = typeof source !== 'function' && source.kind === 'figure' ? source.card : null;
   const painted = typeof source !== 'function' && source.kind === 'figure' ? source.source : source;
@@ -313,18 +315,19 @@ function compileEffectImage(image: Extract<ShotImageSource, { readonly kind: 'ef
 
 /**
  * Plane `props`, placing effect image `image`, compiled: its placement, and its inputs' occurrences, each key once.
- * Refused: the back, which is opaque to the frame's edge; masks, which cut a painted plane's films as they're laid;
+ * The back must shade the whole stage unless it lies over HTML. Refused: masks, which cut painted films as they're laid;
  * a pin or cover, laid through the camera only for a painted plane.
  */
 function compileEffectPlane(image: Extract<ShotImageSource, { readonly kind: 'effect' }>, farthest: boolean, at: ShotImageCompiling): CompiledShotEffectPlane | null {
   const { props, common, problems } = at, { lay } = props;
-  if (farthest) problems.push(shotError(props.id, 'source', `is the farthest plane, the back, and ${image.definition.name}'s output is clear film: place it nearer than a painted back or a picture`));
+  const filmBack = farthest && image.definition.extent !== 'stage' && !at.page.htmlBehind;
+  if (filmBack) problems.push(shotError(props.id, 'source', `is the farthest plane, the back, and ${image.definition.name}'s output is clear film: place it nearer than a painted back or a picture`));
   if (props.masks?.length) problems.push(shotError(props.id, 'masks', `places ${image.definition.name}'s output, and masks cut a painted plane's films as it lays them: mask what the effect reads`));
   if (lay && typeof lay !== 'function' && 'kind' in lay) problems.push(shotError(props.id, 'lay', `places ${image.definition.name}'s output, and a ${lay.kind} lays only a painted plane: lay it by a lay or a value in time`));
   const compiled = compileEffectImage(image, 'source', at);
-  if (!compiled || farthest || props.masks?.length || (lay && typeof lay !== 'function' && 'kind' in lay)) return null;
+  if (!compiled || filmBack || props.masks?.length || (lay && typeof lay !== 'function' && 'kind' in lay)) return null;
   const occurrences = new Map(shotImageLeaves(compiled).flatMap(({ occurrences: shown }) => shown.map((occurrence) => [occurrence.key, occurrence] as const)));
-  return { ...common, kind: 'effect', lay: compilePlaneLay(props), opaqueBack: false, image: compiled, occurrences: [...occurrences.values()] };
+  return { ...common, kind: 'effect', sourceClock: paintNodeClockSteps(props.sourceClock), lay: compilePlaneLay(props), opaqueBack: farthest && !at.page.htmlBehind, image: compiled, occurrences: [...occurrences.values()] };
 }
 
 /**
@@ -437,8 +440,7 @@ export function compilePaintedShot(
     const painted = compilePaintedPlane(plane, source, common, index === 0, page, fps, problems, 'source', figure?.card ?? null);
     return painted ? [painted] : [];
   });
-  // An effect plane is refused as the back (compileEffectPlane): its output is clear film.
-  const [back] = planes, clearBack = !!back && (back.kind === 'painted' ? !back.opaqueBack : back.kind !== 'picture' || back.source.extent.kind !== 'everywhere');
+  const [back] = planes, clearBack = !!back && (back.kind === 'painted' || back.kind === 'effect' ? !back.opaqueBack : back.kind !== 'picture' || back.source.extent.kind !== 'everywhere');
   if (clearBack && !page.htmlBehind && back.kind === 'three') {
     problems.push(shotError(back.id, 'source', "is the farthest plane, and a three plane is the back only over HTML before the first canvas: the back is opaque to the frame's edge, painted or a picture"));
   }
@@ -474,11 +476,19 @@ export function compilePaintedShot(
   const masks = shotMaskCheck(props.planes, occurrences);
   problems.push(...masks.problems, ...maskPiecesProblems(planes, rigs), ...maskEffectProblems(planes));
   const kindOf = (id: string) => planes.find((plane) => plane.id === id)?.kind ?? (instanced.some((plane) => plane.id === id) ? 'instanced' : undefined);
+  problems.push(...shotPlacedImageProblems(planes));
   const spills = new Map(planes.flatMap(({ id }) => {
     const given = written.get(id)!.spills ?? [];
     problems.push(...shotLightSpillProblems(id, given, kindOf));
     return given.length ? [[id, given] as const] : [];
   }));
+  for (const plane of props.planes) {
+    if (plane.kind === 'instanced' || !plane.imageOnly) continue;
+    const kind = kindOf(plane.id);
+    if ((kind !== 'painted' && kind !== 'effect') || plane.id === back?.id) {
+      problems.push(shotError(plane.id, 'imageOnly', 'only a painted or effect plane nearer than the back can be held out of the lens'));
+    }
+  }
   const motion = compileShotMotion(motionPlanes, entries.motion, new Set(rigs.keys()), fps, moments);
   problems.push(...motion.problems);
   for (const plane of planes) if (plane.kind === 'painted' || plane.kind === 'effect') problems.push(...movingLayProblems(plane, motion.motion));

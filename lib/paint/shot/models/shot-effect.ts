@@ -63,23 +63,31 @@ export type ShotEffectProblem = { readonly field: string; readonly message: stri
  */
 export type ShotEffectDefinition<P extends ShotEffectParams = ShotEffectParams, I extends string = string, O extends I = I> = {
   readonly name: string;
-  readonly inputs: readonly [I, ...I[]];
+  readonly inputs: readonly I[];
+  /** Shade every stage texel, including the camera margin and where every input is clear. */
+  readonly extent?: 'stage';
   readonly optional?: readonly O[];
   readonly defaults: P;
   /** Its film's emission is light of its own: it blooms, and throws spill on a plane `illuminate`s. */
   readonly emits?: boolean;
   // Methods, so a definition of any parameters stands as one of ShotEffectParams in a table (method parameters are bivariant).
-  problems(params: P): readonly ShotEffectProblem[];
-  reads(params: P, given: readonly I[]): readonly ShotEffectRead<I>[];
+  problems?(params: P): readonly ShotEffectProblem[];
+  reads?(params: P, given: readonly I[]): readonly ShotEffectRead<I>[];
   grow?(params: P): number;
   varies?(params: P): readonly ShotEffectVaries[];
 };
 
-/** The most reads one effect makes: each binds a texture in its pass, which a device holds 16 of; nest effects for more. */
-export const SHOT_EFFECT_READS_MOST = 12;
+/** Maximum logical reads in one dispatch. Pictures beyond the binding budget share an array texture. */
+export const SHOT_EFFECT_READS_MOST = 24;
 
 /** What an effect reads: a painted source, a painting in time, a figure, or another effect's image. */
-export type ShotImageSource = PresentationValue<PaintedSource> | PaintingInTime | ShotFigure | ShotEffectImage;
+export type ShotImageSource = PresentationValue<PaintedSource> | PaintingInTime | ShotFigure | ShotEffectImage | ShotPlaneImage;
+
+/** The sharp image of a placed painted or effect plane, with its masks, pose and visibility, at this exposure. */
+export type ShotPlaneImage = { readonly kind: 'plane-image'; readonly plane: string };
+
+/** Read a placed painted or effect plane where the camera shows it, in the coordinate system of the effect. */
+export const shotPlaneImage = (plane: string): ShotPlaneImage => ({ kind: 'plane-image', plane });
 
 /** An effect's image as written: its definition, its inputs by name, and its parameters as given. Plain data until a shot draws it. */
 export type ShotEffectImage = {
@@ -105,21 +113,26 @@ export type ShotEffect<P extends ShotEffectParams, I extends string, O extends I
 };
 
 /** `definition` as a constructor of its images: place one with shotPlace, or read it in another effect. */
-export function defineShotEffect<P extends ShotEffectParams, const I extends string, const O extends I = never>(definition: ShotEffectDefinition<P, I, O>): ShotEffect<P, I, O> {
-  const [only] = definition.inputs, lone = definition.inputs.length === 1;
-  const make = (inputs: ShotEffectInputs<I, O>, params: Partial<P> = {}): ShotEffectImage => ({
-    kind: 'effect', definition,
-    // SAFETY: an effect of one input takes the source itself (ShotEffectInputs); of more, a record by name.
-    inputs: lone ? { [only]: inputs as ShotImageSource } : (inputs as Readonly<Record<string, ShotImageSource>>),
-    params,
-  });
+export function defineShotEffect<P extends ShotEffectParams>(definition: ShotEffectDefinition<P, never> & { readonly inputs: readonly []; readonly extent: 'stage' }):
+  ((params?: Partial<P>) => ShotEffectImage) & { readonly definition: ShotEffectDefinition<P> };
+export function defineShotEffect<P extends ShotEffectParams, const I extends string, const O extends I = never>(
+  definition: ShotEffectDefinition<P, I, O> & { readonly inputs: readonly [I, ...I[]] },
+): ShotEffect<P, I, O>;
+export function defineShotEffect(definition: ShotEffectDefinition) {
+  const make = (source?: ShotImageSource | Readonly<Record<string, ShotImageSource>> | Partial<ShotEffectParams>, params: Partial<ShotEffectParams> = {}): ShotEffectImage => {
+    // SAFETY: the constructor overloads pair the input count with its calling convention.
+    if (!definition.inputs.length) return { kind: 'effect', definition, inputs: {}, params: (source ?? {}) as ShotEffectParams };
+    // SAFETY: the one-input signature accepts the source itself, the multi-input signature a record by name.
+    const inputs = definition.inputs.length === 1 ? { [definition.inputs[0]]: source as ShotImageSource } : source as Record<string, ShotImageSource>;
+    return { kind: 'effect', definition, inputs, params };
+  };
   return Object.assign(make, { definition });
 }
 
 // ---- compiled ------------------------------------------------------------------------------------------------------
 
 /** An image compiled: a painted image laid through its plane's placement (a leaf), or an effect's. */
-export type CompiledShotImage = CompiledShotPaintedPlane | CompiledShotEffectImage;
+export type CompiledShotImage = CompiledShotPaintedPlane | CompiledShotEffectImage | ShotPlaneImage;
 
 /** A read compiled: the image read, its map (input plane px to output plane px), and its moment map (null: the frame's own). */
 export type CompiledShotEffectRead = { readonly input: CompiledShotImage; readonly map: PaintSimilarity; readonly moment: ((moment: PaintMoment) => PaintMoment) | null };
@@ -173,11 +186,13 @@ export function shotEffectChecked(plane: string, field: string, image: ShotEffec
   // SAFETY: every key given is one of the defaults' (checked above, refusing the rest), each its own check's to judge.
   const params = { ...definition.defaults, ...image.params } as ShotEffectParams;
   if (problems.length) return { params, reads: [], grow: 0, varies: [], problems };
-  for (const { field: at, message } of definition.problems(params)) error(`params.${at}`, message);
+  for (const { field: at, message } of (definition.problems?.(params) ?? [])) error(`params.${at}`, message);
   if (problems.length) return { params, reads: [], grow: 0, varies: [], problems };
   const varies = definition.varies?.(params) ?? [];
-  const given = definition.inputs.filter((input) => image.inputs[input] !== undefined), reads = definition.reads(params, given), grow = definition.grow?.(params) ?? 0;
-  if (!reads.length) error('params', 'reads nothing: an effect reads one of its inputs at least');
+  const given = definition.inputs.filter((input) => image.inputs[input] !== undefined);
+  const reads = definition.reads?.(params, given) ?? given.map((input): ShotEffectRead => ({ input }));
+  const grow = definition.grow?.(params) ?? 0;
+  if (!reads.length && definition.extent !== 'stage') error('params', 'reads nothing: an effect reads one of its inputs at least');
   if (reads.length > SHOT_EFFECT_READS_MOST) error('params', `makes ${reads.length} reads, past the ${SHOT_EFFECT_READS_MOST} one effect makes: read the output of one in another`);
   reads.forEach(({ input, map, moment }, i) => {
     if (!given.includes(input)) error('params', `its read ${i} names ${input}, which isn't one of the inputs given (${given.join(', ')})`);
@@ -203,18 +218,13 @@ export const shotEffectReadMap = (read: ShotEffectRead) => read.map ?? PAINT_SIM
  * box carried through its read's map, unioned, grown by the effect's growth. Before any clip: the stage clips it after.
  * An input is drawn within the stage, so a read carrying paint from past the stage's edge shows that edge.
  */
-export function shotEffectBox(effect: CompiledShotEffectImage, inputBox: (read: CompiledShotEffectRead, index: number) => StampBox | null): StampBox | null {
+export function shotEffectBox(effect: CompiledShotEffectImage, inputBox: (read: CompiledShotEffectRead, index: number) => StampBox | null, maps?: readonly PaintSimilarity[]): StampBox | null {
   let box: StampBox | undefined;
   effect.reads.forEach((read, i) => {
     const input = inputBox(read, i);
-    if (input) box = paintingBoxUnion(box, paintSimilarityBox(read.map, input));
+    if (input) box = paintingBoxUnion(box, paintSimilarityBox(maps?.[i] ?? read.map, input));
   });
   return box ? stampBoxGrown(box, effect.grow) : null;
-}
-
-/** Whether `image` makes light of its own: an effect within it whose definition `emits`. A read may glow besides. */
-export function shotEffectImageEmits(image: CompiledShotImage): boolean {
-  return image.kind === 'effect' && (!!image.definition.emits || image.reads.some(({ input }) => shotEffectImageEmits(input)));
 }
 
 /** Every painted image `image` reads, through any effect, each once, in read order. */
@@ -225,6 +235,7 @@ export function shotImageLeaves(image: CompiledShotImage): CompiledShotPaintedPl
       if (!leaves.includes(at)) leaves.push(at);
       return;
     }
+    if (at.kind === 'plane-image') return;
     for (const { input } of at.reads) visit(input);
   };
   visit(image);
@@ -245,6 +256,7 @@ export function shotImageLeafReads(image: CompiledShotImage): ShotImageLeafRead[
       found.push({ leaf: at, moments });
       return;
     }
+    if (at.kind === 'plane-image') return;
     for (const { input, moment } of at.reads) visit(input, moment ? [...moments, moment] : moments);
   };
   visit(image, []);
@@ -264,9 +276,22 @@ export function shotLeafReadMoment(
   shot: Pick<CompiledPaintedShot, 'span' | 'motion'>, { leaf, moments }: ShotImageLeafRead, t: PaintMoment,
 ): PaintMoment | null {
   const mapped = shotMomentMapped(moments, t);
-  if (!moments.length) return mapped;
-  // Compared as whole animation frames: a moment mapped back by seconds lands a rounding short of the grid.
-  const fps = shot.motion.animationFps, drawn = (m: PaintMoment) => paintAnimationFrameAt(paintNodeTimeAt(leaf.sourceClock, m, fps).frame, fps);
+  return !moments.length || shotDrawingStarted(shot, leaf.sourceClock, mapped) ? mapped : null;
+}
+
+/** A read at a mapped moment can show a drawing only once its source clock reaches the shot's first drawing. */
+export function shotDrawingStarted(
+  shot: Pick<CompiledPaintedShot, 'span' | 'motion'>, clock: CompiledShotPaintedPlane['sourceClock'], mapped: PaintMoment,
+): boolean {
+  // A moment mapped back by seconds can land a rounding error short of the animation grid.
+  const fps = shot.motion.animationFps, drawn = (m: PaintMoment) => paintAnimationFrameAt(paintNodeTimeAt(clock, m, fps).frame, fps);
   const { first } = paintSpanFrameRange(shot.span);
-  return drawn(mapped) < drawn(paintMoment(first / shot.span.fps)) ? null : mapped;
+  return drawn(mapped) >= drawn(paintMoment(first / shot.span.fps));
+}
+
+/** Placed planes read by an effect graph, including whether an enclosing read requests another exposure. */
+export function shotPlacedReads(image: CompiledShotImage, earlier = false): { plane: string; earlier: boolean }[] {
+  if (image.kind === 'painted') return [];
+  if (image.kind === 'plane-image') return [{ plane: image.plane, earlier }];
+  return image.reads.flatMap((read) => shotPlacedReads(read.input, earlier || read.moment !== null));
 }

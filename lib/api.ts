@@ -262,13 +262,14 @@ export { paintingInTime, type PaintingInTime, type PaintingInTimeOptions, type P
 export { shotFigure, shotFigureInTime, shotFigureSilhouette, shotPlace, type ShotFigure } from '#lib/paint/shot/models/shot-figure.ts';
 // Effects: a definition's models half and its studio half, made alike by the built-ins and a project's own.
 export {
-  defineShotEffect, SHOT_EFFECT_READS_MOST, type ShotEffect, type ShotEffectDefinition, type ShotEffectImage, type ShotEffectParams, type ShotEffectMoment, type ShotEffectProblem,
+  defineShotEffect, shotPlaneImage, type ShotPlaneImage, SHOT_EFFECT_READS_MOST, type ShotEffect, type ShotEffectDefinition, type ShotEffectImage, type ShotEffectParams, type ShotEffectMoment, type ShotEffectProblem,
   type ShotEffectRead, type ShotEffectVaries, type ShotImageSource,
 } from '#lib/paint/shot/models/shot-effect.ts';
 export { offsetCopies, type ShotOffsetCopiesParams } from '#lib/paint/shot/models/shot-offset-copies.ts';
 export { channelSplit, type ShotChannelSplitParams } from '#lib/paint/shot/models/shot-channel-split.ts';
 export { slices, type ShotSlicesParams } from '#lib/paint/shot/models/shot-slices.ts';
-export { trail, type ShotTrailParams } from '#lib/paint/shot/models/shot-trail.ts';
+export { trail, trailStrobe, type ShotTrailParams } from '#lib/paint/shot/models/shot-trail.ts';
+export { mosh } from '#lib/paint/shot/models/shot-mosh.ts';
 export { defineShotEffectGpu, SHOT_EFFECT_PARAMS_MOST, type ShotEffectGpu } from '#lib/paint/shot/studio/shot-effect-gpu.ts';
 // Light one plane throws on another, and neon: tubes, flicker and wall spill as parts.
 export { illuminate, lightSpill, SHOT_LIGHT_SPILLS_MOST, type ShotLightSpill } from '#lib/paint/shot/models/shot-light-spill.ts';
