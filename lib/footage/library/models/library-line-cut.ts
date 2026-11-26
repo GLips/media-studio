@@ -5,7 +5,7 @@ import { spokenPauseKindOf } from '#lib/footage/transcript/models/spoken-pauses.
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 import type { SpokenDip, SpokenEdge, SpokenJoin, SpokenPause, SpokenPiece, SpokenRemoval, SpokenUnheard } from '#lib/timing/voice/models/recorded-speech.ts';
 import {
-  LIBRARY_PAUSE_PACING, libraryPaceScale, libraryPauseSteps, libraryPauseStepsSeconds, libraryPauseTarget,
+  LIBRARY_PAUSE_PACING, libraryPaceScale, libraryPauseIsBreak, libraryPauseSteps, libraryPauseStepsSeconds, libraryPauseTarget,
   type LibraryPausePacing, type LibraryPauseStep,
 } from './library-pause-pacing.ts';
 
@@ -219,7 +219,7 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
   const scale = libraryPaceScale(voice.syllableRate), classify = pacing?.classify ?? spokenPauseKindOf;
   const voicedJoin: SpokenJoin = { fadeOut: edits.voicedCutFade ?? VOICED_CUT_FADE, crossfade: VOICED_CROSSFADE };
   const pieces: (Span & { speed: number })[] = [], joins: SpokenJoin[] = [];
-  const gaps: { run: Taken; line: number }[] = [], keptPauses: Span[] = [];
+  const gaps: { run: Taken; line: number }[] = [], keptPauses: Span[] = [], breaks: (Span & { line: number })[] = [];
   const pauses: Omit<SpokenPause, 'at'>[] = [];
   let start = head?.to?.time ?? leadEdge(voice, keptSounds[0]), line = 0, joinNext = BUTTED_JOIN;
   /** Plays on from `start` to item second `to` at `speed`. */
@@ -249,7 +249,10 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
     }
     const pause = pauseBetween(voice, i, next);
     if (!pause) return;
-    const kind = classify(sounds[i], sounds[next]), heard = pause.to - pause.from, keepAt = round((pause.from + pause.to) / 2);
+    const heard = pause.to - pause.from, keepAt = round((pause.from + pause.to) / 2);
+    const wordsKept = (from: number, to: number) => keptSounds.slice(Math.max(0, from), to).map((s) => sounds[s]).filter((s) => !s.unheard);
+    const isBreak = pacing && libraryPauseIsBreak(heard, wordsKept(k - 3, k + 1), wordsKept(k + 1, k + 4), pacing);
+    const kind = isBreak ? 'break' : classify(sounds[i], sounds[next]);
     const quiet = pause.b - pause.a, margin = heard - quiet;
     const plays = pacing && Math.max(0, libraryPauseTarget(kind, heard, pacing, scale) - margin);
     let steps = pacing ? libraryPauseSteps(quiet, plays!, pacing) : [];
@@ -258,6 +261,17 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
     if (held && steps.length) keptPauses.push({ start: pause.from, end: pause.to });
     if (held || !steps.length) {
       pauses.push({ kind, from: round(pause.from), to: round(pause.to), plays: round(heard), speed: 1, keepAt, ...(held && { kept: true as const }) });
+      return;
+    }
+    if (kind === 'break') {
+      // An editor's cut: the quiet a boundary keeps, half after the word and half before the next, the face jumping
+      // across the rest as it would between two takes.
+      const half = Math.min(quiet, pacing!.boundary * scale) / 2;
+      play(pause.a + half);
+      breaks.push({ start: pause.a + half, end: pause.b - half, line });
+      joinNext = QUIET_JOIN;
+      start = pause.b - half;
+      pauses.push({ kind, from: round(pause.from), to: round(pause.to), keepAt, speed: 1, plays: round(margin + 2 * half) });
       return;
     }
     play(pause.a);
@@ -279,6 +293,8 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
     return round(at[k] + (Math.min(Math.max(t, pieces[k].start), pieces[k].end) - pieces[k].start) / pieces[k].speed);
   };
   const removals = gaps.flatMap(({ run, line: jumpAt }) => removalsOf(run.finds, sounds, round(jumpAt), forced));
+  // A break's quiet cut between two takes, listed for review like any other cut.
+  for (const { start: from, end: to, line: jumpAt } of breaks) removals.push({ kind: 'break', text: '', from: round(from), to: round(to), at: round(jumpAt), keepAt: round((from + to) / 2) });
   // A run taken from either end of the line only moves its edge.
   if (head) removals.unshift(...removalsOf(head.finds, sounds, 0, forced));
   if (tail) removals.push(...removalsOf(tail.finds, sounds, lineTime(Infinity), forced));

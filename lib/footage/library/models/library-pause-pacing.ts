@@ -6,6 +6,7 @@
 // Audacity's Truncate Silence compressing what passes a threshold, Descript's "Shorten word gaps" (a target length).
 // Unlike them, a pause's target depends on what it's for (spoken-pauses.ts): Adobe warns that removing pauses in bulk
 // flattens the ones held for effect.
+import { spokenWordKey } from '#lib/footage/transcript/models/spoken-disfluencies.ts';
 import type { SpokenPauseClassifier, SpokenPauseKind } from '#lib/footage/transcript/models/spoken-pauses.ts';
 import type { SpokenWord } from '#lib/footage/transcript/models/spoken-word.ts';
 
@@ -26,12 +27,32 @@ export type LibraryPausePacing = {
   ramp: number;
   /** The longest a pause plays once sped up, in seconds: one longer at `topSpeed` goes faster still. */
   longest: number;
+  /** Seconds of quiet past which a pause is a break between takes, cut to `boundary` rather than sped. */
+  breakFrom: number;
   /** What each pause is for. Default spokenPauseKindOf. */
   classify?: SpokenPauseClassifier;
 };
 
 /** The pacing a line gets unless its cleanup says otherwise: conservative, so a pause that carries meaning still reads. */
-export const LIBRARY_PAUSE_PACING: LibraryPausePacing = { hesitation: 0.3, boundary: 0.6, boundaryExcess: 0.25, topSpeed: 3, ramp: 0.2, longest: 1.6 };
+// breakFrom: in the library's takes, pauses inside a thought run to about 2.5 s; nearly every longer one is the
+// speaker stopping (reading, waiting, starting over).
+export const LIBRARY_PAUSE_PACING: LibraryPausePacing = { hesitation: 0.3, boundary: 0.6, boundaryExcess: 0.25, topSpeed: 3, ramp: 0.2, longest: 1.6, breakFrom: 2.5 };
+
+// A pause at least this long where the speaker then says again what they'd just said is a restart, so a break.
+const RESTART_PAUSE = 1;
+/** Each two words in a row of `words`, as keys. */
+const wordPairsOf = (words: readonly SpokenWord[]) => words.slice(0, -1).map((w, k) => `${spokenWordKey(w)} ${spokenWordKey(words[k + 1])}`);
+
+/**
+ * Whether a pause heard for `heard` seconds between the words `before` and `after` it is a break between takes: past
+ * `breakFrom`, or a restart, where the first words after repeat two in a row of the last before.
+ */
+export function libraryPauseIsBreak(heard: number, before: readonly SpokenWord[], after: readonly SpokenWord[], { breakFrom }: Pick<LibraryPausePacing, 'breakFrom'>): boolean {
+  if (heard >= breakFrom) return true;
+  if (heard < RESTART_PAUSE) return false;
+  const said = new Set(wordPairsOf(before.slice(-4)));
+  return wordPairsOf(after.slice(0, 3)).some((pair) => said.has(pair));
+}
 
 /**
  * Syllables a second, pauses left out, of the speaker pacing's seconds are written for. Conversational English runs

@@ -143,7 +143,8 @@ const pacedItem = {
 const paced = libraryFootage(pacedItem, { heardBy: 'test', tracks: { mic: { duration: 11, pauses: [], unheard: [], words: pacedSaid.map(([text, start, end]) => ({ text: String(text), start: Number(start), end: Number(end) })) } } });
 
 test('a pause mid-phrase plays shorter than one ending a sentence, the face keeps to its words, and the voice keeps its pace', () => {
-  const speech = paced.speech(0.4, 10.4);
+  // The 5 s pause is a break between takes unless the project says breaks start later.
+  const speech = paced.speech(0.4, 10.4, { pauses: { breakFrom: 10 } });
   const [boundary, hesitation, long] = speech.pauses;
   assert.deepEqual([boundary.kind, hesitation.kind, long.kind], ['boundary', 'hesitation', 'hesitation']);
   assert.ok(hesitation.plays < boundary.plays && boundary.plays < 1.2, `${hesitation.plays} < ${boundary.plays} < 1.2`);
@@ -159,16 +160,22 @@ test('a pause mid-phrase plays shorter than one ending a sentence, the face keep
   const inQuiet = (t: number) => pacedItem.tracks.mic.levelled.quiet.some(([start, end]) => start < t && t < end);
   assert.ok(sounded.slice(1).every((p, k) => inQuiet(p.start) && inQuiet(sounded[k].start + sounded[k].duration)), 'every cut is in quiet');
   // However short `longest`, a sped pause ramps back to its own pace before the next word, and every word plays at it.
-  const squeezed = paced.speech(0.4, 10.4, { pauses: { longest: 0.3 } });
+  const squeezed = paced.speech(0.4, 10.4, { pauses: { longest: 0.3, breakFrom: 10 } });
   assert.ok(squeezed.pauses.every((p) => p.plays <= 0.3 + 1e-9), squeezed.pauses.map((p) => p.plays).join(', '));
   for (const [text, start, end] of pacedSaid) {
     const pieces = squeezed.pieces.filter((p) => p.to > Number(start) && p.from < Number(end));
     assert.ok(pieces.every((p) => (p.speed ?? 1) === 1), `${String(text)} plays at its own pace`);
   }
   // A project's own pacing and classifier: every pause a boundary, at most 1.8 s.
-  const own = paced.speech(0.4, 10.4, { pauses: { classify: () => 'boundary', longest: 1.8 } });
+  const own = paced.speech(0.4, 10.4, { pauses: { classify: () => 'boundary', longest: 1.8, breakFrom: 10 } });
   assert.deepEqual(own.pauses.map((p) => p.kind), ['boundary', 'boundary', 'boundary']);
   assert.equal(own.pauses[2].plays, 1.8);
+  // By default the 5 s pause is a break: never sped, cut in its quiet to what a boundary keeps, and listed for review.
+  const cut = paced.speech(0.4, 10.4);
+  const breakPause = cut.pauses[2];
+  assert.ok(breakPause.kind === 'break' && breakPause.speed === 1 && breakPause.plays < 1.2, JSON.stringify(breakPause));
+  assert.ok(cut.pieces.every((p) => (p.speed ?? 1) === 1 || p.to <= 4.9), 'nothing in the break is sped');
+  assert.deepEqual(cut.removals.map((r) => r.kind), ['break']);
 });
 
 // "So" and "then" with sound between them the transcript has no word for: two quiet spans, not one.

@@ -26,9 +26,20 @@ const NON_LEXICAL_FILLERS = new Set(['uh', 'uhh', 'um', 'umm', 'uhm', 'er', 'erm
 export const spokenFillers: SpokenDisfluencyRule = (words) =>
   words.flatMap((word, first) => (NON_LEXICAL_FILLERS.has(spokenWordKey(word)) ? [{ kind: 'filler', first, count: 1 }] : []));
 
-/** Words cut off mid-word, which whisper writes ending in a dash: "we-", "I'm—". */
-export const spokenFalseStarts: SpokenDisfluencyRule = (words) =>
-  words.flatMap((word, first) => (/\p{L}[-–—]+$/u.test(word.text) ? [{ kind: 'false start', first, count: 1 }] : []));
+/**
+ * Words cut off mid-word, which whisper writes ending in a dash, that the speaker then starts again: "we- we went",
+ * "inst- installed", or the phrase restarted, "the tr- the bar", which takes the words it restarts too. One followed by
+ * another word ("drive the- session") is a hesitation, so it stays.
+ */
+export const spokenFalseStarts: SpokenDisfluencyRule = (words) => {
+  const keys = words.map(spokenWordKey);
+  return words.flatMap((word, first): SpokenDisfluency[] => {
+    if (!/\p{L}[-–—]+$/u.test(word.text) || first + 1 >= words.length) return [];
+    if (keys[first + 1].startsWith(keys[first])) return [{ kind: 'false start', first, count: 1 }];
+    const led = [1, 2].find((n) => first - n >= 0 && keys.slice(first - n, first).every((key, k) => key !== '' && key === keys[first + 1 + k]));
+    return led ? [{ kind: 'false start', first: first - led, count: led + 1 }] : [];
+  });
+};
 
 // The longest phrase a retake repeats that this rule finds.
 const RETAKE_MAX_WORDS = 6;

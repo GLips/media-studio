@@ -4,8 +4,11 @@
 import type { SpokenWord } from './spoken-word.ts';
 import { spokenWordKey } from './spoken-disfluencies.ts';
 
-/** A pause where a sentence or clause ends (`boundary`), or one in the middle of a phrase (`hesitation`). */
-export type SpokenPauseKind = 'boundary' | 'hesitation';
+/**
+ * A pause where a sentence or clause ends (`boundary`), one in the middle of a phrase (`hesitation`), or one between
+ * two takes, where the speaker stopped and started again (`break`): an editor's cut, not a pause to pace.
+ */
+export type SpokenPauseKind = 'boundary' | 'hesitation' | 'break';
 
 /** What the pause between `before` and `after` is for. A project passes its own in place of spokenPauseKindOf. */
 export type SpokenPauseClassifier = (before: SpokenWord, after: SpokenWord) => SpokenPauseKind;

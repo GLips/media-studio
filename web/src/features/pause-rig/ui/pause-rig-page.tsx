@@ -38,6 +38,7 @@ const styles = stylex.create({
   chip: { fontFamily: fonts.mono, paddingInline: spacing.tight, borderRadius: radius.control, borderWidth: 1, borderStyle: 'solid', borderColor: colors.line, color: colors.dim },
   hesitation: { borderColor: colors.caution, color: colors.caution },
   boundary: { borderColor: colors.cobalt, color: colors.cream },
+  break: { borderColor: colors.line, color: colors.dim, borderStyle: 'dashed' },
   taken: { textDecoration: 'line-through', borderColor: colors.danger, color: colors.danger },
   now: { backgroundColor: colors.raised },
   side: { overflowY: 'auto' },
