@@ -3,7 +3,7 @@ import { layersOf } from '#lib/paint/document/models/painting-selection.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
 import { painting } from '#lib/paint/document/models/painting-source.ts';
 import { shotFigure, shotPlace } from '#lib/paint/shot/models/shot-figure.ts';
-import type { PlaneProps } from '#lib/paint/shot/models/shot-props.ts';
+import { scheduledSource, type PlaneProps } from '#lib/paint/shot/models/shot-props.ts';
 import { subjectFigureSheet } from '#lib/paint/subject-painting/models/subject-figure-card.ts';
 import type { Subject } from '#lib/paint/subject/models/subject.ts';
 import { checkLookGraph, type LookRedraw, type LookStep } from './look-step.ts';
@@ -52,6 +52,10 @@ export function lookPlanes(
     const source = ({ frame }: PaintMoment) => layersOf(evaluation, [name], {
       ground: 'transparent', redraw: new Map(redraws.map(({ key, redraw }) => [key, redraw.at(frame).token])),
     });
-    return shotPlace({ kind: 'figure', card: name, source }, placement(name));
+    const figure = { kind: 'figure', card: name, source } as const;
+    // One schedule for the whole sheet tells the shot when its drawings change, so history and warm solves step with
+    // them; steps on different schedules leave the plane read every frame, each layer still keyed to its own token.
+    const [{ redraw }] = redraws;
+    return shotPlace(redraws.every((r) => r.redraw === redraw) ? scheduledSource(figure, redraw) : figure, placement(name));
   });
 }
