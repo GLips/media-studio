@@ -34,7 +34,7 @@ function formatReviewVersionMade(at: string): string {
  */
 export function ReviewCompareMenu() {
   const { artifact, search, setSearch } = useReviewScreen();
-  const { versions, shown, other } = useReviewRenderVersions();
+  const { versions, shown, other, reference } = useReviewRenderVersions();
   const sliced = useReviewSplices().laid.length > 0;
   const [opened, setOpened] = useState(false);
   // Left out, not disabled, with nothing to choose: a disabled key still holds its binding.
@@ -59,18 +59,26 @@ export function ReviewCompareMenu() {
         <Menu.Dropdown>
           {shown && sliced && (
             <Menu.Item onClick={() => setSearch({ vs: shown.hash })}>
-              <Readout bright={other.asRendered}>{reviewVersionLabelOf({ ...shown, asRendered: true }, shown.hash)}</Readout>
+              <Readout bright={other.asRendered === true}>{reviewVersionLabelOf({ ...shown, asRendered: true }, shown.hash)}</Readout>
             </Menu.Item>
           )}
           {choices.map((v) => (
             <Menu.Item key={v.hash} onClick={() => setSearch({ vs: v.hash })}>
               <Group gap="gap" wrap="nowrap">
-                <Readout bright={!other.asRendered && v.hash === other.hash}>r{v.r}</Readout>
+                <Readout bright={other.asRendered === false && v.hash === other.hash}>r{v.r}</Readout>
                 <Readout>{v.hash.slice(0, 6)}{v.source.workspace?.dirty || v.source.engine.dirty ? '*' : ''}</Readout>
                 <Readout>{formatReviewVersionMade(v.at)}</Readout>
               </Group>
             </Menu.Item>
           ))}
+          {reference && (
+            <Menu.Item onClick={() => setSearch({ vs: reference.hash })}>
+              <Group gap="gap" wrap="nowrap">
+                <Readout bright={other === reference}>{reference.label}</Readout>
+                <Readout>{reference.file.slice(reference.file.lastIndexOf('/') + 1)}</Readout>
+              </Group>
+            </Menu.Item>
+          )}
           {comparing && <Menu.Divider />}
           {comparing && (
             <Menu.Item onClick={() => setSearch({ vs: undefined, cmp: undefined, w: undefined })}>

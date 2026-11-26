@@ -107,13 +107,14 @@ export function ReviewTransportBar() {
           <ReviewProofGroundControl />
         </>
       )}
-      <Group gap={0} wrap="nowrap" role="group" aria-label="Stage tools" {...stylex.props(styles.tools)}>
+      {/* A track has no frame to draw on, guide, scale or board. */}
+      {screen.artifact.kind === 'video' && <Group gap={0} wrap="nowrap" role="group" aria-label="Stage tools" {...stylex.props(styles.tools)}>
         <IconButton name="Draw on the frame" hotkey="Draw" active={mode === 'draw'} onClick={() => toggleReviewDraw(screen)}><Pencil size={14} /></IconButton>
         <IconButton name="Safe-area guides" hotkey="Guides" active={guides !== null} onClick={() => setGuides(nextReviewGuideSet)}><SquareDashed size={14} /></IconButton>
         {guides && <Readout bright>{guides}</Readout>}
         <IconButton name="Fit or actual size" hotkey="Fit / 1:1" active={search.z === 1} onClick={() => setSearch({ z: search.z === 1 ? undefined : 1 })}><Scan size={14} /></IconButton>
         <IconButton name="Board of scene frames" hotkey="Board" active={mode === 'board'} onClick={() => setMode(mode === 'board' ? 'stage' : 'board')}><LayoutGrid size={14} /></IconButton>
-      </Group>
+      </Group>}
     </Group>
   );
 }

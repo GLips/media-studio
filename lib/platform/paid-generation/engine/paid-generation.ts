@@ -136,6 +136,9 @@ export async function generatePaidMedia(project: string, request: PaidGeneration
 
 const readJsonRecord = <T>(path: string): Record<string, T> => (existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {});
 
+/** Every paid generation made in `folder` (a project's), by cache key, from its generated/provenance.json. */
+export const readPaidGenerationProvenance = (folder: string) => readJsonRecord<PaidGenerationProvenance>(join(folder, 'generated', 'provenance.json'));
+
 // Re-reads the file and sets one entry, with no await between, so another run writing to the same project (a video
 // polls for minutes) never has its entries overwritten by a copy read before it wrote them.
 function writeJsonRecordEntry(path: string, key: string, value: unknown) {

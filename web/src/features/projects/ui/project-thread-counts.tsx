@@ -1,7 +1,7 @@
 import { Text } from '@mantine/core';
 import * as stylex from '@stylexjs/stylex';
 import { Fragment, type ReactNode } from 'react';
-import type { ReviewFirstThread, ReviewProjectSummary, ReviewThreadCounts } from '#lib/output/review/models/review-dashboard.ts';
+import { reviewNewestRenderRow, type ReviewFirstThread, type ReviewProjectSummary, type ReviewThreadCounts } from '#lib/output/review/models/review-dashboard.ts';
 import { HotkeyTooltip } from '#web/shared/ui/hotkey-tooltip.tsx';
 import { AnchorLink } from '#web/shared/ui/anchor-link.tsx';
 import { colors } from '#web/shared/ui/theme.stylex.ts';
@@ -39,7 +39,7 @@ function FirstThreadLink({ summary, first, children }: { readonly summary: Revie
     case 'decision': return <AnchorLink to="/projects/$project/decisions/$topic" params={{ project, topic: place.topic }} search={search} {...link}>{children}</AnchorLink>;
     case 'plan': return <AnchorLink to="/projects/$project/plan" params={{ project }} search={search} {...link}>{children}</AnchorLink>;
     default: {
-      const newest = summary.rows.find((row) => row.on === 'file' && row.artifact.kind === 'video');
+      const newest = reviewNewestRenderRow(summary.rows);
       if (newest?.on !== 'file') return children;
       return <AnchorLink to="/projects/$project/artifacts/$" params={{ project, _splat: newest.artifact.path }} search={search} {...link}>{children}</AnchorLink>;
     }

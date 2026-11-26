@@ -1,16 +1,16 @@
 // review-placement.ts: where a thread shows on what the reviewer has open, worked out each time it's read and never
 // stored, so the render a note was written on (`writtenOn`) stays as written.
 //
-// A video note shows on every video render of the project: on its own render at its frame, on a cut a slice it was
-// written on is laid into at the same picture, on another at its moment's frame there (review-moment.ts). A still note
-// shows on its still's path. Decision and project threads show anywhere.
+// A video note on a render shows on every render: on its own at its frame, on a cut its slice is laid into at the
+// same picture, on another at its moment's frame (review-moment.ts). A note on any other file (footage, a track) shows
+// on that file alone. A still note shows on its still. Decision threads show anywhere, project threads by a render.
 //
 // Negative space: a plan note shows on no render. The plan page and the hand-off place it on the storyboard itself
 // (review-plan.ts).
-import type { ReviewArtifact } from './review-artifact.ts';
+import { reviewPathIsRender, type ReviewArtifact } from './review-artifact.ts';
 import { placeReviewMoment, reviewMomentAt, type ReviewTiming } from './review-moment.ts';
 import type { NewAnchor } from './review-ops.ts';
-import type { ReviewMediaKind } from './review-context.ts';
+import { reviewMediaIsTimed, type ReviewMediaKind } from './review-context.ts';
 import type { ReviewPlanNotePlace } from './review-plan.ts';
 import type { ReviewAnchor, ReviewThread } from './review-threads.ts';
 
@@ -95,11 +95,16 @@ export type PlacedReviewThread = ReviewThread & { placement: ReviewPlacement };
 export function placeReviewThread(thread: ReviewThread, target: ReviewPlacementTarget): ReviewPlacement | null {
   const { anchor } = thread;
   switch (anchor.on) {
-    case 'video': return target.kind === 'video' ? placeReviewVideoNote(anchor, target) : null;
+    case 'video': {
+      if (!reviewMediaIsTimed(target.kind)) return null;
+      if (reviewPathIsRender(anchor.writtenOn.path) && reviewPathIsRender(target.path)) return placeReviewVideoNote(anchor, target);
+      // Its own file has no moments shared with any other, so its frames hold whatever bytes now sit at its path.
+      return anchor.writtenOn.path === target.path ? { frame: anchor.frame, ...(anchor.end !== undefined && { end: anchor.end }), shifted: false } : null;
+    }
     case 'still': return target.kind === 'still' && anchor.writtenOn.path === target.path ? { shifted: false } : null;
     case 'plan': return null;
-    // About the cut as a whole ("is 24 s right?"): beside a video, where it's answered, and noise beside a still.
-    case 'project': return target.kind === 'video' ? { shifted: false } : null;
+    // About the cut as a whole ("is 24 s right?"): beside a render, where it's answered; noise beside a still or footage.
+    case 'project': return target.kind === 'video' && reviewPathIsRender(target.path) ? { shifted: false } : null;
   }
   // A decision thread is about no one frame or file.
   return { shifted: false };

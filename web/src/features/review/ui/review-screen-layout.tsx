@@ -1,9 +1,11 @@
 import { Box } from '@mantine/core';
+import { reviewMediaIsTimed } from '#lib/output/review/models/review-context.ts';
 import * as stylex from '@stylexjs/stylex';
 import { spacing } from '#web/shared/ui/theme.stylex.ts';
 import { ReviewBoard } from './review-board.tsx';
 import { ReviewDock } from './review-dock.tsx';
 import { useReviewScreen } from './review-screen-context.tsx';
+import { ReviewTrackStage } from './review-track-stage.tsx';
 import { ReviewStage } from './review-stage.tsx';
 import { ReviewStillsView } from './review-stills-view.tsx';
 import { ReviewScreenThread } from './review-screen-thread.tsx';
@@ -42,15 +44,17 @@ function ReviewScreenHotkeys() {
  */
 export function ReviewScreenLayout() {
   const { artifact, playback, mode } = useReviewScreen();
-  const isVideo = artifact.kind === 'video';
+  // Audio plays on the same clock and dock as video, its stage showing the track in place of a picture.
+  const isVideo = reviewMediaIsTimed(artifact.kind);
   return (
     <ReviewThreadSplit rootRef={playback.attachRoot} thread={<ReviewScreenThread on={isVideo ? 'video' : 'still'} />}>
       <ReviewScreenHotkeys />
       <Box {...stylex.props(isVideo ? styles.video : styles.still)}>
         <Box {...stylex.props(styles.stage)}>
           {isVideo || <ReviewStillsView />}
-          {isVideo && mode === 'board' && <ReviewBoard />}
-          {isVideo && mode !== 'board' && <ReviewStage />}
+          {artifact.kind === 'video' && mode === 'board' && <ReviewBoard />}
+          {artifact.kind === 'video' && mode !== 'board' && <ReviewStage />}
+          {artifact.kind === 'audio' && <ReviewTrackStage />}
         </Box>
         {isVideo && <Box {...stylex.props(styles.transport)}><ReviewTransportBar /></Box>}
         {isVideo && <Box {...stylex.props(styles.dock)}><ReviewDock /></Box>}

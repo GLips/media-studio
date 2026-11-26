@@ -9,10 +9,33 @@ import type { ReviewStoryboardCard, ReviewTimingMarks } from './review-storyboar
 import type { ReviewSpeechCleanup } from './review-speech.ts';
 
 /**
- * A reviewable file. `pair` names the other encoding of the same transparent delivery (video.webm beside
- * video-hevc.mov): the two are kept apart (each has its own bytes and snapshot) and shown side by side.
+ * What a file the project holds beyond its renders and stills is, read from the record its maker keeps beside it.
+ * `cost` is in US dollars, null where the provider didn't say.
  */
-export type ProjectArtifact = { path: string; kind: 'video' | 'still'; modified: string; pair?: string };
+export type ProjectMade =
+  /** Footage `studio gen video` made for a previs scene from `blockout`; `plays` while the scene plays this take. */
+  | { as: 'footage'; scene: string; plays: boolean; blockout: string | null; model: string; cost: number | null }
+  /** An image `studio gen image` made, listed as images[name]. */
+  | { as: 'image'; name: string; model: string; cost: number | null }
+  /** A picture the project keeps in assets/ (a plate, a logo). */
+  | { as: 'asset' }
+  /** A track in music/ as `studio music` measured it; `fitOf` names the track a fit was cut from. */
+  | { as: 'music'; name: string; seconds: number; bpm: number; lufs: number; model: string | null; cost: number | null; fitOf: string | null }
+  /** A scene rendered alone (`studio render --scene`), the newest of it. */
+  | { as: 'scene-render'; scene: string };
+
+/**
+ * A reviewable file. `pair` names the other encoding of the same transparent delivery (video.webm beside
+ * video-hevc.mov): the two are kept apart (each has its own bytes and snapshot) and shown side by side. `made` says
+ * what made a file that isn't a render or a still in out/.
+ */
+export type ProjectArtifact = { path: string; kind: ReviewMediaKind; modified: string; pair?: string; made?: ProjectMade };
+
+/**
+ * True for a render of the project's composition, in out/: a video note on one places on every render by its moment.
+ * Anything else (generated footage, music, an asset) is its own file, and only its own notes place on it.
+ */
+export const reviewPathIsRender = (path: string) => path.startsWith('out/');
 
 /** `<stem>.webm` ↔ `<stem>-hevc.mov`, the two files studio render writes for a transparent video. */
 export function transparentPairOf(path: string): string | undefined {
@@ -58,6 +81,10 @@ export type ReviewArtifact = {
   cells?: ReviewStillCell[];
   /** A delivered render's captions file (out/video.srt), for download. */
   srt?: string;
+  /** What made a file that isn't a render or a still in out/ (generated footage, a music track). */
+  made?: ProjectMade;
+  /** The file this one was generated from, as compare offers it: footage's blockout. */
+  reference?: { path: string; hash: string; label: string };
   /** Each artifact a note field needs that isn't there, with how to make it. */
   missing: string[];
 };

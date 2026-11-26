@@ -5,7 +5,7 @@
 // Negative space: the plan row carries its sign-offs, never which scenes are left to sign. That needs the storyboard
 // resolved, which the long-running server never does: the browser works it out with reviewPlanSignoffs and hands it
 // to reviewRowAwaitsYou. A plan never handed over (`studio review open --plan`) waits only on its stale scenes.
-import type { ProjectArtifact } from './review-artifact.ts';
+import { reviewPathIsRender, type ProjectArtifact } from './review-artifact.ts';
 import { reviewDecisionTopics } from './review-decisions.ts';
 import type { ReviewPlanSignoffState } from './review-plan.ts';
 import { reviewThreadTone, type ReviewDecision, type ReviewFile, type ReviewSignoff, type ReviewThread } from './review-threads.ts';
@@ -16,10 +16,14 @@ import { reviewThreadTone, type ReviewDecision, type ReviewFile, type ReviewSign
  */
 export type ReviewThreadCounts = { open: number; addressed: number; asks: number };
 
-/** A file's picture: a still as it is, or a video's frame, which the review server cuts from those exact bytes. */
+/**
+ * A file's picture: a still as it is, or a video's frame, which the review server cuts from those exact bytes. Audio
+ * has none: its row shows its kind's glyph.
+ */
 export type ReviewProjectThumbnail =
   | { kind: 'still'; path: string }
-  | { kind: 'video'; path: string; hash: string; frame: number; fps: number };
+  | { kind: 'video'; path: string; hash: string; frame: number; fps: number }
+  | { kind: 'audio'; path: string };
 
 /** Something in a project a reviewer opens. `project` gathers threads about the whole project or a place now gone. */
 export type ReviewProjectPlace =
@@ -68,6 +72,14 @@ export type ReviewProjectFacts = {
 
 const noThreads = (): ReviewThreadCounts => ({ open: 0, addressed: 0, asks: 0 });
 
+/**
+ * The newest render of the composition among a project's rows (files come newest first): where a note written on
+ * any render counts, and beside which the project's own notes are read. Not a scene render, which a reply lays into it.
+ */
+export function reviewNewestRenderRow<R extends ReviewProjectRow>(rows: readonly R[]): Extract<R, { on: 'file' }> | undefined {
+  return rows.find((row): row is Extract<R, { on: 'file' }> => row.on === 'file' && row.artifact.kind === 'video' && reviewPathIsRender(row.artifact.path) && row.artifact.made === undefined);
+}
+
 const waitingToneOf = (thread: ReviewThread): keyof ReviewThreadCounts | null => {
   const tone = reviewThreadTone(thread);
   return tone === 'open' || tone === 'addressed' || tone === 'asks' ? tone : null;
@@ -91,8 +103,9 @@ function planRowOf(review: ReviewFile, { modified }: NonNullable<ReviewProjectFa
 }
 
 /**
- * The project's places with their threads. A video note counts on the newest video, where it places by its moment; a
- * still note on its still. A note whose place is gone counts on the project, so no waiting thread drops off.
+ * The project's places with their threads. A note on a render counts on the newest render, where it places by its
+ * moment; a note on any other file (a still, footage, a track) on that file. A note whose place is gone counts on the
+ * project, so no waiting thread drops off.
  */
 export function summarizeReviewProject({ project, files, review, plan, reviewedAt }: ReviewProjectFacts): ReviewProjectSummary {
   const fileRows: ReviewProjectRow[] = files.map((file) => ({ on: 'file', ...file, threads: noThreads() }));
@@ -102,12 +115,13 @@ export function summarizeReviewProject({ project, files, review, plan, reviewedA
   const topicOf = new Map(review.decisions.map((d) => [d.id, d.topic]));
   const planRow: ReviewProjectRow | null = plan === null ? null : planRowOf(review, plan);
   const projectRow: ReviewProjectRow = { on: 'project', threads: noThreads() };
-  const newestVideo = fileRows.find((row) => row.on === 'file' && row.artifact.kind === 'video');
+  const newestRender = reviewNewestRenderRow(fileRows);
+  const fileRowAt = (path: string) => fileRows.find((row) => row.on === 'file' && row.artifact.path === path);
   const rowOf = (thread: ReviewThread): ReviewProjectRow => {
     const { anchor } = thread;
     switch (anchor.on) {
-      case 'video': return newestVideo ?? projectRow;
-      case 'still': return fileRows.find((row) => row.on === 'file' && row.artifact.path === anchor.writtenOn.path) ?? projectRow;
+      case 'video': return (reviewPathIsRender(anchor.writtenOn.path) ? newestRender : fileRowAt(anchor.writtenOn.path)) ?? projectRow;
+      case 'still': return fileRowAt(anchor.writtenOn.path) ?? projectRow;
       case 'plan': return planRow ?? projectRow;
       case 'decision': return decisionRows.get(topicOf.get(anchor.decision) ?? '') ?? projectRow;
       default: return projectRow;
@@ -172,14 +186,18 @@ export function reviewProjectWaitingCount(summary: ReviewProjectSummary, planSig
 }
 
 /**
- * The project page's rungs, in its order after the plan, decisions and project notes: a video made as the animatic
- * (named `animatic` in out/wip/), a cut (`out/video*`), a delivered still (out/stills/, out/still-sheets/). The rest
- * is `older`: check frames, probes and test renders, which the page folds away.
+ * The project page's rungs, in its order after the plan, decisions and project notes: the animatic (`animatic` in
+ * out/wip/), a cut (`out/video*`), what the project made toward them (ProjectMade), delivered stills (out/stills/,
+ * out/still-sheets/). The rest is `older` (check frames, probes, test renders), which the page folds away.
  */
-export type ProjectPageRung = 'animatic' | 'cut' | 'stills' | 'older';
+export type ProjectPageRung = 'animatic' | 'cut' | 'scene-renders' | 'footage' | 'music' | 'images' | 'stills' | 'older';
 
-/** A file's rung on its project's page, by its path in the project. */
-export function projectPageRungOf(path: string): ProjectPageRung {
+/** The rungs for what a project made beyond its renders and stills, by what made each file. */
+const MADE_RUNGS = { 'scene-render': 'scene-renders', footage: 'footage', music: 'music', image: 'images', asset: 'images' } as const;
+
+/** A file's rung on its project's page, by what made it, else by its path in the project. */
+export function projectPageRungOf({ path, made }: Pick<ProjectArtifact, 'path' | 'made'>): ProjectPageRung {
+  if (made) return MADE_RUNGS[made.as];
   const slash = path.lastIndexOf('/'), folder = path.slice(0, slash + 1), name = path.slice(slash + 1);
   const video = /\.(mp4|webm|mov)$/i.test(name);
   if (folder === 'out/wip/' && video && name.includes('animatic')) return 'animatic';

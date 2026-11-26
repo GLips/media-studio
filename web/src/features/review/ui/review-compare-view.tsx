@@ -52,7 +52,8 @@ function reviewComparedFrameOf(frame: number, shown: ReviewTiming | undefined, o
 }
 
 type ReviewCompareViewProps = {
-  readonly version: ReviewComparedVersion;
+  /** The version or reference, by its file in the project and its bytes' hash. */
+  readonly version: Pick<ReviewComparedVersion, 'file' | 'hash'>;
   /** `flip` sits over the frame, seen while `\` is held; `wipe` shows its left part; `side` fills its own pane. */
   readonly layer: 'flip' | 'wipe' | 'side';
   readonly held: boolean;

@@ -59,6 +59,21 @@ test('a plan awaits you once handed over with a scene unsigned, or whenever a si
 
 test('the project page sorts a file onto its rung by path', () => {
   const rungs = ['out/wip/animatic.mp4', 'out/wip/vid91-animatic.mp4', 'out/video.mp4', 'out/video-hevc.mov', 'out/stills/og.png',
-    'out/still-sheets/og.png', 'out/wip/r1-open.jpg', 'out/wip/frames-0-100.mp4', 'out/joined.mp4'].map(projectPageRungOf);
+    'out/still-sheets/og.png', 'out/wip/r1-open.jpg', 'out/wip/frames-0-100.mp4', 'out/joined.mp4'].map((path) => projectPageRungOf({ path }));
   assert.deepEqual(rungs, ['animatic', 'animatic', 'cut', 'cut', 'stills', 'stills', 'older', 'older', 'older']);
+});
+
+test('a note on generated footage counts on the footage, and a note on a render on the newest render, whichever is newer', () => {
+  const footage = { path: 'generated/establish-a7c8.mp4', hash: 'f00d' };
+  const withFootage: ReviewProjectFacts['files'] = [
+    {
+      artifact: { path: footage.path, kind: 'video', modified: '2026-10-12T12:00:00Z', made: { as: 'footage', scene: 'establish', plays: true, blockout: null, model: 'm', cost: 1 } },
+      thumbnail: { kind: 'video', ...footage, frame: 30, fps: 30 },
+    },
+    ...files,
+  ];
+  const onFootage: ReviewOp = { op: 'thread.add', kind: 'fix', anchor: { on: 'video', writtenOn: footage, frame: 40 }, text: 'the lawn floats' };
+  const review = apply(emptyReviewFile(), 'reviewer', note, onFootage);
+  const { rows } = summarizeReviewProject({ project: 'p', files: withFootage, review, plan: null, reviewedAt: null });
+  assert.deepEqual(rows.flatMap((row) => (row.on === 'file' ? [[row.artifact.path, row.threads.open]] : [])), [[footage.path, 1], [render.path, 1]]);
 });

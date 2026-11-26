@@ -1,4 +1,5 @@
 import { getKeyStateTracker, useHotkeys, type UseHotkeyDefinition } from '@tanstack/react-hotkeys';
+import { reviewMediaIsTimed } from '#lib/output/review/models/review-context.ts';
 import { type PlacedReviewThread, reviewNoteLoopOf } from '#lib/output/review/models/review-placement.ts';
 import { hotkeySequencePending } from '#web/shared/ui/use-global-hotkeys.ts';
 import type { ReviewLoopRange } from './review-playback-store.ts';
@@ -107,5 +108,5 @@ export function useReviewPlaybackHotkeys() {
     },
   ];
   // Left out rather than disabled: a disabled key still holds its binding, and the Board binds the arrows and Enter.
-  useHotkeys(artifact.kind === 'video' ? keys.filter((k) => k.modes.includes(mode)) : []);
+  useHotkeys(reviewMediaIsTimed(artifact.kind) ? keys.filter((k) => k.modes.includes(mode)) : []);
 }

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { reviewMediaIsTimed } from '#lib/output/review/models/review-context.ts';
 import type { PlacedReviewThread } from '#lib/output/review/models/review-placement.ts';
 import type { ReviewPeaks } from '#lib/output/review/models/review-timeline-geometry.ts';
 import type { ReviewSearch } from '../controllers/review-search.ts';
@@ -43,7 +44,7 @@ export function useReviewDockLanes(wanted: readonly ReviewLaneId[] = REVIEW_LANE
   const threads = useReviewThreads();
   const peaks = useQuery({
     ...reviewPeaksQueryOptions(artifact.project, artifact.path, artifact.render.hash, { pinned: true }),
-    enabled: artifact.kind === 'video' && wanted.includes('sound'),
+    enabled: reviewMediaIsTimed(artifact.kind) && wanted.includes('sound'),
   }).data;
 
   const shown = (threads?.threads ?? []).filter((n) => shownOnTimeline(n, search.filter));
