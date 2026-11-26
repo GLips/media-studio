@@ -11,9 +11,9 @@ import type { PropertySchema } from '#lib/paint/document/models/painting-propert
 import { layersOf, type LayerSelection } from '#lib/paint/document/models/painting-selection.ts';
 import type { PaintingEvaluation, PaintingSourceModule } from '#lib/paint/document/models/painting-source.ts';
 import type { PaintMoment } from '#lib/paint/painting/models/stamp-paint-frame-state.ts';
-import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
+import type { CompiledShotPaintedPlane } from './shot-compile.ts';
 import type { ShotEffectImage } from './shot-effect.ts';
-import { shotPlaneSharesAt } from './shot-frame-plan.ts';
+import { shotPlaneSharesAt, type ShotNaming } from './shot-frame-plan.ts';
 import { paintingInTime, type PaintingInTime, type PaintingInTimeOptions } from './shot-painting-in-time.ts';
 import type { PlaneProps } from './shot-props.ts';
 import type { PaintedSourceEnd } from './shot-selection.ts';
@@ -75,7 +75,7 @@ export function shotFigureProblems(plane: string, card: GroupKey, ends: readonly
  * plane placing no figure.
  */
 export function shotFigureSilhouetteAt(
-  shot: Pick<CompiledPaintedShot, 'motion' | 'rigs'>, plane: CompiledShotPaintedPlane, t: PaintMoment,
+  shot: ShotNaming, plane: CompiledShotPaintedPlane, t: PaintMoment,
 ): { readonly region: Region | null; readonly weight: number }[] {
   const { figure } = plane;
   if (figure === null) return [];

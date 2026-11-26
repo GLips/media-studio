@@ -29,7 +29,7 @@ import type { StampPointBox, StampStage } from '#lib/paint/painting/models/stamp
 import type { PaintRigPicture, PaintRigPiece } from '#lib/paint/rig/models/paint-rig-pieces.ts';
 import { shotBackFrameProblem, shotBackGroundBox } from './shot-back.ts';
 import type { CompiledPaintedShot, CompiledShotPaintedPlane } from './shot-compile.ts';
-import { shotNodeGlowAt, shotPlanePlaceAt, shotPlanePosesAt, shotRigPosedAt, shotVisibilityAt, type ShotFrameRigs } from './shot-frame-plan.ts';
+import { shotNodeGlowAt, shotOccurrenceNearest, shotPlanePlaceAt, shotPlanePosesAt, shotRigPosedAt, shotVisibilityAt, type ShotFrameRigs } from './shot-frame-plan.ts';
 import { shotFilmLattice, shotPlacedLattice, type ShotLattice, type ShotShutterAt } from './shot-lattice.ts';
 import { shotOccurrenceKey, shotOccurrencePlane } from './shot-occurrences.ts';
 import type { OccurrenceKey } from './shot-props.ts';
@@ -407,7 +407,7 @@ export function shotPlaneLayPlan(input: ShotPlaneLayInput, moment: ShotMomentAt)
   // A glow is read once a moment on the node stating it, however many layers share it.
   const glows = new Map<string, StampGroupGlow | null>();
   const glowOf = (layer: NodeKey) => {
-    const nearest = motion.nearest.get(shotOccurrenceKey(plane.id, layer)), glow = nearest === undefined ? null : motion.nodes.get(nearest)!.glow;
+    const nearest = shotOccurrenceNearest(motion, plane.id, shotOccurrenceKey(plane.id, layer)), glow = nearest === null ? null : motion.nodes.get(nearest)!.glow;
     if (!glow) return null;
     if (!glows.has(glow.from)) glows.set(glow.from, shotNodeGlowAt(motion, glow, at));
     return glows.get(glow.from)!;

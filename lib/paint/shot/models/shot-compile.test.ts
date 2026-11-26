@@ -99,6 +99,36 @@ test("a plane's source clock holds what its source reads apart from what its clo
   assert.deepEqual(warmed.map(({ at }) => Math.round(at * FPS)), [0, 4, 6, 8, 12]);
 });
 
+/** The pond with an egret in the heron's group. */
+const crowded = painting({
+  default: function crowded(): PaintingDocument {
+    return { widthPx: 320, heightPx: 240, paper: { color: '#f4f2ed', absorbency: 0.5 }, medium: 'watercolour', layers: [layer('sky'), { key: 'heron', children: [layer('body'), layer('neck'), layer('egret')] }] };
+  },
+});
+
+test('a source in time may show other layers at another moment, where the shot names none of those it drops', () => {
+  const { shot } = compilePaintedShot({
+    camera, span: SPAN, planes: [{ id: 'front', depth: 1, source: ({ at }) => layersOf(pond, at < 1 ? ['sky', 'heron'] : ['sky'], { at }) }],
+  }, []);
+  const [front] = shot!.planes;
+  assert.ok(front.kind === 'painted');
+  assert.deepEqual(shotPlaneSharesAt(shot!, front, paintMoment(1)).map(({ selection }) => selection.layers), [['sky']]);
+  const { shot: naming } = compilePaintedShot({
+    camera, span: SPAN,
+    planes: [{ id: 'front', depth: 1, source: ({ at }) => layersOf(pond, at < 1 ? ['sky', 'heron'] : ['sky'], { at }), occurrences: { neck: { visibility: 0.5 } } }],
+  }, []);
+  const [named] = naming!.planes;
+  assert.ok(named.kind === 'painted');
+  assert.throws(() => shotPlaneSharesAt(naming!, named, paintMoment(1)), /doesn't show front\/neck/);
+  const { shot: growing } = compilePaintedShot({
+    camera, span: SPAN,
+    planes: [{ id: 'front', depth: 1, source: ({ at }) => layersOf(at < 1 ? pond : crowded, ['sky', 'heron'], { at }), occurrences: { heron: { visibility: 0.5 } } }],
+  }, []);
+  const [grows] = growing!.planes;
+  assert.ok(grows.kind === 'painted');
+  assert.throws(() => shotPlaneSharesAt(growing!, grows, paintMoment(1)), /shows front\/egret, which its first didn't/);
+});
+
 /** A puddle on a smaller sheet than the pond's. */
 const puddle = painting({
   default: function puddle(): PaintingDocument {

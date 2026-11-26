@@ -41,7 +41,7 @@ function shotPlanePosedAway(shot: CompiledPaintedShot, plane: CompiledShotPainte
 /**
  * Whether `plane`, a painted plane or variant of `shot`, lays anything at `moment`: it isn't faded out, and its ground
  * is paper or one of its layers shows through every group holding it, in no cel its rig's pose (as `read` reads it)
- * hides. A source shows the same occurrences at every moment (shotPlaneSharesAt), so its first's tell.
+ * hides. Its first evaluation's occurrences tell: a source keeps every one the shot names (shotPlaneSharesAt).
  */
 function shotPlaneShowsAt(shot: CompiledPaintedShot, plane: CompiledShotPaintedPlane, moment: PaintMoment, read: ShotRigRead): boolean {
   const shown = (key: OccurrenceKey) => shotVisibilityAt(shot, plane.id, key, moment) > 0;

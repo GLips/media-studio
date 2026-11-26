@@ -59,13 +59,21 @@ const placesNothing = ({ scale }: { readonly scale: number }) => scale === 0;
  */
 export function shotScaledToNothingAt(shot: CompiledPaintedShot, plane: string, key: OccurrenceKey, t: PaintMoment): boolean {
   const { motion } = shot;
-  for (let id = motion.nearest.get(key) ?? (motion.nodes.has(plane) ? plane : null); id !== null; id = motion.nodes.get(id)!.parent) {
+  for (let id = shotOccurrenceNearest(motion, plane, key); id !== null; id = motion.nodes.get(id)!.parent) {
     const place = paintLevelPlacementAt(motion.nodes.get(id)!, t, motion.animationFps);
     if (place && placesNothing(place.placement)) return true;
   }
   const compiled = shot.planes.find((each) => each.id === plane);
   return (compiled?.kind === 'painted' || compiled?.kind === 'effect') && compiled.lay.kind === 'moving' && placesNothing(compiled.lay.lay(shotPlaneMomentAt(motion, plane, t)).placement);
 }
+
+/**
+ * The motion node nearest occurrence `key` of plane `plane`: its own or an enclosing group's, else the plane's; null
+ * where nothing moves it. A layer a source in time gains past its first lies in no named group (shotPlaneSharesAt),
+ * so its plane's node is its nearest.
+ */
+export const shotOccurrenceNearest = (motion: CompiledShotMotion, plane: string, key: OccurrenceKey): string | null =>
+  motion.nearest.get(key) ?? (motion.nodes.has(plane) ? plane : null);
 
 /** The moment plane `plane`'s presentation reads at frame moment `t`: through its own clock. */
 export const shotPlaneMomentAt = (motion: CompiledShotMotion, plane: string, t: PaintMoment): PaintMoment =>
@@ -89,23 +97,36 @@ export function shotPlanePlaceAt(plane: CompiledShotPaintedPlane, motion: Compil
   return paintingPoseAfter(paintingSimilarityPose(shotPlaneLayAt(plane, motion, t)), own);
 }
 
+/** What of a shot names occurrences: their motion nodes, rigs, visibility and the masks reading them. */
+export type ShotNaming = Pick<CompiledPaintedShot, 'motion' | 'rigs' | 'visibility' | 'masks'>;
+
+/**
+ * Whether `shot` names occurrence `key`, so a source must show it at every moment. One it doesn't name lays as its
+ * plane does wherever it shows, so a figure in time may gain and lose layers as its drawings do (a line hidden in
+ * one pose and seen in the next).
+ */
+export const shotOccurrenceNamed = ({ motion, rigs, visibility, masks }: ShotNaming, key: OccurrenceKey) =>
+  motion.nodes.has(key) || rigs.has(key) || visibility.has(key) || masks.read.has(key);
+
 /**
  * The selections plane `plane` of `shot` blends at frame moment `t`, read at its source clock's moment, each weighted.
- * A callback's answer is checked as its load checked the first: throws on its problems (paintedSourceProblems,
- * paintedPlaneBlendProblems, shotPlaneRigEndProblems) and on occurrences other than its first evaluation's. A
- * painting in time's drawings were all checked as it loaded.
+ * A callback's answer is checked as its load checked the first: throws on its problems, on dropping an occurrence
+ * the shot names (shotOccurrenceNamed), and on gaining one inside a named group. A painting in time was checked
+ * as it loaded.
  */
-export function shotPlaneSharesAt(shot: Pick<CompiledPaintedShot, 'motion' | 'rigs'>, plane: CompiledShotPaintedPlane, t: PaintMoment): PaintedSourceShare[] {
+export function shotPlaneSharesAt(shot: ShotNaming, plane: CompiledShotPaintedPlane, t: PaintMoment): PaintedSourceShare[] {
   const moment = paintNodeTimeAt(plane.sourceClock, t, shot.motion.animationFps), source = presentationValueAt(plane.source, moment);
   if (typeof plane.source !== 'function' || plane.keyDrawings) return paintedSourceShares(source);
   const at = `shot plane ${plane.id}'s source at ${moment.at} s`, problems = paintedSourceProblems(plane.id, source), ends = paintedSourceEnds(source);
   if (!problems.length) problems.push(...paintedPlaneBlendProblems(plane.id, ends, plane.paints));
   if (!problems.length) problems.push(...shotPlaneRigEndProblems(shot.rigs.values(), plane.id, ends));
   if (problems.length) throw paintingProblemsError(at, problems);
-  const keys = shotPlaneOccurrences(plane.id, source).map(({ key }) => key), firstKeys = plane.occurrences.map(({ key }) => key);
-  if (keys.length !== firstKeys.length || keys.some((key, i) => key !== firstKeys[i])) {
-    throw new Error(`${at} shows ${keys.join(', ')}, and its first showed ${firstKeys.join(', ')}: a source keeps the occurrences its motion, rigs and visibility name`);
-  }
+  const shown = shotPlaneOccurrences(plane.id, source), keys = new Set(shown.map(({ key }) => key)), first = new Set(plane.occurrences.map(({ key }) => key));
+  const lost = plane.occurrences.filter(({ key }) => shotOccurrenceNamed(shot, key) && !keys.has(key)).map(({ key }) => key);
+  if (lost.length) throw new Error(`${at} doesn't show ${lost.join(', ')}, which its first showed: a source keeps the occurrences its motion, rigs, visibility and masks name`);
+  // A newcomer takes its plane's motion (shotOccurrenceNearest): one inside a named group would need the group's.
+  const nested = shown.filter(({ key, groups }) => !first.has(key) && groups.some((group) => shotOccurrenceNamed(shot, group))).map(({ key }) => key);
+  if (nested.length) throw new Error(`${at} shows ${nested.join(', ')}, which its first didn't, inside a group the shot names: a source shows from its first what lies in a named group`);
   return paintedSourceShares(source);
 }
 
