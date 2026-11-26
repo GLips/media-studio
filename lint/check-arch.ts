@@ -31,12 +31,12 @@ const root = join(dirname(script), '..');
 
 const { values } = parseArgs({
   options: {
-    rev: { type: 'string' }, snapshot: { type: 'string' }, scope: { type: 'string' }, project: { type: 'string' }, list: { type: 'boolean' },
+    rev: { type: 'string' }, snapshot: { type: 'string' }, scope: { type: 'string' }, project: { type: 'string', multiple: true }, list: { type: 'boolean' },
     'update-baseline': { type: 'boolean' }, 'admit-new': { type: 'boolean' },
   },
 });
 
-type ArchRunOptions = { project?: string; rev?: string; snapshot?: string; list?: boolean };
+type ArchRunOptions = { project?: string[]; rev?: string; snapshot?: string; list?: boolean };
 
 const baselineRewrite = parseBaselineRewrite(values);
 // A commit is the studio's, so --rev alone judges the studio.

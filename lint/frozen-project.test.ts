@@ -23,3 +23,17 @@ test('workspace checks follow the sidecar in the index or on disk when a freeze 
     assert.deepEqual(paths('worktree'), [source]);
   });
 });
+
+test('a batch checks both named projects and shared sources despite a broken record in another project', () => {
+  withStudioTemp('freeze-selection', (root) => {
+    runFixtureGit(root, ['init', '-q']);
+    for (const name of ['one', 'two', 'unrelated']) {
+      mkdirSync(join(root, 'projects', name), { recursive: true });
+      writeFileSync(join(root, 'projects', name, 'project.ts'), '');
+    }
+    writeFileSync(join(root, 'projects/unrelated/frozen.json'), 'broken');
+    writeFileSync(join(root, 'shared.ts'), '');
+    const paths = listSnapshotPaths({ root, mount: 'work', snapshot: { kind: 'worktree', projects: ['one', 'two'] }, gitEnv: isolatedGitEnv() });
+    assert.deepEqual(paths, ['projects/one/project.ts', 'projects/two/project.ts', 'shared.ts']);
+  });
+});

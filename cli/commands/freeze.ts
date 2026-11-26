@@ -4,13 +4,13 @@ import { studioProjectArg } from '../project-arg.ts';
 function freezeCommand(action: 'freeze' | 'thaw', description: string) {
   return defineCommand({
     meta: { name: action, description },
-    args: { project: studioProjectArg },
+    args: { 'project...': { ...studioProjectArg, description: 'One or more project slugs, unique name fragments, or paths' } },
     async run({ args }) {
       const { changeProjectFreeze } = await import('#lib/platform/project/engine/project-freeze.ts');
-      changeProjectFreeze(args.project, action);
-      console.log(`${args.project} is ${action === 'freeze' ? 'frozen' : 'active'}.`);
+      const names = changeProjectFreeze(args._, action);
+      console.log(`${action === 'freeze' ? 'Frozen' : 'Active'}: ${names.join(', ')}.`);
     },
   });
 }
-export const freeze = freezeCommand('freeze', 'Check a finished project and record its engine and shared workspace revisions for rendering.');
-export const thaw = freezeCommand('thaw', 'Bring a frozen project back under workspace checks and report what needs fixing.');
+export const freeze = freezeCommand('freeze', 'Pin finished projects to the engine they pass on, checked together; checks then skip them.');
+export const thaw = freezeCommand('thaw', 'Put frozen projects back under the checks, and report what fails on today\'s engine.');

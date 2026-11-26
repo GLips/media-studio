@@ -8,13 +8,18 @@ import { listStudioProjects, STUDIO_ROOT } from '#lib/platform/project/engine/st
 import { uncheckedProjectsOfSnapshot } from './candidate-snapshot.ts';
 import { gateRepository } from './gate-scope.ts';
 
-const [mode, option, indexFile] = process.argv.slice(2);
-const tracked = option === '--tracked';
+const [mode, ...operands] = process.argv.slice(2);
+const tracked = operands[0] === '--tracked';
+const indexFile = tracked && operands[1];
 const projects = listStudioProjects();
 const gitEnv = indexFile ? { ...process.env, GIT_INDEX_FILE: indexFile } : process.env;
 const frozen = tracked && uncheckedProjectsOfSnapshot({ ...gateRepository(STUDIO_ROOT, 'workspace', { kind: 'index' }), gitEnv });
-const active = frozen ? projects.filter((name) => !frozen.has(name)) : activeStudioProjects();
-const selected = active.filter((name) => tracked || !option || name === option);
+const scoped = !tracked && operands.length > 0;
+function selectedProjects() {
+  if (scoped) return operands;
+  return frozen ? projects.filter((name) => !frozen.has(name)) : activeStudioProjects();
+}
+const selected = selectedProjects();
 const run = (command: string, args: string[]) => {
   const result = spawnSync(command, args, { cwd: STUDIO_ROOT, stdio: 'inherit', env: { ...process.env, STUDIO_RETIME_PROJECTS: JSON.stringify(selected) } });
   if (result.error) throw result.error;
@@ -28,7 +33,13 @@ if (mode === 'typecheck') {
       : [];
     const exclude = ['projects/*/generated', 'projects/*/out', ...projects.filter((name) => !selected.includes(name)).map((name) => `projects/${name}`), ...untracked];
     const config = join(temp, 'tsconfig.json');
-    writeFileSync(config, JSON.stringify({ extends: join(STUDIO_ROOT, 'tsconfig.json'), compilerOptions: { typeRoots: [join(STUDIO_ROOT, 'node_modules/@types')] }, exclude: exclude.map((path) => join(STUDIO_ROOT, 'work', path)) }));
+    const roots = ['types.d.ts', 'lib/**/*.d.ts', 'work/brands', 'work/styles', ...selected.map((name) => `work/projects/${name}`)];
+    writeFileSync(config, JSON.stringify({
+      extends: join(STUDIO_ROOT, 'tsconfig.json'),
+      compilerOptions: { typeRoots: [join(STUDIO_ROOT, 'node_modules/@types')] },
+      ...(scoped && { include: roots.map((path) => join(STUDIO_ROOT, path)) }),
+      exclude: exclude.map((path) => join(STUDIO_ROOT, 'work', path)),
+    }));
     run(join(STUDIO_ROOT, 'node_modules/.bin/effect-tsgo'), ['tsc', '-p', config]);
   });
 } else {
