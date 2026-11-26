@@ -261,6 +261,15 @@
       "acceptedOver": "dbd6cacf",
       "adapter": "apple metal-3"
     },
+    "shot/light-spill": {
+      "file": "shot/light-spill.png",
+      "output": "90c86862557258d653d9391bf02d0dafe9d03281d4e54595dc34f4d6667b4dc3",
+      "inputs": "0f4507448a6ae5516d06d1e5945cdf71aba63d4c0c4bcb268ffb97e733746865",
+      "reason": "vid-219: neon tubes light a dark wall, bloomed, behind a bar",
+      "accepted": "2026-11-26",
+      "acceptedOver": "108e2f34",
+      "adapter": "apple metal-3"
+    },
     "shot/masks": {
       "file": "shot/masks.png",
       "output": "4407abf2e7d1a5d8a0d090706ff8203c08284a9a33d6a8c17af38798559cdd02",

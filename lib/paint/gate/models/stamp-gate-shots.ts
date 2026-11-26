@@ -22,6 +22,9 @@ import { STAMP_GATE_CARD_SHADOWS, STAMP_GATE_CARD_SHADOWS_AT, STAMP_GATE_CARD_SH
 import { STAMP_GATE_CARDS, STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_LEAF, STAMP_GATE_CARDS_SITTING, stampGateCardParts, stampGateCardsShot } from './stamp-gate-cards.ts';
 import { STAMP_GATE_FIGURE_IMAGE, stampGateFigureImageShot } from './stamp-gate-figure-card.ts';
 import { stampGateOffsetCopiesShot } from './stamp-gate-offset-copies.ts';
+import {
+  STAMP_GATE_LIGHT_SPILL_AT, STAMP_GATE_LIGHT_SPILL_BASELINE, STAMP_GATE_LIGHT_SPILL_SIGN, STAMP_GATE_LIGHT_SPILL_WALL, STAMP_GATE_NEON, stampGateLightSpillShot,
+} from './stamp-gate-light-spill.ts';
 import { STAMP_GATE_FRAME_TOLERANCE } from './stamp-gate-frames.ts';
 import { STAMP_GATE_SHOT_FPS, type StampGateShot } from './stamp-gate-shot-span.ts';
 import {
@@ -45,19 +48,19 @@ export const STAMP_GATE_SHOT_PAGE_IDS = ['shot/page'] as const;
 /** The shots accepted by eye: each a baseline subject, one frame of its shot. */
 export const STAMP_GATE_SHOT_IDS = [
   'shot/paper-heron', 'shot/wet-contact', 'shot/rain', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/masks', 'shot/masks-across', 'shot/masks-across-open', 'shot/rainy-street', 'shot/cards',
-  'shot/pieces', 'shot/approach', 'shot/folds', 'shot/card-shadows', 'shot/figure-image', 'shot/offset-copies',
+  'shot/pieces', 'shot/approach', 'shot/folds', 'shot/card-shadows', 'shot/figure-image', 'shot/offset-copies', 'shot/light-spill',
 ] as const;
 export type StampGateShotId = (typeof STAMP_GATE_SHOT_IDS)[number];
 
 /**
  * The shot cases apart from any sheet case, each a page's checks of its shot's frames: rain, the shutter, dissolves,
  * a warm, mask cuts, the rainy street, cards, pieces, glow, the kite, key drawings, lit cards, a card under an open
- * shutter, a figure card, a figure placed as an image, an effect over a figure in no plane.
+ * shutter, figure cards and images, an effect over a figure in no plane, neon lighting a wall.
  */
 export const STAMP_GATE_SHOT_CASE_IDS = [
   'shot/rain', 'shot/shutter', 'shot/dissolve', 'shot/rigged-dissolve', 'shot/warm', ...STAMP_GATE_SHOT_MASK_IDS, 'shot/rainy-street', 'shot/cards', 'shot/pieces', STAMP_GATE_SHOT_GLOW_ID,
   STAMP_GATE_SHOT_APPROACH_ID, 'shot/properties-in-time', 'shot/card-shadows', 'shot/card-shutter', 'shot/figure-card', 'shot/figure-image',
-  'shot/offset-copies',
+  'shot/offset-copies', 'shot/light-spill',
 ] as const;
 export type StampGateShotCaseId = (typeof STAMP_GATE_SHOT_CASE_IDS)[number];
 
@@ -430,6 +433,11 @@ const SHOT_BASELINES: Readonly<Record<StampGateShotId, {
   },
   'shot/offset-copies': {
     shot: stampGateOffsetCopiesShot, at: 0, evaluations: () => [painting(STAMP_GATE_FIGURE_IMAGE, { revealed: true })], rigs: {}, poses: [],
+  },
+  'shot/light-spill': {
+    shot: () => stampGateLightSpillShot(STAMP_GATE_LIGHT_SPILL_BASELINE), at: STAMP_GATE_LIGHT_SPILL_AT.rest,
+    evaluations: () => [painting(STAMP_GATE_LIGHT_SPILL_WALL), painting(STAMP_GATE_LIGHT_SPILL_SIGN)], rigs: {}, poses: [],
+    extra: { drawn: STAMP_GATE_LIGHT_SPILL_BASELINE, spill: { ...STAMP_GATE_NEON.spill('sign') } },
   },
 };
 

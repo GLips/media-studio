@@ -9,6 +9,9 @@
 
 import type { StampPaintCosts } from '#lib/paint/painting/models/stamp-paint-costs.ts';
 import { checkStampGateFigureCard, checkStampGateFigureImage, stampGateFigureCardShot, stampGateFigureImageShot, type StampGateFigurePlacing } from '../models/stamp-gate-figure-card.ts';
+import { CircleGeometry, Mesh, MeshBasicNodeMaterial, Scene } from 'three/webgpu';
+import type { ThreeSource } from '#lib/paint/shot/models/shot-props.ts';
+import { checkStampGateLightSpill, STAMP_GATE_LIGHT_SPILL_AT, STAMP_GATE_LIGHT_SPILL_BASELINE, STAMP_GATE_LIGHT_SPILL_SCREEN, stampGateLightSpillShot, type StampGateLightSpillDrawn } from '../models/stamp-gate-light-spill.ts';
 import { checkStampGateOffsetCopies, stampGateOffsetCopiesPlacedShot, stampGateOffsetCopiesShot } from '../models/stamp-gate-offset-copies.ts';
 import { checkStampGateCardShutter, STAMP_GATE_CARD_SHUTTER, stampGateCardShutterShot } from '../models/stamp-gate-card-shutter.ts';
 import { STAMP_GATE_CARDS_AT, STAMP_GATE_CARDS_POSED_AT, stampGateCardsPosedShot, stampGateCardsShot } from '../models/stamp-gate-cards.ts';
@@ -414,6 +417,40 @@ async function checkOffsetCopies(): Promise<StampGateWashCheck[]> {
   return checkStampGateOffsetCopies({ copies: await frameAtRest(stampGateOffsetCopiesShot()), placed: await frameAtRest(stampGateOffsetCopiesPlacedShot()) });
 }
 
+/** The light-spill case's three screen: a flat grey disc where STAMP_GATE_LIGHT_SPILL_SCREEN says. */
+const LIGHT_SPILL_SCREEN: ThreeSource = {
+  kind: 'three',
+  build: ({ plane }) => {
+    const { x, y, r } = STAMP_GATE_LIGHT_SPILL_SCREEN, geometry = new CircleGeometry(plane.length(r), 64), material = new MeshBasicNodeMaterial({ color: 0x8890a0 });
+    const mesh = new Mesh(geometry, material), scene = new Scene(), at = plane.point({ x, y });
+    mesh.position.set(at.x, at.y, at.z);
+    scene.add(mesh);
+    return {
+      scene, poseAt: () => {},
+      dispose: () => {
+        material.dispose();
+        geometry.dispose();
+      },
+    };
+  },
+};
+
+/** The light-spill case drawn as `drawn` says at `at`, lit and unlit, RGB bytes. */
+async function lightSpillBoth(drawn: Omit<StampGateLightSpillDrawn, 'lit'>, at: number, screen?: ThreeSource) {
+  const frame = async (lit: boolean) => stampGateRgb((await stampGateShotFrames(stampGateLightSpillShot({ ...drawn, lit }, screen), [at])).frames[0]);
+  return { lit: await frame(true), unlit: await frame(false) };
+}
+
+/** shot/light-spill: neon lighting a wall, each frame drawn lit and unlit. */
+async function checkLightSpill(): Promise<StampGateWashCheck[]> {
+  const { rest, panned } = STAMP_GATE_LIGHT_SPILL_AT, open = { bloom: 0, bar: false, pan: true, moved: false };
+  return checkStampGateLightSpill({
+    rest: await lightSpillBoth(open, rest), panned: await lightSpillBoth(open, panned), moved: await lightSpillBoth({ ...open, moved: true }, rest),
+    barred: await lightSpillBoth({ ...open, bar: true }, rest), bloomed: await lightSpillBoth({ ...STAMP_GATE_LIGHT_SPILL_BASELINE }, rest),
+    screen: await lightSpillBoth({ bloom: 0, bar: false, pan: false, moved: false }, rest, LIGHT_SPILL_SCREEN),
+  });
+}
+
 /** Shot case `id`'s checks. */
 export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGateWashCheck[]> {
   if (id === 'shot/rain') return checkStampGateRain();
@@ -432,6 +469,7 @@ export function checkStampGateShotCase(id: StampGateShotCaseId): Promise<StampGa
   if (id === 'shot/figure-card') return checkFigureCard();
   if (id === 'shot/figure-image') return checkFigureImage();
   if (id === 'shot/offset-copies') return checkOffsetCopies();
+  if (id === 'shot/light-spill') return checkLightSpill();
   return checkStampGateShotMasksCase(id);
 }
 
