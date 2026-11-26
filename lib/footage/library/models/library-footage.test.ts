@@ -125,7 +125,9 @@ test("a line restores what its cleanup took by a moment in it, cuts a word the r
   // "on" runs into its neighbours with no quiet, so it's cut where it's asked, into sound.
   const cut = verbatim.speech(0.9, 5.5, { cut: [1.6], pauseCap: Infinity });
   assert.deepEqual(cut.heard.map((w) => w.text), ['I', 'was', 'the', 'voice', 'call.']);
-  assert.deepEqual(cut.removals.map((r) => r.kind), ['repeat', 'cut', 'filler']);
+  assert.deepEqual(cut.removals.map((r) => [r.kind, r.cut]), [['repeat', undefined], ['cut', true], ['filler', undefined]]);
+  // A pause review kept stays kept once a raised cap no longer shortens it.
+  assert.deepEqual(verbatim.speech(0.9, 5.5, { keep: [3.93], pauseCap: Infinity }).pieces.length, 2);
   // A project's own rule cleans the same way, here leaving fillers in.
   assert.deepEqual(libraryFootageWords(verbatim.speech(0.9, 5.5, { rules: [] })), ['I', 'I', 'was', 'on', 'the', 'uh,', 'voice', 'call.']);
 });

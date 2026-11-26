@@ -47,7 +47,7 @@ export type TimelineReport = {
   sounds: { id: string; at: number; sound: string }[];
 };
 /** A recorded line's cleanup in a timeline report (TimelineReport.cues), its moments in video seconds. */
-export type TimelineSpokenCleanup = { scene: string; removals: SpokenRemoval[]; unheard: { start: number; end: number }[] };
+export type TimelineSpokenCleanup = { scene: string; removals: SpokenRemoval[]; unheard: { start: number; end: number; from: number; to: number }[] };
 
 /** A scene's `expect` (see SceneExpectation), its `during` in video seconds. */
 export type TimelineExpectation = { scene: string; start: number; end: number } & ({ see: string } | { hold: string; for: number; within?: number });

@@ -167,8 +167,10 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
       return;
     }
     const pause = shortenedPause(voice, i, next, cap);
+    // Checked before the cap: a pause kept by review stays kept once a raised cap no longer shortens it.
+    const held = keeps(sounds[i].end, sounds[next].start);
     if (!pause) return;
-    if (keeps(sounds[i].end, sounds[next].start)) {
+    if (held) {
       keptPauses.push({ start: pause.from, end: pause.to });
       return;
     }
@@ -188,12 +190,12 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
   const removals = gaps.flatMap(({ from, to, run }, k): SpokenRemoval[] => {
     const jump = round(at[k + 1]);
     if (!run) return [{ kind: 'pause', text: '', from: round(from), to: round(to), at: jump, keepAt: round((from + to) / 2) }];
-    return removalsOf(run.finds, sounds, jump);
+    return removalsOf(run.finds, sounds, jump, forced);
   });
   // A run taken from either end of the line only moves its edge.
   const head = taken.find((r) => r.first === first), tail = taken.find((r) => r.last === last);
-  if (head) removals.unshift(...removalsOf(head.finds, sounds, 0));
-  if (tail) removals.push(...removalsOf(tail.finds, sounds, lineTime(Infinity)));
+  if (head) removals.unshift(...removalsOf(head.finds, sounds, 0, forced));
+  if (tail) removals.push(...removalsOf(tail.finds, sounds, lineTime(Infinity), forced));
   // What the line leaves in, at the line second it plays: what its `keep` restored, and runs with no quiet to cut in.
   const left: SpokenRemoval[] = [
     ...restored.flatMap((f) => removalsOf([f], sounds, lineTime(sounds[f.from].start)).map((r) => Object.assign(r, { left: 'kept' as const }))),
@@ -206,7 +208,7 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
 
   const within = (span: Span) => pieces.some((p) => p.start <= span.start && span.end <= p.end);
   const dips: SpokenDip[] = [
-    ...voice.soft.filter(within).map((s) => ({ start: lineTime(s.start), end: lineTime(s.end), gain: BREATH_GAIN })),
+    ...voice.soft.filter((s) => within(s) && !keptSounds.some((i) => inside([s], middle(sounds[i])!) !== undefined)).map((s) => ({ start: lineTime(s.start), end: lineTime(s.end), gain: BREATH_GAIN })),
     ...voice.clicks.map((c) => ({ start: c.start - CLICK_MARGIN, end: c.end + CLICK_MARGIN })).filter(within)
       .map((c) => ({ start: lineTime(c.start), end: lineTime(c.end), gain: 0 })),
   ].toSorted((a, b) => a.start - b.start);
@@ -218,10 +220,10 @@ export function cutLibraryLine(voice: LibraryLineVoice, asked: number, askedTo: 
 }
 
 /** The removals a taken run's finds make, all at line second `at`, each restored by a moment inside its first word. */
-function removalsOf(finds: readonly Find[], sounds: readonly LibraryLineSound[], at: number): SpokenRemoval[] {
-  return finds.map(({ kind, flag, from, to }) => ({
-    kind, text: sounds.slice(from, to + 1).map((s) => s.text).join(' '), from: sounds[from].start, to: sounds[to].end, at,
-    keepAt: round(middle(sounds[from])!), ...(flag && { flag }),
+function removalsOf(finds: readonly Find[], sounds: readonly LibraryLineSound[], at: number, cut: readonly Find[] = []): SpokenRemoval[] {
+  return finds.map((find) => ({
+    kind: find.kind, text: sounds.slice(find.from, find.to + 1).map((s) => s.text).join(' '), from: sounds[find.from].start, to: sounds[find.to].end, at,
+    keepAt: round(middle(sounds[find.from])!), ...(find.flag && { flag: find.flag }), ...(cut.includes(find) && { cut: true as const }),
   }));
 }
 

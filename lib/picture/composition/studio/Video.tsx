@@ -68,7 +68,7 @@ function timelineReport(video: VideoDef, tl: LaidVideo, { fps, width, height, du
       return { id, start, end, text, voiced: src !== null, words, speech: {
         scene: scene.id,
         removals: speech.removals.map((r) => Object.assign({}, r, { at: at + r.at })),
-        unheard: speech.unheard.map((u) => ({ start: at + u.at, end: at + u.at + u.to - u.from })),
+        unheard: speech.unheard.map((u) => ({ start: at + u.at, end: at + u.at + u.to - u.from, from: u.from, to: u.to })),
       } };
     }),
     captions: sidecar && { srt: captionsToSrt(sidecar), vtt: captionsToVtt(sidecar) },

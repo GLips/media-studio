@@ -14,9 +14,9 @@ export type SpokenPiece = { from: number; to: number };
 /**
  * Something a line's cleanup took out: its `kind` (`filler`, `pause`, `cut`, a rule's), what was said, where in the
  * item, and the line second `at` the line jumps over it. A line's `keep` names `keepAt` to restore it; `flag` asks
- * review to listen twice. `left`: it plays after all, from `at`: kept, or with no quiet to cut in.
+ * review to listen twice. `left`: kept, or no quiet to cut in. `cut`: the line's own.
  */
-export type SpokenRemoval = { kind: string; text: string; from: number; to: number; at: number; keepAt: number; flag?: string; left?: 'kept' | 'no quiet' };
+export type SpokenRemoval = { kind: string; text: string; from: number; to: number; at: number; keepAt: number; flag?: string; left?: 'kept' | 'no quiet'; cut?: true };
 
 /** Speech whisper wrote no word for, left in the line (item seconds, and the line second it plays at) for review to hear. */
 export type SpokenUnheard = { from: number; to: number; at: number };

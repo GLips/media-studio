@@ -55,6 +55,9 @@ const StoryboardSpeechEditSchema = Schema.Union([
   Schema.Struct({ scene: Schema.String, line: Schema.String, list: Schema.Literals(['keep', 'cut']), within: Schema.Tuple([Seconds, Seconds]) }),
 ]);
 
+/** A moment added to a recorded line's keep or cut, or those within a span taken out (editStoryboardSpeechFn). */
+export type StoryboardSpeechEdit = typeof StoryboardSpeechEditSchema.Type;
+
 /**
  * Adds a moment to a recorded line's `keep` or `cut`, or takes those within a span out, in its speech call in
  * storyboard.ts: review restoring a removal or taking one out. Answers `{ ok: true }`; 422 with `{ refused }`.
