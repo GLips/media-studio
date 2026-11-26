@@ -42,6 +42,7 @@ export type LibraryLineSound = SpokenWord & { unheard?: true };
 /** A track a line is cut from, on item time: its sounds in order, and its levelled copy's quiet, breaths and clicks. */
 export type LibraryLineVoice = { sounds: readonly LibraryLineSound[]; quiet: readonly Span[]; soft: readonly Span[]; clicks: readonly Span[] };
 
+/** The longest pause a recorded line keeps between its words unless its cleanup sets `pauseCap`, in seconds. */
 export const LIBRARY_PAUSE_CAP = 0.5;
 // Sound kept past a word's quiet onset (its decay into the room) and before its words (the breath).
 const EDGE_PAD_OUT = 0.1, EDGE_PAD_IN = 0.12;
